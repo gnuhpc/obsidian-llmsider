@@ -1,0 +1,482 @@
+/* layout.css - Part of LLMSider Plugin Styles
+   This file is auto-generated from styles.css
+   Do not edit directly - edit the source modules instead
+*/
+
+/* ============================================================================
+   Layout & Container Styles
+   ============================================================================ */
+
+/* Main Container */
+.llmsider-chat-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-family: var(--font-interface);
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Header */
+.llmsider-header {
+    padding: 6px 20px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.llmsider-title-section {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    margin-right: 16px;
+}
+
+.llmsider-title {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+    letter-spacing: 0.5px;
+}
+
+/* Session name editing styles */
+.llmsider-session-name {
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    outline: none;
+    min-width: 60px;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.llmsider-session-name:hover {
+    background: var(--background-modifier-hover);
+}
+
+.llmsider-session-name:focus {
+    background: var(--background-modifier-active-hover);
+    border: 1px solid var(--interactive-accent);
+    padding: 3px 7px;
+    cursor: text;
+    white-space: normal;
+    word-break: break-all;
+}
+
+.llmsider-header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.llmsider-header-btn {
+    width: 24px;
+    height: 24px;
+    border: none !important;
+    border-radius: 4px;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--text-muted) !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-header-btn:hover {
+    background: var(--background-modifier-hover) !important;
+    box-shadow: none !important;
+    color: var(--text-normal) !important;
+    transform: none !important;
+}
+
+.llmsider-header-btn svg {
+    flex-shrink: 0;
+}
+
+/* Agent Button Active State */
+.llmsider-agent-btn.agent-active {
+    background: var(--interactive-accent) !important;
+    color: var(--text-on-accent) !important;
+}
+
+.llmsider-agent-btn.agent-active:hover {
+    background: var(--interactive-accent-hover) !important;
+}
+
+.llmsider-mode-toggle-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: var(--background-secondary) !important;
+    color: var(--text-normal) !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-mode-toggle-btn:hover {
+    background: var(--background-modifier-hover) !important;
+    color: var(--text-normal) !important;
+}
+
+.llmsider-mode-toggle-btn.action-mode {
+    background: #007AFF !important;
+    color: #ffffff !important;
+}
+
+.llmsider-mode-toggle-btn.action-mode:hover {
+    background: #0056CC !important;
+    color: #ffffff !important;
+}
+
+/* Provider Tabs Styles */
+.llmsider-provider-tabs-container {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+}
+
+.llmsider-provider-tabs-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    min-height: 40px;
+}
+
+.llmsider-provider-tabs-list {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+}
+
+.llmsider-provider-tabs-list::-webkit-scrollbar {
+    height: 4px;
+}
+
+.llmsider-provider-tabs-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.llmsider-provider-tabs-list::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 2px;
+}
+
+.llmsider-provider-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    min-width: 100px;
+    position: relative;
+}
+
+.llmsider-provider-tab:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.llmsider-provider-tab.active {
+    background: var(--interactive-accent);
+    border-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.llmsider-provider-tab-content {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+}
+
+.llmsider-provider-tab-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-provider-tab-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.llmsider-provider-tab-label {
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.llmsider-provider-tab-close {
+    width: 16px;
+    height: 16px;
+    border: none;
+    background: transparent;
+    color: currentColor;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 4px;
+    opacity: 0.6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-provider-tab-close:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.llmsider-provider-tab.active .llmsider-provider-tab-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.llmsider-provider-tabs-add-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px dashed var(--background-modifier-border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    opacity: 0.3;
+    transform: scale(0.95);
+}
+
+.llmsider-provider-tabs-wrapper:hover .llmsider-provider-tabs-add-btn {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* When there are no tabs, make button more visible */
+.llmsider-provider-tabs-list:empty + .llmsider-provider-tabs-add-btn {
+    opacity: 0.8;
+    transform: scale(1);
+}
+
+.llmsider-provider-tabs-add-btn:hover {
+    border-color: var(--interactive-accent);
+    color: var(--interactive-accent);
+    background: var(--background-modifier-hover);
+}
+
+/* Provider Modal Styles */
+/* Provider Dropdown - positioned near trigger button */
+.llmsider-provider-dropdown-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: transparent;
+    z-index: 10000;
+}
+
+.llmsider-provider-dropdown {
+    position: fixed;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    width: 280px;
+    max-height: 400px;
+    display: flex;
+    flex-direction: column;
+    z-index: 10001;
+}
+
+.llmsider-provider-dropdown-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-provider-dropdown-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.llmsider-provider-dropdown-list {
+    padding: 8px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.llmsider-provider-dropdown-group {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 12px;
+    margin-bottom: 6px;
+    padding: 0 8px;
+}
+
+.llmsider-provider-dropdown-group:first-child {
+    margin-top: 0;
+}
+
+.llmsider-provider-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.llmsider-provider-dropdown-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.llmsider-provider-dropdown-icon {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--background-secondary);
+    border-radius: 4px;
+}
+
+.llmsider-provider-dropdown-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.llmsider-provider-dropdown-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.llmsider-provider-dropdown-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+    margin-bottom: 1px;
+}
+
+.llmsider-provider-dropdown-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.llmsider-provider-dropdown-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* Welcome Screen */
+.llmsider-welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.llmsider-welcome-icon {
+    font-size: 48px;
+    margin-bottom: 24px;
+    background: linear-gradient(135deg, #007AFF, #5856D6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.llmsider-welcome-text h1 {
+    margin: 0 0 16px 0;
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--text-normal);
+    letter-spacing: -0.02em;
+}
+
+.llmsider-welcome-subtext {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 32px;
+}
+
+.llmsider-warning {
+    margin-top: 20px;
+    padding: 16px;
+    background: #ff4444;
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 14px;
+    max-width: 400px;
+}
+
+/* Disclaimer */
+.llmsider-disclaimer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 12px;
+    opacity: 0.8;
+}
+
+/* File reference tip in welcome message */
+.llmsider-tip-info {
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    border-left: 3px solid var(--text-accent);
+}
+
+.llmsider-tip-info p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14px;
+}

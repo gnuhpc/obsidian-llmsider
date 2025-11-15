@@ -1,0 +1,1171 @@
+/* messages.css - Part of LLMSider Plugin Styles
+   This file is auto-generated from styles.css
+   Do not edit directly - edit the source modules instead
+*/
+
+/* ============================================================================
+   Messages Area & Message Components
+   ============================================================================ */
+
+/* Messages Container */
+.llmsider-messages {
+    flex: 1;
+    overflow-y: auto !important;
+    overflow-x: visible !important;
+    padding: 20px;
+    background: var(--background-primary);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 0;
+    min-height: 0;
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
+}
+
+.llmsider-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+.llmsider-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.llmsider-messages::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+}
+
+.llmsider-messages::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Message Base Styles */
+.llmsider-message {
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    animation: slideIn 0.3s ease-out;
+}
+
+.llmsider-message.llmsider-user {
+    align-self: flex-end;
+    max-width: 70%;
+    position: relative;
+    overflow: visible;
+}
+
+.llmsider-message.llmsider-assistant {
+    align-self: flex-start;
+    max-width: 100%;
+    position: relative;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Guided mode messages and tool cards should span full width */
+.llmsider-message.llmsider-guided-mode,
+.llmsider-message.llmsider-assistant:has(.llmsider-tool-result-card) {
+    width: 100%;
+    max-width: 100%;
+    align-self: stretch;
+}
+
+.llmsider-message.llmsider-guided-mode .llmsider-message-content,
+.llmsider-message.llmsider-assistant:has(.llmsider-tool-result-card) .llmsider-message-content {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    /* Remove outer styling for tool cards */
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+}
+
+/* Show action buttons on hover for guided mode messages */
+.llmsider-message.llmsider-guided-mode:hover .llmsider-message-actions {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* Message Content */
+.llmsider-message-content {
+    padding: 16px 20px;
+    border-radius: 20px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    font-size: 14px;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    position: relative;
+    overflow: visible;
+    padding-bottom: 16px;
+    box-sizing: border-box;
+    min-height: auto;
+    height: auto;
+    width: auto;
+    flex-shrink: 0;
+}
+
+.llmsider-message.llmsider-user .llmsider-message-content {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-bottom-right-radius: 8px;
+    padding-bottom: 16px;
+    overflow: visible;
+    position: relative;
+}
+
+.llmsider-message.llmsider-assistant .llmsider-message-content {
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border-bottom-left-radius: 8px;
+}
+
+.llmsider-message.llmsider-assistant .llmsider-message-content * {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+}
+
+.llmsider-message-content:has(.llmsider-inline-diff-container),
+.llmsider-message-content:has(.llmsider-jsdiff-container) {
+    padding: 16px 20px !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: relative;
+}
+
+/* Special handling for messages with diff content */
+.llmsider-message.llmsider-assistant:has(.llmsider-inline-diff-container),
+.llmsider-message.llmsider-assistant:has(.llmsider-jsdiff-container) {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.llmsider-message-header {
+    display: none;
+}
+
+/* Code styling in messages */
+.llmsider-message-content pre {
+    background: var(--background-primary-alt);
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--background-modifier-border);
+    margin: 8px 0;
+    overflow-x: auto;
+    font-family: var(--font-monospace);
+    font-size: 13px;
+    color: var(--text-normal);
+}
+
+.llmsider-message-content code {
+    background: var(--background-primary-alt);
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-family: var(--font-monospace);
+    font-size: 0.9em;
+    color: var(--text-normal);
+}
+
+/* Hide Obsidian's built-in copy code button in chat messages */
+.llmsider-message-content .copy-code-button,
+.llmsider-message-content .markdown-embed-link {
+    display: none !important;
+}
+
+/* Message Actions (Hover Buttons) */
+.llmsider-message-actions {
+    position: absolute;
+    bottom: -10px;
+    right: -10px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    z-index: 100;
+    pointer-events: auto;
+    align-items: center;
+    background: var(--background-primary);
+    padding: 4px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    transform: translateY(5px);
+}
+
+.llmsider-message.llmsider-assistant:hover .llmsider-message-actions {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* User message edit functionality */
+.llmsider-message.llmsider-user {
+    position: relative;
+    overflow: visible;
+}
+
+.llmsider-message.llmsider-user:hover .llmsider-message-actions {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* User message action buttons should match system message size */
+.llmsider-message.llmsider-user .llmsider-message-actions {
+    padding: 0;
+}
+
+.llmsider-message.llmsider-user .llmsider-action-btn {
+    width: 28px; /* 统一为28px，与系统消息按钮一致 */
+    height: 28px;
+}
+
+/* 移除用户消息按钮的特殊SVG大小设置，使用默认20x20 */
+
+.llmsider-edit-btn {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 4px;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--background-modifier-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.llmsider-edit-btn:hover {
+    background: var(--background-modifier-hover);
+    transform: scale(1.05);
+}
+
+.llmsider-edit-btn:active {
+    transform: scale(0.95);
+}
+
+/* Add Provider Button (top-right corner, shown on hover) */
+.llmsider-add-provider-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--background-modifier-border) !important;
+    border-radius: 4px;
+    background: transparent !important;
+    color: var(--text-muted) !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    z-index: 10;
+    box-shadow: none !important;
+    font-size: 14px;
+}
+
+.llmsider-message.llmsider-assistant:hover .llmsider-add-provider-btn,
+.llmsider-message.llmsider-guided-mode:hover .llmsider-add-provider-btn {
+    opacity: 1;
+    visibility: visible;
+}
+
+.llmsider-add-provider-btn:hover {
+    background: var(--background-modifier-hover) !important;
+    color: var(--text-normal) !important;
+    border-color: var(--background-modifier-border-hover) !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.llmsider-add-provider-btn:active {
+    transform: none !important;
+}
+
+/* Message-level provider tabs - shown INSIDE message content at the top */
+.llmsider-message-provider-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    background: rgba(var(--interactive-accent-rgb), 0.05);
+    border-radius: 6px;
+    margin: 0 0 12px 0;
+    flex-wrap: wrap;
+    border: 1px solid rgba(var(--interactive-accent-rgb), 0.1);
+}
+
+.llmsider-message-provider-tabs .llmsider-provider-tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border-radius: 5px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+
+.llmsider-message-provider-tabs .llmsider-provider-tab:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border);
+    color: var(--text-normal);
+}
+
+.llmsider-message-provider-tabs .llmsider-provider-tab.active {
+    background: var(--interactive-accent);
+    border-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    font-weight: 500;
+}
+
+.llmsider-message-provider-tabs .provider-icon {
+    display: flex;
+    align-items: center;
+    opacity: 0.7;
+}
+
+.llmsider-message-provider-tabs .llmsider-provider-tab.active .provider-icon {
+    opacity: 1;
+}
+
+.llmsider-message-provider-tabs .provider-label {
+    white-space: nowrap;
+}
+
+/* Close button for provider tabs */
+.llmsider-provider-tab-close-btn {
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: currentColor;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin-left: 4px;
+    opacity: 0;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.llmsider-provider-tab:hover .llmsider-provider-tab-close-btn {
+    opacity: 0.6;
+}
+
+.llmsider-provider-tab-close-btn:hover {
+    opacity: 1 !important;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* Close button on active tabs */
+.llmsider-message-provider-tabs .llmsider-provider-tab.active .llmsider-provider-tab-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.llmsider-provider-tab-close-btn svg {
+    width: 10px;
+    height: 10px;
+}
+
+.llmsider-provider-tab-add-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    margin-left: auto;
+    padding: 0;
+}
+
+.llmsider-provider-tab-add-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+}
+
+.llmsider-provider-tab-add-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--interactive-accent);
+}
+
+.llmsider-provider-tab-add-btn:active {
+    transform: scale(0.9);
+}
+
+/* Loading indicator for provider responses */
+.llmsider-loading-indicator {
+    padding: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-loading-indicator::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--background-modifier-border);
+    border-top-color: var(--interactive-accent);
+    border-radius: 50%;
+    animation: llmsider-spin 0.8s linear infinite;
+}
+
+@keyframes llmsider-spin {
+    to { transform: rotate(360deg); }
+}
+
+.llmsider-message.llmsider-assistant:last-child .llmsider-message-actions {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.llmsider-message.llmsider-assistant:last-child:hover .llmsider-message-actions {
+    opacity: 1;
+    visibility: visible;
+}
+
+.llmsider-message.llmsider-assistant:has(.llmsider-inline-diff-container) .llmsider-message-actions,
+.llmsider-message.llmsider-assistant:has(.llmsider-jsdiff-container) .llmsider-message-actions {
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(12px);
+    margin-right: 4px;
+    margin-bottom: 4px;
+    bottom: -10px;
+    right: -10px;
+}
+
+.llmsider-action-btn {
+    width: 28px;
+    height: 28px;
+    background: transparent !important;
+    color: var(--text-muted) !important;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    backdrop-filter: none;
+    border: 1px solid var(--background-modifier-border) !important;
+    box-shadow: none !important;
+    opacity: 1;
+}
+
+.llmsider-action-btn:hover {
+    background: var(--background-modifier-hover) !important;
+    box-shadow: none !important;
+    transform: none !important;
+    color: var(--text-normal) !important;
+    border-color: var(--background-modifier-border-hover) !important;
+    opacity: 1;
+}
+
+.llmsider-action-btn:active {
+    transform: none !important;
+    opacity: 1;
+}
+
+.llmsider-action-btn svg {
+    flex-shrink: 0;
+}
+
+/* Message action buttons (for user messages) */
+.llmsider-message-action {
+    width: 24px;
+    height: 24px;
+    background: transparent !important;
+    color: var(--text-muted) !important;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    backdrop-filter: none;
+    border: none !important;
+    box-shadow: none !important;
+    opacity: 1;
+}
+
+.llmsider-message-action:hover {
+    background: var(--background-modifier-hover) !important;
+    box-shadow: none !important;
+    transform: none !important;
+    color: var(--text-normal) !important;
+    opacity: 1;
+}
+
+.llmsider-message-action:active {
+    transform: none !important;
+    opacity: 1;
+}
+
+.llmsider-message-action svg {
+    flex-shrink: 0;
+}
+
+/* Plugin Reload Compatibility Fixes */
+.llmsider-message.llmsider-assistant[data-message-id] .llmsider-message-actions {
+    display: flex !important;
+    position: absolute !important;
+    bottom: -10px !important;
+    right: -10px !important;
+    z-index: 150 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: translateY(5px) !important;
+}
+
+.llmsider-message.llmsider-assistant[data-message-id]:has(.llmsider-inline-diff-container) .llmsider-message-actions,
+.llmsider-message.llmsider-assistant[data-message-id]:has(.llmsider-jsdiff-container) .llmsider-message-actions {
+    z-index: 250 !important;
+    background: var(--background-primary) !important;
+    backdrop-filter: blur(16px) !important;
+    border-radius: 6px !important;
+    padding: 4px 6px !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: translateY(5px) !important;
+    margin-right: 4px !important;
+    margin-bottom: 4px !important;
+    bottom: -10px !important;
+    right: -10px !important;
+    border: 1px solid var(--background-modifier-border) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+.llmsider-message.llmsider-assistant[data-message-id]:hover .llmsider-message-actions {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: translateY(0) !important;
+}
+
+.llmsider-message.llmsider-assistant[data-message-id] .llmsider-message-content .llmsider-inline-diff-container,
+.llmsider-message.llmsider-assistant[data-message-id] .llmsider-message-content .llmsider-jsdiff-container {
+    position: relative;
+    z-index: 1;
+}
+
+.llmsider-message.llmsider-assistant[data-message-id] {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.llmsider-message.llmsider-assistant[data-message-id] .llmsider-message-content {
+    position: relative !important;
+    flex: 1 !important;
+}
+
+/* Streaming Message Styles */
+.llmsider-message.llmsider-streaming {
+    position: relative;
+}
+
+.llmsider-message.llmsider-streaming .llmsider-message-content {
+    border-left: 3px solid #007AFF;
+    animation: streamingPulse 2s infinite;
+}
+
+.llmsider-streaming-cursor {
+    display: inline-block;
+    background: #007AFF;
+    color: #ffffff;
+    margin-left: 2px;
+    animation: blink 1s infinite;
+    font-weight: bold;
+    border-radius: 2px;
+    padding: 0 2px;
+}
+
+.llmsider-message.llmsider-streaming .llmsider-message-content p,
+.llmsider-message.llmsider-streaming .llmsider-message-content pre,
+.llmsider-message.llmsider-streaming .llmsider-message-content code {
+    transition: none;
+}
+
+/* Typing Indicator */
+.llmsider-typing {
+    margin-bottom: 24px;
+    align-self: flex-start;
+    max-width: 95%;
+}
+
+.llmsider-typing .llmsider-message-content {
+    border-bottom-left-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+}
+
+/* Three Animated Dots - Typing Indicator */
+.llmsider-typing-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 0;
+}
+
+.llmsider-typing-dots::before,
+.llmsider-typing-dot,
+.llmsider-typing-dots::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: typing 1.4s infinite both;
+}
+
+.llmsider-typing-dots::before {
+    animation-delay: 0s;
+}
+
+.llmsider-typing-dot {
+    animation-delay: 0.2s;
+}
+
+.llmsider-typing-dots::after {
+    animation-delay: 0.4s;
+}
+
+/* Working Indicator Container */
+.llmsider-working-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 0;
+    width: 100%;
+}
+
+/* Remove background from assistant messages when showing working indicator */
+.llmsider-message.llmsider-assistant .llmsider-message-content.llmsider-working-indicator {
+    background: transparent;
+    padding: 0;
+}
+
+/* Tool loading indicator */
+.llmsider-tool-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 0;
+    width: 100%;
+}
+
+.llmsider-tool-loading .llmsider-typing-dots {
+    /* Tool loading reuses typing dots animation */
+    gap: 4px;
+}
+
+.llmsider-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--background-modifier-border);
+    border-top-color: var(--llmsider-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.llmsider-working-label {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: normal;
+}
+
+/* Legacy working styles - kept for backwards compatibility */
+.llmsider-working-text {
+    color: var(--text-normal);
+    font-style: normal;
+    font-weight: 500;
+}
+
+.llmsider-working-dots {
+    color: var(--text-normal);
+    font-style: normal;
+    font-weight: 500;
+    min-width: 20px;
+    display: inline-block;
+}
+
+/* ============================================================================
+   Step Progress Indicator (Vector Search & AI Response)
+   ============================================================================ */
+
+/* Container for all step indicators */
+.llmsider-step-indicators {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    margin: 8px 0;
+}
+
+/* Individual step indicator card */
+.llmsider-step-indicator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+/* Step states */
+.llmsider-step-indicator.pending {
+    opacity: 0.6;
+}
+
+.llmsider-step-indicator.active {
+    background: var(--background-primary);
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.llmsider-step-indicator.completed {
+    opacity: 1;
+}
+
+/* Step icon container */
+.llmsider-step-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Animated spinner for active step */
+.llmsider-step-indicator.active .llmsider-step-icon {
+    animation: spin 1s linear infinite;
+}
+
+/* Checkmark for completed step */
+.llmsider-step-indicator.completed .llmsider-step-icon {
+    color: var(--interactive-accent);
+}
+
+/* Step text */
+.llmsider-step-text {
+    flex: 1;
+    font-size: 14px;
+    color: var(--text-normal);
+    font-weight: 500;
+}
+
+.llmsider-step-indicator.pending .llmsider-step-text {
+    color: var(--text-muted);
+}
+
+.llmsider-step-indicator.active .llmsider-step-text {
+    color: var(--text-normal);
+}
+
+.llmsider-step-indicator.completed .llmsider-step-text {
+    color: var(--text-muted);
+}
+
+/* Step checkmark animation */
+@keyframes stepComplete {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.llmsider-step-indicator.completed .llmsider-step-icon svg {
+    animation: stepComplete 0.3s ease-out;
+}
+
+/* Unified Tool Execution Indicator - Restored Original Style */
+.llmsider-unified-tool-indicator {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 4px 0;
+    animation: slideIn 0.3s ease-out;
+    position: relative;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.llmsider-tool-indicator-content {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.tool-indicator-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: normal;
+    color: var(--text-muted);
+    flex-direction: row;
+    width: 100%;
+}
+
+.tool-indicator-icon {
+    font-size: 14px;
+    min-width: 14px;
+    display: inline-block;
+}
+
+.tool-indicator-icon.spinning {
+    animation: spin 1s linear infinite;
+}
+
+.tool-indicator-text {
+    flex: 1;
+    line-height: 1.3;
+}
+
+.tool-indicator-progress {
+    margin-left: 8px;
+    width: 60px;
+}
+
+.tool-indicator-progress-bar {
+    width: 100%;
+    height: 2px;
+    background: var(--background-modifier-border);
+    border-radius: 1px;
+    overflow: hidden;
+}
+
+.tool-indicator-progress-fill {
+    height: 100%;
+    background: var(--text-accent);
+    border-radius: 1px;
+    transition: width 0.3s ease;
+}
+
+/* Theme-specific adjustments */
+.theme-dark .llmsider-unified-tool-indicator {
+    background: var(--background-secondary);
+    border-color: var(--background-modifier-border);
+    color: var(--text-muted);
+}
+
+.theme-light .llmsider-unified-tool-indicator {
+    background: var(--background-primary-alt);
+    border-color: var(--background-modifier-border);
+    color: var(--text-muted);
+}
+
+/* Auto-fade out animation for completed/failed states */
+.llmsider-unified-tool-indicator.fading-out {
+    animation: fadeOut 0.5s ease-out forwards;
+}
+
+/* Hide message actions on tool indicators and tool result cards (no hover buttons) */
+.llmsider-unified-tool-indicator .llmsider-message-actions,
+.llmsider-unified-tool-indicator:hover .llmsider-message-actions,
+.llmsider-message:has(.llmsider-tool-result-card) .llmsider-message-actions,
+.llmsider-message:has(.llmsider-tool-result-card):hover .llmsider-message-actions {
+    display: none !important;
+}
+
+/* Clickable tool indicator header */
+.tool-indicator-clickable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.tool-indicator-clickable:hover {
+    background-color: var(--background-modifier-hover);
+    border-radius: 4px;
+}
+
+.tool-indicator-toggle {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+/* Tool execution details container */
+.tool-indicator-details {
+    margin-top: 4px;
+    border-top: 1px solid var(--background-modifier-border);
+    padding-top: 6px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    max-height: 500px;
+    opacity: 1;
+    width: 100%;
+}
+
+.tool-indicator-details.collapsed {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    margin-top: 0;
+    border-top: none;
+}
+
+/* Individual tool sections */
+.tool-detail-section {
+    margin-bottom: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.tool-detail-section:last-child {
+    margin-bottom: 0;
+}
+
+.tool-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background-color: var(--background-secondary);
+    border-bottom: 1px solid var(--background-modifier-border);
+    font-weight: 500;
+    font-size: 12px;
+}
+
+.tool-detail-name {
+    color: var(--text-normal);
+    font-size: 13px;
+}
+
+.tool-detail-index {
+    color: var(--text-muted);
+    font-size: 11px;
+    background-color: var(--background-modifier-border);
+    padding: 2px 6px;
+    border-radius: 10px;
+}
+
+/* Tool subsections (request/response) */
+.tool-detail-subsection {
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.tool-detail-subsection:first-child {
+    border-top: none;
+}
+
+.tool-detail-subsection-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    background-color: var(--background-primary-alt);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+    font-size: 11px;
+}
+
+.tool-detail-subsection-header:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.tool-detail-subsection-title {
+    font-size: 12px;
+    color: var(--text-normal);
+    font-weight: 500;
+}
+
+.tool-detail-subsection-toggle {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+/* Tool content areas */
+.tool-detail-content {
+    padding: 6px 10px;
+    background-color: var(--background-primary);
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+    max-height: 300px;
+    opacity: 1;
+}
+
+.tool-detail-content.collapsed {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.tool-detail-json {
+    font-family: var(--font-monospace);
+    font-size: 10px;
+    line-height: 1.3;
+    color: var(--text-normal);
+    background-color: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 3px;
+    padding: 6px;
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.tool-detail-error {
+    color: var(--text-error);
+    font-size: 12px;
+    background-color: var(--background-modifier-error);
+    border: 1px solid var(--color-red);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 0;
+}
+
+.tool-detail-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: 16px;
+    font-size: 12px;
+}
+
+/* Dark mode adjustments for tool details */
+.theme-dark .tool-detail-section {
+    border-color: var(--background-modifier-border);
+}
+
+.theme-dark .tool-detail-header {
+    background-color: var(--background-secondary);
+}
+
+.theme-dark .tool-detail-subsection-header {
+    background-color: var(--background-primary-alt);
+}
+
+.theme-dark .tool-detail-json {
+    background-color: var(--background-secondary);
+    color: var(--text-normal);
+}
+
+/* Clickable elements for tool details */
+.tool-detail-clickable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.tool-detail-clickable:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+/* Tool detail subsection toggle icons */
+.tool-detail-subsection-toggle {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+/* Animation for expanding/collapsing tool details */
+.tool-detail-content {
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+}
+
+.tool-detail-content.collapsed {
+    max-height: 0 !important;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.tool-indicator-details {
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    overflow: hidden;
+}
+
+.tool-indicator-details.collapsed {
+    max-height: 0 !important;
+    opacity: 0;
+    padding-top: 0;
+    margin-top: 0;
+    border-top: none;
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+}
+
+/* Dark mode adjustments */
+.theme-dark .llmsider-message.llmsider-assistant .llmsider-message-content {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.theme-dark .llmsider-message.llmsider-assistant:hover .llmsider-message-content {
+    background: var(--background-modifier-hover);
+}

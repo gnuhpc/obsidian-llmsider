@@ -1,0 +1,1367 @@
+/* input.css - Part of LLMSider Plugin Styles
+   This file is auto-generated from styles.css
+   Do not edit directly - edit the source modules instead
+*/
+
+/* ============================================================================
+   Input Container & Controls
+   ============================================================================ */
+
+/* Input Container */
+.llmsider-input-container {
+    padding: 20px 20px 35px 20px;
+    background: var(--background-primary);
+}
+
+/* Provider Row - positioned above input wrapper */
+.llmsider-provider-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+
+/* Controls Row - positioned below input wrapper */
+.llmsider-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    gap: 8px;
+}
+
+.llmsider-left-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-right-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Model select in controls row */
+.llmsider-left-controls .llmsider-model-select {
+    background: var(--background-primary-alt) !important;
+    border: 1px solid var(--background-modifier-border) !important;
+    border-radius: 6px;
+    color: var(--text-normal) !important;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    min-width: 120px;
+    max-width: 160px;
+}
+
+.llmsider-left-controls .llmsider-model-select:hover {
+    border-color: var(--background-modifier-border-hover) !important;
+    background: var(--background-modifier-hover) !important;
+}
+
+.llmsider-left-controls .llmsider-model-select:focus {
+    border-color: var(--interactive-accent) !important;
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+    background: var(--background-modifier-hover) !important;
+}
+
+/* Agent button in provider row */
+.llmsider-agent-btn-provider-row {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 16px;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-agent-btn-provider-row:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+    color: var(--text-normal);
+}
+
+.llmsider-agent-btn-provider-row.agent-active {
+    background: var(--interactive-accent);
+    border-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.llmsider-agent-btn-provider-row.agent-active:hover {
+    background: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+}
+
+/* Clear chat button in provider row */
+.llmsider-clear-chat-btn-provider-row {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    color: var(--text-normal);
+    font-size: 16px;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-clear-chat-btn-provider-row:hover {
+    background: var(--text-error);
+    border-color: var(--text-error);
+    color: var(--text-on-accent);
+}
+
+/* Agent button in controls row */
+.llmsider-agent-btn-controls-row {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 3px 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 28px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-agent-btn-controls-row:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+    color: var(--text-normal);
+}
+
+.llmsider-agent-btn-controls-row.agent-active {
+    background: var(--interactive-accent);
+    border-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.llmsider-agent-btn-controls-row.agent-active:hover {
+    background: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+}
+
+/* Clear chat button in controls row */
+.llmsider-clear-chat-btn-controls-row {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    color: var(--text-normal);
+    font-size: 12px;
+    padding: 3px 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 28px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-clear-chat-btn-controls-row:hover {
+    background: var(--text-error);
+    border-color: var(--text-error);
+    color: var(--text-on-accent);
+}
+
+/* Inline controls in input wrapper */
+.llmsider-model-select-inline {
+    background: transparent !important;
+    border: 1px solid var(--background-modifier-border) !important;
+    border-radius: 4px;
+    color: var(--text-normal) !important;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    min-width: 80px;
+    max-width: 120px;
+    height: 20px;
+}
+
+.llmsider-model-select-inline:hover {
+    border-color: var(--background-modifier-border-hover) !important;
+    background: var(--background-modifier-hover) !important;
+}
+
+.llmsider-model-select-inline:focus {
+    border-color: var(--interactive-accent) !important;
+    box-shadow: 0 0 0 1px var(--interactive-accent-hover);
+    background: var(--background-modifier-hover) !important;
+}
+
+/* Agent button inline */
+.llmsider-agent-btn-inline {
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 16px;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-agent-btn-inline:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+    color: var(--text-normal);
+}
+
+.llmsider-agent-btn-inline.agent-active {
+    background: var(--interactive-accent);
+    border-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.llmsider-agent-btn-inline.agent-active:hover {
+    background: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+}
+
+/* Clear chat button inline */
+.llmsider-clear-chat-btn-inline {
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    color: var(--text-normal);
+    font-size: 11px;
+    padding: 2px 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-clear-chat-btn-inline:hover {
+    background: var(--text-error);
+    border-color: var(--text-error);
+    color: var(--text-on-accent);
+}
+
+/* Claude-style dropdown for provider selector */
+.llmsider-model-select-dropdown {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    color: var(--text-normal);
+    padding: 6px 28px 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    min-width: 120px;
+    height: 32px;
+    position: relative;
+    /* Use system default select appearance for better compatibility */
+    appearance: auto;
+    -webkit-appearance: auto;
+    -moz-appearance: auto;
+}
+
+.llmsider-model-select-dropdown:hover {
+    background-color: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.llmsider-model-select-dropdown:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+    background-color: var(--background-modifier-hover);
+}
+
+/* Style the dropdown options - use system colors */
+.llmsider-model-select-dropdown option {
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    padding: 8px 12px;
+}
+
+/* Selected option */
+.llmsider-model-select-dropdown option:checked {
+    background-color: var(--background-modifier-active-hover);
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+/* Force theme colors on the native dropdown */
+select.llmsider-model-select-dropdown {
+    background-color: var(--background-primary-alt);
+    color: var(--text-normal);
+}
+
+select.llmsider-model-select-dropdown option {
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    padding: 8px 12px;
+}
+
+.llmsider-provider-row .llmsider-model-select {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    color: var(--text-normal);
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    min-width: 160px;
+    max-width: 200px;
+    appearance: auto;
+    -webkit-appearance: auto;
+    -moz-appearance: auto;
+}
+
+.llmsider-provider-row .llmsider-model-select:hover {
+    border-color: var(--background-modifier-border-hover);
+    background: var(--background-modifier-hover);
+}
+
+.llmsider-provider-row .llmsider-model-select:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+    background: var(--background-modifier-hover);
+}
+
+/* Provider row select options */
+.llmsider-provider-row .llmsider-model-select option {
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.llmsider-provider-row .llmsider-model-select option:checked {
+    background-color: var(--background-modifier-active-hover);
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+/* Context Display */
+.llmsider-context-display {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.llmsider-context-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.llmsider-context-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    max-width: 200px;
+}
+
+.llmsider-context-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-context-icon svg {
+    flex-shrink: 0;
+}
+
+.llmsider-context-name {
+    color: var(--text-on-accent);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+.llmsider-context-remove {
+    width: 16px;
+    height: 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-on-accent);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: normal;
+    font-family: var(--font-interface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    opacity: 0.7;
+    flex-shrink: 0;
+    line-height: 1;
+    min-width: 16px;
+    min-height: 16px;
+    margin-left: 2px;
+    box-sizing: border-box;
+}
+
+.llmsider-context-remove:hover {
+    background: rgba(255, 255, 255, 0.2);
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.llmsider-context-remove:active {
+    transform: scale(0.9);
+}
+
+/* Suggested Files (Pending State) */
+.llmsider-suggested-tag {
+    background: var(--background-modifier-border-hover) !important;
+    color: var(--text-muted) !important;
+    opacity: 0.7;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.llmsider-suggested-tag:hover {
+    opacity: 1;
+    background: var(--background-modifier-border-focus) !important;
+    transform: translateY(-1px);
+}
+
+.llmsider-suggested-tag .llmsider-context-name {
+    color: var(--text-muted) !important;
+}
+
+.llmsider-suggested-tag .llmsider-context-icon {
+    opacity: 0.6;
+}
+
+.llmsider-suggested-tag .llmsider-context-remove {
+    color: var(--text-muted) !important;
+    opacity: 0.5;
+}
+
+.llmsider-suggested-tag .llmsider-context-remove:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* File References */
+.llmsider-file-references {
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    border-left: 3px solid var(--interactive-accent);
+}
+
+.llmsider-ref-label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.llmsider-ref-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.llmsider-ref-tag {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.llmsider-ref-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.llmsider-ref-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-on-accent);
+    cursor: pointer;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    transition: background-color 0.2s ease;
+}
+
+.llmsider-ref-remove:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.llmsider-ref-clear {
+    padding: 2px 6px;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-ref-clear:hover {
+    background: var(--interactive-hover);
+    color: var(--text-normal);
+}
+
+/* Tool Execution Indicators */
+.llmsider-tool-indicator {
+    margin: 8px 16px;
+    padding: 8px 12px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0.8;
+    transition: all 0.2s ease;
+}
+
+.llmsider-tool-indicator[data-status="executing"] {
+    border-color: rgba(255, 193, 7, 0.3);
+    background: rgba(255, 193, 7, 0.05);
+}
+
+.llmsider-tool-indicator[data-status="completed"] {
+    border-color: rgba(40, 167, 69, 0.3);
+    background: rgba(40, 167, 69, 0.05);
+}
+
+.llmsider-tool-indicator[data-status="failed"] {
+    border-color: rgba(220, 53, 69, 0.3);
+    background: rgba(220, 53, 69, 0.05);
+}
+
+.tool-indicator-content {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tool-indicator-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.tool-indicator-text {
+    flex: 1;
+    font-weight: 500;
+}
+
+.tool-indicator-server {
+    font-weight: normal;
+    opacity: 0.7;
+}
+
+.tool-indicator-result,
+.tool-indicator-error {
+    margin-top: 4px;
+    padding: 4px 6px;
+    background: var(--background-primary);
+    border-radius: 3px;
+    font-family: var(--font-monospace);
+    font-size: 11px;
+    max-height: 300px;
+    overflow: auto;
+    text-overflow: ellipsis;
+}
+
+.tool-indicator-error {
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.1);
+}
+
+/* Expand result button styles */
+.expand-result-btn {
+    margin: 4px 0;
+    padding: 4px 8px;
+    background: var(--interactive-accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.expand-result-btn:hover {
+    background: var(--interactive-accent-hover);
+}
+
+.result-preview {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.result-full {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--background-secondary);
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+/* MCP Tool Execution Styles */
+.mcp-tool-execution-container {
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+}
+
+.mcp-tool-execution-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.mcp-tool-icon {
+    font-size: 16px;
+}
+
+.mcp-tool-text {
+    color: var(--text-normal);
+    font-weight: 500;
+}
+
+.mcp-tool-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--background-modifier-border);
+    border-top: 2px solid var(--interactive-accent);
+    border-radius: 50%;
+    animation: mcp-spin 1s linear infinite;
+}
+
+@keyframes mcp-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.mcp-tool-progress {
+    margin-bottom: 16px;
+}
+
+.mcp-tool-progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--background-modifier-border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.mcp-tool-progress-fill {
+    height: 100%;
+    background: var(--interactive-accent);
+    transition: width 0.3s ease;
+}
+
+.mcp-tool-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mcp-tool-result-item {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.mcp-tool-result-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.mcp-tool-name {
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.mcp-tool-server {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.mcp-tool-status {
+    margin-left: auto;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.mcp-tool-executing .mcp-tool-status {
+    background: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+}
+
+.mcp-tool-success {
+    background: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+}
+
+.mcp-tool-error {
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.mcp-tool-result-content {
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.mcp-tool-result-content pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: var(--font-monospace);
+    font-size: 13px;
+    color: var(--text-normal);
+}
+
+.mcp-tool-error-content {
+    background: rgba(220, 53, 69, 0.05);
+    border-color: rgba(220, 53, 69, 0.2);
+}
+
+.mcp-tool-error-content pre {
+    color: #dc3545;
+}
+
+.mcp-help-text {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(0, 123, 255, 0.05);
+    border: 1px solid rgba(0, 123, 255, 0.2);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.mcp-error-network .mcp-help-text {
+    background: rgba(255, 193, 7, 0.05);
+    border-color: rgba(255, 193, 7, 0.2);
+}
+
+.mcp-error-permission .mcp-help-text {
+    background: rgba(220, 53, 69, 0.05);
+    border-color: rgba(220, 53, 69, 0.2);
+}
+
+.mcp-error-parameter .mcp-help-text {
+    background: rgba(108, 117, 125, 0.05);
+    border-color: rgba(108, 117, 125, 0.2);
+}
+
+/* Input Wrapper */
+.llmsider-input-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    padding: 8px;
+    gap: 8px;
+    transition: border-color 0.2s ease;
+    z-index: 1;
+}
+
+.llmsider-input-wrapper:focus-within {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+.llmsider-input-left-buttons,
+.llmsider-input-right-buttons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Button Row - below text input */
+.llmsider-button-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-button-row-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.llmsider-button-row-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.llmsider-input-right-buttons::before {
+    content: '';
+    width: 1px;
+    height: 20px;
+    background: var(--background-modifier-border);
+    margin: 0 8px;
+    opacity: 0.6;
+}
+
+.llmsider-input-btn {
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.2s ease;
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.llmsider-input-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    border-color: var(--background-modifier-border-hover);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.llmsider-input-btn:active {
+    transform: translateY(1px);
+}
+
+.llmsider-input-btn:focus {
+    outline: none; /* 移除focus时的蓝色外框 */
+}
+
+.llmsider-input-btn svg {
+    flex-shrink: 0;
+}
+
+/* Model Select */
+.llmsider-model-select {
+    background: transparent !important;
+    border: 1px solid var(--background-modifier-border) !important;
+    border-radius: 6px;
+    color: var(--text-normal) !important;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    min-width: 100px;
+    height: 32px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-model-select:hover {
+    border-color: var(--background-modifier-border-hover) !important;
+    background: var(--background-modifier-hover) !important;
+}
+
+.llmsider-model-select:focus {
+    border-color: var(--interactive-accent) !important;
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+    background: var(--background-modifier-hover) !important;
+}
+
+/* Model select options */
+.llmsider-model-select option {
+    background-color: var(--background-primary) !important;
+    color: var(--text-normal) !important;
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    border: none !important;
+}
+
+/* Text Input */
+.llmsider-input {
+    flex: 1;
+    border: none;
+    background: var(--background-primary) !important;
+    color: var(--text-normal) !important;
+    font-family: var(--font-interface);
+    font-size: 14px;
+    line-height: 1.3;
+    resize: none;
+    outline: none;
+    min-height: 18px;
+    max-height: 120px;
+    overflow-y: auto;
+    caret-color: var(--interactive-accent) !important;
+}
+
+.llmsider-input::placeholder {
+    color: var(--text-muted) !important;
+    font-size: 13px;
+}
+
+.llmsider-input:focus,
+.llmsider-input:active,
+.llmsider-input:hover {
+    background: var(--background-primary) !important;
+    color: var(--text-normal) !important;
+    border: none !important;
+    outline: none !important;
+}
+
+/* Send Button */
+.llmsider-send-button {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--interactive-accent);
+    border-radius: 8px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 122, 255, 0.2);
+}
+
+.llmsider-send-button:hover {
+    background: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 122, 255, 0.3);
+}
+
+.llmsider-send-button:disabled {
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    transform: none;
+    border: 1px solid var(--background-modifier-border);
+    box-shadow: none;
+}
+
+.llmsider-send-button.is-loading {
+    animation: pulse 1.5s infinite;
+}
+
+/* Stop Button */
+.llmsider-stop-button {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #ff4757, #ff3838) !important;
+    color: #ffffff !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.15s ease;
+    margin-left: 8px;
+    opacity: 1;
+    box-shadow: 0 2px 8px rgba(255, 71, 87, 0.3);
+    animation: pulse 2s infinite;
+    padding: 0;
+}
+
+.llmsider-stop-button:hover {
+    background: linear-gradient(135deg, #ff3838, #ff2d2d) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) scale(1.05);
+    box-shadow: 0 4px 12px rgba(255, 71, 87, 0.5);
+}
+
+.llmsider-stop-button:active {
+    transform: translateY(0) scale(0.95);
+    box-shadow: 0 2px 6px rgba(255, 71, 87, 0.4);
+}
+
+.llmsider-stop-button svg {
+    transition: all 0.15s ease;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+    flex-shrink: 0;
+}
+
+.llmsider-stop-button:hover svg {
+    transform: scale(1.1);
+}
+
+/* ============================================================================
+   File Suggestions - Exact Match to Prompt Selector Style
+   ============================================================================ */
+
+/* File Suggestions Container */
+.llmsider-file-suggestions.llmsider-file-suggestions-modern {
+    position: fixed !important;
+    background: var(--background-primary) !important;
+    border: 1px solid var(--background-modifier-border) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2) !important;
+    max-width: 350px !important;
+    min-width: 280px !important;
+    max-height: 250px !important;
+    overflow: hidden !important;
+    z-index: 100000 !important;
+    backdrop-filter: blur(8px) !important;
+    animation: slideInUp 0.15s ease-out !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* File Suggestions List */
+.llmsider-file-suggestions-list {
+    max-height: 180px !important;
+    overflow-y: auto !important;
+    padding: 2px 0 !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+}
+
+.llmsider-file-suggestions-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.llmsider-file-suggestions-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.llmsider-file-suggestions-list::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+}
+
+.llmsider-file-suggestions-list::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* File Suggestion Items - Match Prompt Selector Item Style */
+.llmsider-file-suggestions.llmsider-file-suggestions-modern .llmsider-file-suggestion {
+    padding: 6px 12px !important;
+    cursor: pointer !important;
+    border-left: 2px solid transparent !important;
+    transition: all 0.1s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    color: var(--text-normal) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    line-height: 1.3 !important;
+    border: none !important;
+    border-bottom: none !important;
+}
+
+.llmsider-file-suggestions.llmsider-file-suggestions-modern .llmsider-file-suggestion:hover {
+    background: var(--background-modifier-hover) !important;
+    opacity: 1 !important;
+}
+
+.llmsider-file-suggestions.llmsider-file-suggestions-modern .llmsider-file-suggestion.selected {
+    background: var(--background-modifier-active-hover) !important;
+    border-left-color: var(--interactive-accent) !important;
+}
+
+/* File Suggestion Load More */
+.llmsider-file-suggestion-load-more {
+    padding: 6px 12px !important;
+    color: var(--text-muted) !important;
+    font-size: 11px !important;
+    font-style: italic !important;
+    text-align: center !important;
+    border: none !important;
+    opacity: 0.7 !important;
+    background: transparent !important;
+}
+
+/* File Suggestions Footer - Match Prompt Selector Footer */
+.llmsider-file-suggestions-footer {
+    padding: 6px 12px !important;
+    border-top: 1px solid var(--background-modifier-border) !important;
+    background: var(--background-secondary) !important;
+}
+
+.llmsider-file-suggestions-hint {
+    font-size: 10px !important;
+    color: var(--text-muted) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+.llmsider-file-suggestions-hint kbd {
+    background: var(--background-modifier-border) !important;
+    border: 1px solid var(--background-modifier-border-hover) !important;
+    border-radius: 3px !important;
+    padding: 2px 6px !important;
+    font-size: 10px !important;
+    font-family: var(--font-monospace) !important;
+    color: var(--text-normal) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Shown state for file suggestions */
+.llmsider-file-suggestions[style*="display: block"] {
+    display: flex !important;
+}
+
+/* Hidden state for file suggestions */
+.llmsider-file-suggestions[style*="display: none"] {
+    display: none !important;
+}
+
+.llmsider-file-suggestions-list::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* File Suggestions Footer - Match Prompt Selector */
+.llmsider-file-suggestions.llmsider-file-suggestions-modern .llmsider-file-suggestions-footer {
+    padding: 6px 12px !important;
+    border-top: 1px solid var(--background-modifier-border) !important;
+    background: var(--background-secondary) !important;
+    flex-shrink: 0 !important;
+    z-index: 1001 !important;
+    position: relative !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: 30px !important;
+}
+
+.llmsider-file-suggestions.llmsider-file-suggestions-modern .llmsider-file-suggestions-hint {
+    font-size: 10px !important;
+    color: var(--text-muted) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    justify-content: center !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: 18px !important;
+    padding: 4px !important;
+}
+
+.llmsider-file-suggestions.llmsider-file-suggestions-modern .llmsider-file-suggestions-hint kbd {
+    background: var(--background-modifier-border) !important;
+    border: 1px solid var(--background-modifier-border-hover) !important;
+    border-radius: 3px !important;
+    padding: 2px 6px !important;
+    font-size: 10px !important;
+    font-family: var(--font-monospace) !important;
+    color: var(--text-normal) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* File Reference Suggestion Dropdown */
+.file-reference-suggestion {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.file-reference-suggestion:hover {
+    background: var(--background-modifier-hover);
+}
+
+.file-reference-name {
+    font-weight: 500;
+    color: var(--text-normal);
+    font-size: 14px;
+}
+
+.file-reference-path {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.file-reference-icon {
+    min-width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-reference-icon svg {
+    flex-shrink: 0;
+}
+
+.llmsider-chat-container .suggestion-container .file-reference-suggestion,
+.llmsider-file-suggestions .suggestion-container .file-reference-suggestion {
+    border-radius: 4px;
+    margin: 1px 0;
+}
+
+.llmsider-chat-container .suggestion-container .file-reference-suggestion.is-selected,
+.llmsider-file-suggestions .suggestion-container .file-reference-suggestion.is-selected {
+    background: var(--interactive-accent);
+}
+
+/* Force File Suggestions Footer to Display */
+.llmsider-file-suggestions-footer {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    background: var(--background-secondary) !important;
+    color: var(--text-muted) !important;
+    padding: 8px 12px !important;
+    border-top: 1px solid var(--background-modifier-border) !important;
+    min-height: 20px !important;
+    font-size: 12px !important;
+}
+
+.llmsider-file-suggestions-hint {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: var(--text-muted) !important;
+    font-size: 12px !important;
+    gap: 8px !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+.llmsider-file-suggestions-hint kbd {
+    background: var(--background-modifier-border) !important;
+    border: 1px solid var(--background-modifier-border-hover) !important;
+    border-radius: 3px !important;
+    padding: 2px 6px !important;
+    font-size: 10px !important;
+    color: var(--text-normal) !important;
+    margin: 0 2px !important;
+}
+
+.llmsider-chat-container .suggestion-container .file-reference-suggestion.is-selected .file-reference-name,
+.llmsider-file-suggestions .suggestion-container .file-reference-suggestion.is-selected .file-reference-name {
+    color: var(--text-on-accent);
+}
+
+.llmsider-chat-container .suggestion-container .file-reference-suggestion.is-selected .file-reference-path,
+.llmsider-file-suggestions .suggestion-container .file-reference-suggestion.is-selected .file-reference-path {
+    color: var(--text-on-accent);
+    opacity: 0.8;
+}
+
+/* Action Context & Controls */
+.llmsider-context-button,
+.llmsider-template-select {
+    margin-left: 8px;
+    padding: 4px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.llmsider-context-button:hover {
+    background: var(--interactive-hover);
+}
+
+.llmsider-mcp-info {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    border-left: 3px solid var(--text-accent);
+}
+
+/* Dark mode adjustments */
+.theme-dark .llmsider-input-wrapper {
+    background: #000000;
+    border-color: #333333;
+}
+
+.theme-dark .llmsider-input {
+    background: #000000 !important;
+    border-color: #333333 !important;
+    color: #ffffff !important;
+    caret-color: #007AFF !important;
+}

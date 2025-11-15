@@ -1,0 +1,223 @@
+/* prompt-selector.css - Part of LLMSider Plugin Styles
+   This file is auto-generated from styles.css
+   Do not edit directly - edit the source modules instead
+*/
+
+/* ============================================================================
+   Prompt Selector Styles
+   ============================================================================ */
+
+/* Prompt Selector Container */
+.llmsider-prompt-selector {
+    position: fixed;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+    max-width: 350px;
+    min-width: 280px;
+    max-height: 250px;
+    overflow: hidden;
+    z-index: 100000;
+    backdrop-filter: blur(8px);
+    animation: slideInUp 0.15s ease-out;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Prompt Selector Header */
+.llmsider-prompt-selector-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+}
+
+.llmsider-prompt-selector-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-normal);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Prompt Selector List */
+.llmsider-prompt-selector-list {
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 2px 0;
+}
+
+.llmsider-prompt-selector-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.llmsider-prompt-selector-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.llmsider-prompt-selector-list::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+}
+
+.llmsider-prompt-selector-list::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Prompt Selector Items */
+.llmsider-prompt-selector-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: all 0.1s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.llmsider-prompt-selector-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.llmsider-prompt-selector-item.selected {
+    background: var(--background-modifier-active-hover);
+    border-left-color: var(--interactive-accent);
+}
+
+.llmsider-prompt-selector-item-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.llmsider-prompt-selector-item-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.3;
+    display: none; /* Hide descriptions for more compact view */
+}
+
+.llmsider-prompt-selector-item-type {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 2px;
+}
+
+/* Prompt Selector Footer */
+.llmsider-prompt-selector-footer {
+    padding: 6px 12px;
+    border-top: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+}
+
+.llmsider-prompt-selector-hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-prompt-selector-hint kbd {
+    background: var(--background-modifier-border);
+    border: 1px solid var(--background-modifier-border-hover);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-family: var(--font-monospace);
+    color: var(--text-normal);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Prompt Indicator */
+.llmsider-prompt-indicator {
+    position: relative;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #007AFF, #5856D6);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 3px 12px rgba(0, 122, 255, 0.4);
+    animation: slideInDown 0.3s ease-out;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    margin-bottom: 8px;
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.llmsider-prompt-indicator-icon {
+    font-size: 14px;
+}
+
+.llmsider-prompt-indicator-text {
+    flex: 1;
+    font-weight: 500;
+}
+
+.llmsider-prompt-indicator-hint {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
+    font-style: italic;
+    margin-left: 8px;
+}
+
+.llmsider-prompt-indicator-close {
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+    transition: background 0.15s ease;
+}
+
+.llmsider-prompt-indicator-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Dark theme adjustments */
+.theme-dark .llmsider-prompt-selector {
+    background: #2a2a2a;
+    border-color: #404040;
+}
+
+.theme-dark .llmsider-prompt-selector-header,
+.theme-dark .llmsider-prompt-selector-footer {
+    background: #1e1e1e;
+    border-color: #404040;
+}
+
+.theme-dark .llmsider-prompt-selector-item:hover {
+    background: #333333;
+}
+
+.theme-dark .llmsider-prompt-selector-item.selected {
+    background: #404040;
+}
