@@ -1,0 +1,63 @@
+# Python
+venv
+venv_linux
+__pycache__
+.ruff_cache
+.pytest_cache
+
+# Node.js
+node_modules
+
+# Build artifacts
+wasm/
+main.js
+*.js.map
+
+# Development and deployment scripts
+scripts/
+
+# Reference materials
+reference/
+
+# Logs
+logs/
+*.log
+
+# Vector database data
+vector-data/
+
+# Patches
+patches/
+
+# Documentation development files (keep docs/ folder)
+CSS-DEV-GUIDE.md
+CSS-REFACTORING-CHECKLIST.md
+CSS-REFACTORING-SUMMARY.md
+INITIAL.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+.claude/
+.VSCodeCounter/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+.backup.*
+
+# Database files (if generated during development)
+*.db
+config.db
+
+# Release packages
+*.tar.gz
+*.zip

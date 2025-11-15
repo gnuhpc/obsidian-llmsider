@@ -1,0 +1,1520 @@
+/* plan-execute.css - Part of LLMSider Plugin Styles
+   This file is auto-generated from styles.css
+   Do not edit directly - edit the source modules instead
+*/
+
+/* Plan-Execute Framework Styles */
+.llmsider-plan-execute-phase {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    margin: 8px 0;
+    padding: 12px;
+    animation: slideIn 0.3s ease-out;
+}
+
+/* Plan-Execute Tool Indicator - Guided Mode Style */
+.llmsider-plan-execute-tool-indicator {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 4px 0;
+    animation: slideIn 0.3s ease-out;
+    position: relative;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.llmsider-plan-execute-tool-indicator .llmsider-tool-indicator-content {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.llmsider-plan-execute-tool-indicator .tool-indicator-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: normal;
+    color: var(--text-muted);
+    flex-direction: row;
+    width: 100%;
+}
+
+.llmsider-plan-execute-tool-indicator .tool-indicator-icon {
+    font-size: 14px;
+    min-width: 14px;
+    display: inline-block;
+}
+
+.llmsider-plan-execute-tool-indicator .tool-indicator-icon.spinning {
+    animation: spin 1s linear infinite;
+}
+
+.llmsider-plan-execute-tool-indicator .tool-indicator-text {
+    flex: 1;
+    line-height: 1.3;
+}
+
+.llmsider-plan-execute-tool-indicator .tool-indicator-toggle {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+.plan-execute-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.plan-execute-icon {
+    font-size: 16px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.plan-execute-title {
+    color: var(--text-normal);
+    font-size: 14px;
+}
+
+.plan-execute-content {
+    padding: 8px 0;
+    color: var(--text-normal);
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.plan-execute-content pre {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+/* Phase-specific colors - unified gray theme */
+.llmsider-plan-execute-phase[data-phase="plan"] {
+    border-left: 4px solid var(--text-muted);
+}
+
+.llmsider-plan-execute-phase[data-phase="thought"] {
+    border-left: 4px solid var(--text-muted);
+}
+
+.llmsider-plan-execute-phase[data-phase="action"] {
+    border-left: 4px solid var(--text-muted);
+}
+
+.llmsider-plan-execute-phase[data-phase="observation"] {
+    border-left: 4px solid var(--text-muted);
+}
+
+.llmsider-plan-execute-phase[data-phase="final_answer"] {
+    border-left: 4px solid var(--text-normal);
+    background: var(--background-secondary);
+}
+
+/* Plan Check Phase specific styling */
+.llmsider-plan-check-phase {
+    border-left: 4px solid var(--text-muted);
+    background: var(--background-secondary);
+}
+
+.llmsider-plan-check-phase.status-analyzing {
+    border-left-color: var(--text-muted);
+    background: var(--background-secondary);
+}
+
+.llmsider-plan-check-phase.status-correcting {
+    border-left-color: var(--text-muted);
+    background: var(--background-secondary);
+}
+
+.llmsider-plan-check-phase.status-completed {
+    border-left-color: var(--text-normal);
+    background: var(--background-secondary);
+}
+
+.llmsider-plan-check-phase.status-error {
+    border-left-color: var(--text-error);
+    background: var(--background-modifier-error);
+}
+
+.plan-check-status {
+    padding: 4px 0;
+    color: var(--text-normal);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* Static Plan Phase specific styling */
+.llmsider-static-plan-phase {
+    position: sticky;
+    top: 0;
+    z-index: 99;
+    border-left: 4px solid var(--interactive-accent);
+    background: var(--background-primary);
+    /* Ensure sticky works properly */
+    align-self: flex-start;
+    width: 100%;
+}
+
+.llmsider-static-plan-phase .plan-execute-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.plan-step-count {
+    font-size: 11px;
+    color: var(--text-normal);
+    background: var(--interactive-accent);
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: auto;
+    font-weight: 600;
+}
+
+/* Static Todo List Styles (non-interactive) */
+.plan-static-todo-list {
+    margin: 8px 0;
+    padding: 0;
+    list-style: none;
+    background: var(--background-primary);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.plan-todo-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    border-left: 3px solid transparent;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    transition: all 0.25s ease;
+    background: var(--background-secondary);
+}
+
+.plan-todo-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Default/Pending state */
+.plan-todo-item {
+    border-left-color: var(--background-modifier-border);
+    background: var(--background-secondary);
+}
+
+/* Executing state - bright and animated */
+.plan-todo-item.executing,
+.plan-todo-item.in-progress {
+    border-left-color: var(--interactive-accent);
+    background: var(--background-modifier-hover);
+    box-shadow: 0 0 0 1px var(--interactive-accent-hover);
+    animation: pulseInProgress 2s ease-in-out infinite;
+}
+
+/* Completed state - subtle success green */
+.plan-todo-item.completed {
+    border-left-color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+    opacity: 0.9;
+}
+
+/* Failed state - clear error indication */
+.plan-todo-item.failed {
+    border-left-color: var(--text-error);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* Cancelled state */
+.plan-todo-item.cancelled {
+    border-left-color: var(--text-muted);
+    background: var(--background-secondary);
+    opacity: 0.6;
+}
+
+.plan-static-checkbox {
+    font-size: 20px;
+    min-width: 24px;
+    text-align: center;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+/* Executing checkbox - animated pulse */
+.plan-todo-item.executing .plan-static-checkbox,
+.plan-todo-item.in-progress .plan-static-checkbox {
+    animation: pulse 1.5s ease-in-out infinite;
+    font-size: 18px;
+}
+
+/* Completed checkbox - success with bounce animation */
+.plan-todo-item.completed .plan-static-checkbox {
+    animation: checkmarkBounce 0.5s ease-out;
+    font-size: 18px;
+}
+
+/* Failed checkbox - error with shake */
+.plan-todo-item.failed .plan-static-checkbox {
+    animation: errorShake 0.4s ease-in-out;
+    font-size: 18px;
+}
+
+/* Cancelled checkbox - muted */
+.plan-todo-item.cancelled .plan-static-checkbox {
+    opacity: 0.7;
+}
+
+/* Error shake animation */
+@keyframes errorShake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-4px);
+    }
+    75% {
+        transform: translateX(4px);
+    }
+}
+
+/* Step Progress Phase Styles */
+.llmsider-step-progress-phase {
+    border-left: 4px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    margin: 8px 0;
+    transition: all 0.3s ease;
+}
+
+.llmsider-step-progress-phase strong {
+    color: var(--text-normal);
+}
+
+.llmsider-step-progress-phase.status-preparing {
+    border-left-color: var(--text-muted);
+    background: var(--background-secondary);
+}
+
+.llmsider-step-progress-phase.status-executing {
+    border-left-color: var(--interactive-accent);
+    background: var(--background-modifier-hover);
+    box-shadow: 0 0 0 1px var(--interactive-accent-hover);
+    animation: executeGlow 2s ease-in-out infinite;
+}
+
+.llmsider-step-progress-phase.status-completed {
+    border-left-color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.llmsider-step-progress-phase.status-failed {
+    border-left-color: var(--text-error);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.llmsider-step-progress-phase.status-cancelled {
+    border-left-color: var(--text-muted);
+    background: var(--background-secondary);
+    opacity: 0.8;
+}
+
+.step-progress-bar {
+    width: 100px;
+    height: 4px;
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-left: auto;
+}
+
+.step-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--interactive-accent), var(--interactive-accent-hover));
+    border-radius: 3px;
+    transition: width 0.4s ease-out;
+}
+
+.llmsider-step-progress-phase.status-completed .step-progress-fill {
+    background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.llmsider-step-progress-phase.status-failed .step-progress-fill {
+    background: var(--text-error);
+}
+
+.step-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.step-info strong {
+    color: var(--text-normal) !important;
+}
+
+.step-label {
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+.step-input, .step-reason {
+    margin-bottom: 4px;
+}
+
+.step-input strong, .step-reason strong {
+    color: var(--text-normal) !important;
+}
+
+.step-info .step-input strong,
+.step-info .step-reason strong,
+.llmsider-step-progress-phase .step-input strong,
+.llmsider-step-progress-phase .step-reason strong {
+    color: var(--text-normal) !important;
+}
+
+.step-status {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+    padding: 4px 0;
+    border-top: 1px solid var(--background-modifier-border);
+    margin-top: 8px;
+    padding-top: 8px;
+}
+
+/* Tool Cards Container within Step Progress */
+.step-tool-cards {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--background-modifier-border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Tool card within step should have reduced margin */
+.step-tool-cards .llmsider-tool-card-message {
+    margin: 0;
+}
+
+/* Make tool cards inside steps slightly more compact */
+.step-tool-cards .llmsider-tool-result-card {
+    margin: 0;
+}
+
+/* Step completion and error details */
+.step-completion-info, .step-error-info, .tool-result-details, .tool-error-details {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.step-completion-info, .tool-result-details {
+    background: var(--background-secondary);
+    border: 1px solid var(--text-muted);
+    color: var(--text-normal);
+}
+
+.step-error-info, .tool-error-details {
+    background: var(--background-modifier-error);
+    border: 1px solid var(--text-error);
+    color: var(--text-error);
+}
+
+.completion-time, .error-time, .result-time {
+    opacity: 0.8;
+    font-size: 10px;
+}
+
+.completion-status, .error-message, .result-preview {
+    margin-top: 4px;
+}
+
+/* Execution glow animation */
+@keyframes executeGlow {
+    0%, 100% {
+        box-shadow: 0 0 0 transparent;
+    }
+    50% {
+        box-shadow: 0 0 12px var(--text-muted);
+    }
+}
+
+/* Step Output Section Styles - Collapsible output for each step */
+.step-output-section {
+    margin-top: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.step-output-section.collapsed {
+    border-color: var(--background-modifier-border);
+}
+
+.step-output-section.expanded {
+    border-color: var(--text-muted);
+    box-shadow: 0 2px 8px var(--background-modifier-border-hover);
+}
+
+.step-output-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--background-secondary);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid transparent;
+}
+
+.step-output-header:hover {
+    background: var(--background-modifier-hover);
+}
+
+.step-output-section.expanded .step-output-header {
+    border-bottom-color: var(--background-modifier-border);
+}
+
+.output-toggle-icon {
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+    width: 12px;
+    text-align: center;
+}
+
+.output-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+    flex: 1;
+}
+
+.output-status {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: var(--background-primary-alt);
+}
+
+.output-status.has-content {
+    background: var(--background-secondary);
+    color: var(--text-normal);
+}
+
+.output-status.has-error {
+    background: var(--background-modifier-error);
+    color: var(--text-error);
+}
+
+.step-output-content {
+    padding: 12px;
+    background: var(--background-primary);
+    border-top: 1px solid var(--background-modifier-border);
+    display: none;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.step-output-section.expanded .step-output-content {
+    display: block;
+}
+
+.output-placeholder {
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: 16px 0;
+}
+
+.output-result {
+    border-left: 3px solid var(--text-muted);
+    padding-left: 12px;
+}
+
+.output-error {
+    border-left: 3px solid var(--text-error);
+    padding-left: 12px;
+}
+
+.output-timestamp {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    opacity: 0.7;
+}
+
+.output-data {
+    color: var(--text-normal);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    background: var(--background-secondary);
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.error-message {
+    color: var(--text-error);
+    background: var(--background-modifier-error);
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--text-error);
+}
+
+.output-truncated {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 11px;
+}
+
+/* Animation for smooth expansion/collapse */
+.step-output-section.collapsed .step-output-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.step-output-section.expanded .step-output-content {
+    max-height: 500px;
+    transition: max-height 0.3s ease-in;
+}
+
+/* Plan Todo List Styles - Use plan-todo-item styles defined above */
+.plan-todo-list {
+    margin: 8px 0;
+    padding: 0;
+    list-style: none;
+    background: var(--background-primary);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+/* Progress pulse animation for executing state */
+@keyframes pulseInProgress {
+    0%, 100% {
+        box-shadow: 0 0 0 1px var(--interactive-accent-hover);
+    }
+    50% {
+        box-shadow: 0 0 0 2px var(--interactive-accent);
+    }
+}
+
+/* Checkmark bounce animation for completed state */
+@keyframes checkmarkBounce {
+    0% {
+        transform: scale(0.8);
+        opacity: 0.8;
+    }
+    50% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.plan-todo-error {
+    font-size: 11px;
+    color: var(--text-error);
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: var(--background-modifier-error);
+    border-radius: 4px;
+    border-left: 3px solid var(--text-error);
+}
+
+/* Progress indicator styles */
+.plan-progress-indicator {
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    min-width: 150px;
+    padding: 8px 12px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.plan-progress-indicator .progress-text {
+    font-size: 12px;
+    color: var(--text-normal);
+    font-weight: 600;
+    text-align: right;
+    line-height: 1.2;
+}
+
+.plan-progress-indicator .progress-numbers {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-align: right;
+}
+
+.plan-progress-indicator .progress-bar {
+    width: 120px;
+    height: 6px;
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.plan-progress-indicator .progress-fill {
+    height: 100%;
+    background: var(--text-muted);
+    border-radius: 3px;
+    transition: width 0.5s ease-out;
+    animation: progressGlow 2s ease-in-out infinite;
+}
+
+/* Progress pulse for in-progress state */
+.plan-progress-indicator .progress-pulse {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, var(--background-modifier-hover), transparent);
+    animation: progressPulse 2s ease-in-out infinite;
+}
+
+/* Completion celebration styling */
+.plan-progress-indicator.all-completed {
+    background: var(--background-secondary);
+    border-color: var(--text-muted);
+    animation: completionCelebration 1s ease-out;
+}
+
+.plan-progress-indicator.all-completed .progress-text {
+    color: var(--text-normal);
+    font-weight: 700;
+}
+
+.plan-progress-indicator.all-completed .progress-fill {
+    background: var(--text-normal);
+    animation: completionGlow 1.5s ease-in-out infinite;
+}
+
+/* Progress animations */
+@keyframes progressGlow {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+        box-shadow: 0 0 8px var(--text-muted);
+    }
+}
+
+@keyframes progressPulse {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+@keyframes completionGlow {
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 transparent;
+    }
+    50% {
+        opacity: 0.9;
+        box-shadow: 0 0 12px var(--text-muted);
+    }
+}
+
+@keyframes completionCelebration {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Celebration animation */
+@keyframes celebrationPop {
+    0% {
+        opacity: 0;
+        transform: translateY(-50%) scale(0.5);
+    }
+    20% {
+        opacity: 1;
+        transform: translateY(-50%) scale(1.2);
+    }
+    40% {
+        transform: translateY(-50%) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-50%) scale(0.8);
+    }
+}
+
+/* Error shake animation */
+@keyframes errorShake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-2px);
+    }
+    75% {
+        transform: translateX(2px);
+    }
+}
+
+/* Error pulse animation */
+@keyframes errorPulse {
+    0%, 100% {
+        background: rgba(255, 71, 87, 0.2);
+    }
+    50% {
+        background: rgba(255, 71, 87, 0.4);
+    }
+}
+
+/* Progress glow animation */
+@keyframes progressGlow {
+    0%, 100% {
+        box-shadow: 0 0 0 rgba(0, 122, 255, 0);
+    }
+    50% {
+        box-shadow: 0 0 8px rgba(0, 122, 255, 0.3);
+    }
+}
+
+/* Progress rotation animation */
+@keyframes rotateProgress {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.plan-todo-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.plan-todo-title {
+    font-weight: 500;
+    color: var(--text-normal);
+    margin-bottom: 6px;
+    line-height: 1.4;
+    font-size: 14px;
+}
+
+.plan-todo-details {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.plan-todo-details .todo-detail {
+    margin-bottom: 3px;
+    padding: 2px 0;
+}
+
+.plan-todo-details .todo-detail:last-child {
+    margin-bottom: 0;
+}
+
+.plan-todo-details strong {
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+.plan-todo-details .step-label {
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+/* Three-Stage Tool Execution Indicators - Consistent with Plan-Execute Phases */
+.llmsider-tool-phase {
+    /* Use same base styles as other plan-execute phases */
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    margin: 8px 0;
+    padding: 12px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.llmsider-tool-phase .plan-execute-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.llmsider-tool-phase .plan-execute-icon {
+    font-size: 16px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.llmsider-tool-phase .plan-execute-icon.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.llmsider-tool-phase .plan-execute-title {
+    color: var(--text-normal);
+    font-size: 14px;
+}
+
+.llmsider-tool-phase .tool-status {
+    margin-left: auto;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.llmsider-tool-phase .tool-status.success {
+    background: var(--background-secondary);
+    color: var(--text-normal);
+}
+
+.llmsider-tool-phase .tool-status.error {
+    background: var(--background-modifier-error);
+    color: var(--text-error);
+}
+
+.llmsider-tool-phase .plan-execute-content {
+    padding: 8px 0;
+    color: var(--text-normal);
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.llmsider-tool-phase .tool-info {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 4px 0;
+}
+
+.llmsider-tool-phase .tool-info strong {
+    color: var(--text-accent);
+}
+
+.llmsider-tool-phase .tool-info code {
+    background: var(--background-primary);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+}
+
+.llmsider-tool-phase .tool-executing-info {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.llmsider-tool-phase .tool-result-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.llmsider-tool-phase .tool-result-header strong {
+    color: var(--text-normal);
+}
+
+/* Token Estimation Styles */
+.llmsider-token-estimation {
+    background: var(--llmsider-token-background);
+    border: 1px solid var(--llmsider-token-border);
+    border-radius: 8px;
+    margin: 8px 0;
+    padding: 12px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.llmsider-token-estimation .plan-execute-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.llmsider-token-estimation .plan-execute-icon {
+    font-size: 16px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.llmsider-token-estimation .plan-execute-title {
+    color: var(--text-normal);
+    font-size: 14px;
+    flex-grow: 1;
+}
+
+.llmsider-token-estimation .token-warning {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.llmsider-token-estimation .token-warning.safe {
+    background: rgba(46, 213, 115, 0.1);
+    color: var(--llmsider-token-safe);
+}
+
+.llmsider-token-estimation .token-warning.warning {
+    background: rgba(255, 165, 2, 0.1);
+    color: var(--llmsider-token-warning);
+}
+
+.llmsider-token-estimation .token-warning.critical {
+    background: rgba(255, 71, 87, 0.1);
+    color: var(--llmsider-token-critical);
+}
+
+.llmsider-token-estimation .token-usage-content {
+    padding: 8px 0;
+    color: var(--text-normal);
+    line-height: 1.5;
+}
+
+.llmsider-token-estimation .token-usage-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+.llmsider-token-estimation .token-usage-row:last-child {
+    border-bottom: none;
+}
+
+.llmsider-token-estimation .token-label {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.llmsider-token-estimation .token-value {
+    font-family: var(--font-monospace);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.llmsider-token-estimation .token-value.estimated {
+    color: var(--llmsider-token-accent);
+}
+
+.llmsider-token-estimation .token-value.actual {
+    color: var(--text-normal);
+}
+
+.llmsider-token-estimation .token-value.cost {
+    color: var(--llmsider-token-warning);
+}
+
+.llmsider-token-estimation .token-value.duration {
+    color: var(--text-accent);
+}
+
+.llmsider-token-estimation .token-value.accuracy {
+    font-weight: 600;
+}
+
+.llmsider-token-estimation .token-value.accuracy.good {
+    color: var(--llmsider-token-safe);
+}
+
+.llmsider-token-estimation .token-value.accuracy.fair {
+    color: var(--llmsider-token-warning);
+}
+
+.llmsider-token-estimation .token-value.accuracy.poor {
+    color: var(--llmsider-token-critical);
+}
+
+.llmsider-token-estimation .token-value.status {
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.llmsider-token-estimation .token-value.status.pending {
+    background: rgba(255, 165, 2, 0.1);
+    color: var(--llmsider-token-warning);
+}
+
+.llmsider-token-estimation .token-value.status.completed {
+    background: rgba(46, 213, 115, 0.1);
+    color: var(--llmsider-token-safe);
+}
+
+.llmsider-token-estimation .token-warning-message {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.llmsider-token-estimation .token-warning-message.warning {
+    background: rgba(255, 165, 2, 0.1);
+    color: var(--llmsider-token-warning);
+    border-left: 3px solid var(--llmsider-token-warning);
+}
+
+.llmsider-token-estimation .token-warning-message.critical {
+    background: rgba(255, 71, 87, 0.1);
+    color: var(--llmsider-token-critical);
+    border-left: 3px solid var(--llmsider-token-critical);
+}
+
+/* Step checkbox icons */
+.llmsider-step-progress-phase .step-checkbox {
+    font-size: 16px;
+    min-width: 20px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.llmsider-step-progress-phase.status-preparing .step-checkbox {
+    color: var(--text-muted);
+}
+
+.llmsider-step-progress-phase.status-executing .step-checkbox {
+    color: var(--llmsider-tool-executing);
+    animation: pulse 1.5s infinite;
+}
+
+.llmsider-step-progress-phase.status-completed .step-checkbox {
+    color: var(--llmsider-tool-completed);
+}
+
+.llmsider-step-progress-phase.status-failed .step-checkbox {
+    color: var(--llmsider-tool-failed);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.llmsider-token-estimation.completed {
+    border-color: var(--llmsider-token-safe);
+}
+
+.llmsider-token-estimation.completed .plan-execute-icon {
+    color: var(--llmsider-token-safe);
+}
+
+.llmsider-tool-phase .tool-result-header .status-text {
+    font-weight: normal;
+    color: var(--text-muted);
+}
+
+.llmsider-tool-phase .tool-result-content {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 4px 0;
+}
+
+.llmsider-tool-phase .tool-result-content pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    color: var(--text-normal);
+}
+
+/* Phase-specific border colors - consistent with other phases */
+.llmsider-tool-phase.tool-intent {
+    border-left: 4px solid var(--text-muted);
+}
+
+.llmsider-tool-phase.tool-executing {
+    border-left: 4px solid var(--text-muted);
+}
+
+/* Streaming indicator styles */
+.llmsider-streaming-indicator {
+    border-left: 4px solid var(--text-muted);
+    background: var(--background-secondary);
+    animation: pulse 2s ease-in-out infinite;
+    border: 1px solid var(--background-modifier-border);
+}
+
+/* Completed streaming indicator styles for debugging */
+.llmsider-streaming-indicator.streaming-completed {
+    border-left: 4px solid var(--text-normal);
+    background: var(--background-secondary);
+    animation: none; /* Stop pulse animation */
+    border: 1px solid var(--background-modifier-border);
+    opacity: 0.8; /* Slightly faded to show it's completed */
+}
+
+.llmsider-streaming-indicator .plan-execute-content {
+    color: var(--text-normal);
+    font-style: italic;
+    font-weight: 500;
+}
+
+.llmsider-streaming-indicator .plan-execute-title {
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+.llmsider-streaming-indicator .spinning {
+    animation: spin 1s linear infinite;
+}
+
+.llmsider-streaming-indicator .plan-execute-timestamp {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+    opacity: 0.9;
+    font-weight: 500;
+}
+
+.llmsider-streaming-indicator .plan-execute-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-normal);
+}
+
+.llmsider-streaming-indicator .plan-execute-icon {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* Content Generation Indicator - Theme-aware styling */
+.llmsider-content-generation-indicator {
+    margin: 8px 0;
+    padding: 12px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-left: 4px solid var(--text-muted);
+    border-radius: 8px;
+    color: var(--text-normal);
+    font-size: 14px;
+    font-weight: 500;
+    animation: pulse 2s infinite;
+}
+
+.llmsider-content-generation-indicator .content-generation-toggle {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.llmsider-content-generation-indicator .content-generation-toggle:hover {
+    background-color: var(--background-modifier-hover);
+    border-radius: 4px;
+}
+
+.llmsider-content-generation-indicator .generated-content-preview {
+    background: var(--background-primary-alt);
+    border-radius: 6px;
+    padding: 8px;
+    margin-top: 4px;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-normal);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    border-left: 3px solid var(--interactive-accent);
+}
+
+.llmsider-content-generation-indicator .content-toggle-icon {
+    transition: transform 0.2s;
+    color: var(--text-muted);
+}
+
+.llmsider-content-generation-indicator .content-toggle-icon.expanded {
+    transform: rotate(90deg);
+}
+
+.llmsider-content-generation-indicator .phase-icon {
+    color: var(--interactive-accent);
+}
+
+.llmsider-content-generation-indicator .phase-text {
+    color: var(--text-normal);
+}
+
+/* Phase-specific styling for content generation indicator */
+.llmsider-content-generation-indicator.phase-parsing {
+    border-left-color: var(--text-muted);
+}
+
+.llmsider-content-generation-indicator.phase-analyzing {
+    border-left-color: var(--text-muted);
+}
+
+.llmsider-content-generation-indicator.phase-preparing {
+    border-left-color: var(--text-muted);
+}
+
+.llmsider-content-generation-indicator.phase-connecting {
+    border-left-color: var(--text-muted);
+}
+
+.llmsider-content-generation-indicator.phase-connected {
+    border-left-color: var(--text-normal);
+}
+
+.llmsider-content-generation-indicator.phase-generating {
+    border-left-color: var(--text-muted);
+}
+
+.llmsider-content-generation-indicator.phase-processing {
+    border-left-color: var(--text-muted);
+}
+
+.llmsider-content-generation-indicator.phase-completed {
+    border-left-color: var(--text-normal);
+    background: var(--background-secondary);
+    animation: none;
+}
+
+.llmsider-content-generation-indicator.phase-error {
+    border-left-color: var(--text-error);
+    background: var(--background-modifier-error);
+    animation: none;
+}
+
+/* Enhanced pulse animation for better visibility */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        background: var(--background-secondary);
+    }
+    50% {
+        opacity: 0.95;
+        background: var(--background-modifier-hover);
+    }
+}
+
+.llmsider-tool-phase.tool-result.success {
+    border-left: 4px solid var(--text-normal);
+}
+
+.llmsider-tool-phase.tool-result.error {
+    border-left: 4px solid var(--text-error);
+}
+
+.plan-execute-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid transparent;
+    border-top: 2px solid var(--text-muted);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 8px;
+}
+
+/* Legacy MCP Tool Execution Styles (for compatibility) */
+.llmsider-tool-execution-indicator {
+    background: var(--llmsider-tool-background);
+    border: 1px solid var(--llmsider-tool-border);
+    border-radius: 8px;
+    margin: 8px 0;
+    padding: 12px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.mcp-tool-execution-container {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 12px 0;
+}
+
+.mcp-tool-execution-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.mcp-tool-icon {
+    font-size: 16px;
+}
+
+.mcp-tool-text {
+    flex: 1;
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+.mcp-tool-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--background-modifier-border);
+    border-top: 2px solid var(--interactive-accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.mcp-tool-progress {
+    margin-bottom: 12px;
+}
+
+.mcp-tool-progress-bar {
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+}
+
+.mcp-tool-progress-fill {
+    background: var(--interactive-accent);
+    height: 100%;
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+.mcp-tool-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mcp-tool-result-item {
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 8px;
+}
+
+.mcp-tool-result-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.mcp-tool-name {
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+.mcp-tool-server {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.mcp-tool-status {
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.mcp-tool-success {
+    color: var(--llmsider-success);
+}
+
+.mcp-tool-error {
+    color: var(--llmsider-error);
+}
+
+.mcp-tool-result-content {
+    background: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.mcp-tool-result-content pre {
+    margin: 0;
+    font-family: var(--font-monospace);
+    font-size: 11px;
+    color: var(--text-normal);
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+.mcp-tool-error-content {
+    background: rgba(255, 71, 87, 0.1);
+    border-color: rgba(255, 71, 87, 0.3);
+}
+
+.mcp-help-text {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Dark theme adjustments */
+.theme-dark .tool-records-toggle {
+    background: var(--background-secondary);
+    color: var(--text-normal);
+}
+
+.theme-dark .tool-records-toggle:hover {
+    background: var(--background-modifier-hover);
+}
+
+.theme-dark .tool-detail-json {
+    background: var(--background-secondary);
+    color: var(--text-normal);
+}

@@ -1,0 +1,397 @@
+/* base.css - Part of LLMSider Plugin Styles
+   This file is auto-generated from styles.css
+   Do not edit directly - edit the source modules instead
+*/
+
+/* ============================================================================
+   Base Variables & Core Styles
+   ============================================================================ */
+
+/* Force flat button styles globally (excluding inputbox buttons) */
+.llmsider-provider-action-btn,
+.llmsider-mcp-action-btn,
+.llmsider-mcp-mode-toggle,
+.llmsider-icon-btn,
+.llmsider-header-btn,
+.llmsider-action-btn,
+.llmsider-message-action,
+button.llmsider-provider-action-btn,
+button.llmsider-mcp-action-btn,
+button.llmsider-mcp-mode-toggle,
+button.llmsider-icon-btn,
+button.llmsider-header-btn,
+button.llmsider-action-btn,
+button.llmsider-message-action {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.llmsider-provider-action-btn:hover,
+.llmsider-mcp-action-btn:hover,
+.llmsider-mcp-mode-toggle:hover,
+.llmsider-icon-btn:hover,
+.llmsider-header-btn:hover,
+.llmsider-action-btn:hover,
+.llmsider-message-action:hover,
+button.llmsider-provider-action-btn:hover,
+button.llmsider-mcp-action-btn:hover,
+button.llmsider-mcp-mode-toggle:hover,
+button.llmsider-icon-btn:hover,
+button.llmsider-header-btn:hover,
+button.llmsider-action-btn:hover,
+button.llmsider-message-action:hover {
+    background: var(--background-modifier-hover) !important;
+    color: var(--text-normal) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+/* Exception: Keep connect button with accent color */
+.llmsider-mcp-action-btn.llmsider-connect-btn,
+button.llmsider-mcp-action-btn.llmsider-connect-btn {
+    background: transparent !important;
+    color: var(--interactive-accent) !important;
+}
+
+.llmsider-mcp-action-btn.llmsider-connect-btn:hover,
+button.llmsider-mcp-action-btn.llmsider-connect-btn:hover {
+    background: transparent !important;
+    color: var(--interactive-accent-hover) !important;
+}
+
+/* Base theme variables - can be overridden by Obsidian themes */
+:root {
+    --llmsider-primary: #007AFF;
+    --llmsider-primary-hover: #0056CC;
+    --llmsider-primary-dark: #003d99;
+    --llmsider-background: #1a1a1a;
+    --llmsider-background-secondary: #2c2c2e;
+    --llmsider-background-tertiary: #000000;
+    --llmsider-border: #333333;
+    --llmsider-border-hover: #555557;
+    --llmsider-text: #ffffff;
+    --llmsider-text-muted: #888888;
+    --llmsider-text-accent: #88ccff;
+    --llmsider-success: #2ed573;
+    --llmsider-error: #ff4757;
+    --llmsider-warning: #ffa502;
+
+    /* Tool execution indicator colors */
+    --llmsider-tool-detection: #ffa502;
+    --llmsider-tool-executing: #007AFF;
+    --llmsider-tool-completed: #2ed573;
+    --llmsider-tool-failed: #ff4757;
+    --llmsider-tool-background: rgba(0, 0, 0, 0.05);
+    --llmsider-tool-border: rgba(255, 255, 255, 0.1);
+
+    /* Token estimation colors */
+    --llmsider-token-safe: #2ed573;
+    --llmsider-token-warning: #ffa502;
+    --llmsider-token-critical: #ff4757;
+    --llmsider-token-background: rgba(33, 37, 41, 0.8);
+    --llmsider-token-border: rgba(108, 117, 125, 0.3);
+    --llmsider-token-accent: #6c757d;
+}
+
+/* Base animations */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@keyframes blink {
+    0%, 50% {
+        opacity: 1;
+    }
+    51%, 100% {
+        opacity: 0.3;
+    }
+}
+
+@keyframes streamingPulse {
+    0%, 100% {
+        border-left-color: var(--llmsider-primary);
+    }
+    50% {
+        border-left-color: var(--llmsider-primary-hover);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+@keyframes typing {
+    0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.5;
+    }
+    30% {
+        transform: translateY(-8px);
+        opacity: 1;
+    }
+}
+
+@keyframes cardRemove {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+@keyframes editModeEnter {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* SVG Icon Styles */
+.svg-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.svg-icon svg {
+    width: 100%;
+    height: 100%;
+    stroke: currentColor;
+    fill: none;
+}
+
+/* Spinning animation for loader icons */
+.spinning-icon {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Scrollbar styling for webkit browsers */
+.llmsider-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.llmsider-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.llmsider-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+}
+
+.llmsider-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Common button styles */
+.llmsider-btn {
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+}
+
+.llmsider-btn-primary {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    padding: 8px 16px;
+}
+
+.llmsider-btn-primary:hover {
+    background: var(--interactive-accent-hover);
+    transform: translateY(-1px);
+}
+
+.llmsider-btn-secondary {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 8px 16px;
+}
+
+.llmsider-btn-secondary:hover {
+    color: var(--text-normal);
+}
+
+.llmsider-btn-icon {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-muted);
+}
+
+.llmsider-btn-icon:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    font-size: 16px;
+}
+
+/* Common input styles */
+.llmsider-input {
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    caret-color: var(--interactive-accent) !important;
+}
+
+.llmsider-input:focus {
+    outline: none; /* Already handled by wrapper focus */
+    border-color: transparent; /* Remove any border color changes */
+    box-shadow: none; /* Remove any individual focus shadow */
+}
+
+/* Drag and drop styles for input */
+.llmsider-input-dragover {
+    background: var(--background-modifier-hover) !important;
+    border-color: var(--interactive-accent) !important;
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover) !important;
+}
+
+/* Common card styles */
+.llmsider-card {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-card:hover {
+    border-color: var(--background-modifier-border-hover);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Common text styles */
+.llmsider-text-primary {
+    color: var(--text-normal);
+}
+
+.llmsider-text-secondary {
+    color: var(--text-muted);
+}
+
+.llmsider-text-accent {
+    color: var(--interactive-accent);
+}
+
+.llmsider-text-error {
+    color: var(--text-error);
+}
+
+.llmsider-text-success {
+    color: var(--text-success);
+}
+
+/* Common utility classes */
+.llmsider-flex {
+    display: flex;
+}
+
+.llmsider-flex-col {
+    flex-direction: column;
+}
+
+.llmsider-flex-center {
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-flex-between {
+    justify-content: space-between;
+}
+
+.llmsider-flex-1 {
+    flex: 1;
+}
+
+.llmsider-gap-sm {
+    gap: 4px;
+}
+
+.llmsider-gap-md {
+    gap: 8px;
+}
+
+.llmsider-gap-lg {
+    gap: 12px;
+}
+
+.llmsider-hidden {
+    display: none !important;
+}
+
+.llmsider-visible {
+    display: block !important;
+}
+
+/* Selection styling */
+.llmsider-selectable::selection {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* Focus styles for accessibility */
+.llmsider-focusable:focus {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}

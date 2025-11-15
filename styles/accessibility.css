@@ -1,0 +1,230 @@
+/* accessibility.css - Part of LLMSider Plugin Styles
+   This file is auto-generated from styles.css
+   Do not edit directly - edit the source modules instead
+*/
+
+/* ============================================================================
+   Accessibility & Focus Styles
+   ============================================================================ */
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+    .llmsider-input-wrapper {
+        border: 2px solid var(--background-modifier-border);
+    }
+    
+    .llmsider-input-wrapper:focus-within {
+        border-color: var(--interactive-accent);
+        box-shadow: 0 0 0 3px var(--interactive-accent-hover);
+    }
+    
+    .llmsider-message-content {
+        border: 1px solid var(--background-modifier-border);
+    }
+
+    .llmsider-file-references {
+        border: 2px solid var(--background-modifier-border);
+        border-left: 4px solid var(--interactive-accent);
+    }
+
+    .file-reference-suggestion {
+        border: 1px solid transparent;
+    }
+
+    .file-reference-suggestion:hover,
+    .llmsider-chat-container .suggestion-container .file-reference-suggestion.is-selected,
+    .llmsider-file-suggestions .suggestion-container .file-reference-suggestion.is-selected {
+        border-color: var(--interactive-accent);
+    }
+
+    .llmsider-message {
+        border: 2px solid var(--background-modifier-border);
+    }
+    
+    .llmsider-input {
+        border: 2px solid var(--background-modifier-border);
+    }
+    
+    .llmsider-input:focus {
+        border-color: var(--interactive-accent);
+        box-shadow: 0 0 0 3px var(--interactive-accent-hover);
+    }
+
+    .llmsider-provider-card {
+        border-width: 2px;
+    }
+    
+    .llmsider-add-provider-card {
+        border-width: 3px;
+    }
+    
+    .llmsider-edit-input:focus {
+        box-shadow: 0 0 0 4px var(--interactive-accent-hover);
+    }
+
+    .llmsider-diff-added {
+        border-width: 2px;
+        font-weight: 700;
+    }
+    
+    .llmsider-diff-removed {
+        border-width: 2px;
+        text-decoration-thickness: 3px;
+        font-weight: 700;
+    }
+    
+    .llmsider-diff-line-added,
+    .llmsider-diff-line-removed {
+        border-left-width: 6px;
+    }
+}
+
+/* Focus Styles for Accessibility */
+.llmsider-header-btn:focus,
+.llmsider-action-btn:focus,
+.llmsider-user-edit-btn:focus {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 1px;
+    position: relative;
+    z-index: 10;
+}
+
+/* Special focus style for input wrapper children to prevent overlap with wrapper focus ring */
+.llmsider-input-btn:focus {
+    outline: none; /* 移除蓝色外框，与模式选择按钮保持一致 */
+    position: relative;
+    z-index: 2;
+}
+
+.llmsider-send-button:focus,
+.llmsider-model-select:focus {
+    outline: none; /* Remove outline when input wrapper already shows focus */
+    position: relative;
+    z-index: 2;
+}
+
+.llmsider-provider-info:focus {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+/* Reduced Motion Preferences */
+@media (prefers-reduced-motion: reduce) {
+    .llmsider-message {
+        animation: none;
+    }
+    
+    .llmsider-typing-dots::before,
+    .llmsider-typing-dots::after {
+        animation: none;
+    }
+    
+    .llmsider-header-btn,
+    .llmsider-send-button,
+    .llmsider-input-btn,
+    .llmsider-action-btn {
+        transition: none;
+    }
+
+    .llmsider-streaming-cursor {
+        animation: none;
+    }
+
+    .llmsider-message.llmsider-streaming .llmsider-message-content {
+        animation: none;
+    }
+
+    .llmsider-send-button.is-loading {
+        animation: none;
+    }
+
+    .llmsider-provider-card {
+        transition: none;
+    }
+
+    .llmsider-add-provider-card {
+        transition: none;
+    }
+}
+
+/* Screen Reader Support */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Keyboard Navigation Support */
+.llmsider-focusable {
+    outline: none;
+}
+
+.llmsider-focusable:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+/* Touch Accessibility */
+@media (pointer: coarse) {
+    .llmsider-header-btn,
+    .llmsider-input-btn,
+    .llmsider-action-btn,
+    .llmsider-send-button,
+    .llmsider-user-edit-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .llmsider-context-remove,
+    .llmsider-ref-remove {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .llmsider-provider-action-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* Color Scheme Preference */
+@media (prefers-color-scheme: dark) {
+    .llmsider-chat-container {
+        color-scheme: dark;
+    }
+}
+
+@media (prefers-color-scheme: light) {
+    .llmsider-chat-container {
+        color-scheme: light;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .llmsider-header,
+    .llmsider-input-container,
+    .llmsider-message-actions,
+    .llmsider-diff-actions,
+    .llmsider-provider-actions {
+        display: none !important;
+    }
+
+    .llmsider-message-content {
+        background: transparent !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+    }
+
+    .llmsider-diff-added,
+    .llmsider-diff-removed {
+        background: transparent !important;
+        border-left: 3px solid #000 !important;
+    }
+}
