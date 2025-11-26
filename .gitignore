@@ -1,0 +1,35 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Build files
+main.js
+*.js.map
+dist/
+*.zip
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test-vault/
+
+# Release artifacts
+llmsider-*.zip
+llmsider-project-*.tar.gz
+*.tgz
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~

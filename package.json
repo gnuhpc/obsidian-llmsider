@@ -1,0 +1,43 @@
+{
+	"name": "obsidian-llmsider",
+	"version": "0.5.0",
+	"description": "Lightweight AI Chat - Simple multi-LLM chat interface",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production",
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"release:build": "./release.sh build",
+		"release:github": "./release.sh release",
+		"release:submit": "./release.sh submit",
+		"release:all": "./release.sh all"
+	},
+	"keywords": [
+		"obsidian",
+		"ai",
+		"chat",
+		"llm"
+	],
+	"author": "gnuhpc",
+	"license": "MIT",
+	"dependencies": {
+		"@ai-sdk/anthropic": "^2.0.17",
+		"@ai-sdk/openai": "^2.0.30",
+		"ai": "^5.0.44"
+	},
+	"devDependencies": {
+		"@eslint/eslintrc": "^3.3.1",
+		"@eslint/js": "^9.39.1",
+		"@types/node": "^16.18.126",
+		"@typescript-eslint/eslint-plugin": "^8.46.4",
+		"@typescript-eslint/parser": "^8.46.4",
+		"builtin-modules": "3.3.0",
+		"esbuild": "0.25.1",
+		"eslint": "^9.39.1",
+		"eslint-plugin-obsidianmd": "^0.1.9",
+		"obsidian": "latest",
+		"tslib": "2.4.0",
+		"typescript": "^5.9.2"
+	}
+}

@@ -1,0 +1,41 @@
+{
+  "providers": [
+    {
+      "id": "1763943197969",
+      "type": "openai-compatible",
+      "name": "openai",
+      "apiKey": "MOCK",
+      "model": "o4-mini",
+      "maxTokens": 4096,
+      "temperature": 0.7,
+      "enabled": true,
+      "baseUrl": "http://88.218.77.120:8888/v1"
+    }
+  ],
+  "activeProvider": "1763943197969",
+  "chatSessions": [
+    {
+      "id": "1",
+      "name": "你好",
+      "messages": [
+        {
+          "id": "1763943270716",
+          "role": "user",
+          "content": "你好",
+          "timestamp": 1763943270716
+        },
+        {
+          "id": "1763943270724",
+          "role": "assistant",
+          "content": "",
+          "timestamp": 1763943270724
+        }
+      ],
+      "created": 1763943166000,
+      "updated": 1763943271339,
+      "provider": ""
+    }
+  ],
+  "nextSessionId": 2,
+  "maxChatHistory": 50
+}

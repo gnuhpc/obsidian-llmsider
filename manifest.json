@@ -1,0 +1,10 @@
+{
+	"id": "llmsider",
+	"name": "LLMSider",
+	"version": "0.5.0",
+	"minAppVersion": "0.15.0",
+	"description": "Lightweight AI Chat - Simple multi-LLM chat interface with support for OpenAI, Anthropic, and more.",
+	"author": "gnuhpc",
+	"authorUrl": "https://github.com/gnuhpc",
+	"isDesktopOnly": false
+}
