@@ -63,7 +63,6 @@ export const inlineSuggestionState = StateField.define<InlineSuggestion>({
 				};
 			}
 			if (effect.is(clearSuggestionEffect)) {
-				Logger.debug('clearSuggestionEffect received');
 				return { suggestions: [], currentIndex: 0, render: false, isLoading: false };
 			}
 			if (effect.is(setLoadingEffect)) {
@@ -74,33 +73,20 @@ export const inlineSuggestionState = StateField.define<InlineSuggestion>({
 				};
 			}
 			if (effect.is(updateCurrentSuggestionEffect)) {
-				Logger.debug('updateCurrentSuggestionEffect received:', {
-					effectValue: effect.value,
-					effectValueLength: effect.value.length,
-					currentSuggestions: value.suggestions,
-					currentIndex: value.currentIndex
-				});
-				
 				// 只更新当前选中的建议，保持其他建议和索引不变
 				if (value.suggestions.length > 0) {
 					// 如果新值为空，清除所有建议
 					if (effect.value.length === 0) {
-						Logger.debug('Empty value, clearing all suggestions');
 						return { suggestions: [], currentIndex: 0, render: false, isLoading: false };
 					}
 					
 					const newSuggestions = [...value.suggestions];
 					newSuggestions[value.currentIndex] = effect.value;
-					const newState = {
+					return {
 						...value,
 						suggestions: newSuggestions,
 						render: true  // 有文本就显示
 					};
-					Logger.debug('Updated suggestion:', {
-						newSuggestions,
-						newState
-					});
-					return newState;
 				}
 				return value;
 			}
@@ -268,7 +254,6 @@ export function acceptNextWord(view: EditorView, granularity: 'word' | 'phrase' 
 	} else {
 		// For Chinese: one character at a time, whitespace (including newlines), or punctuation
 		const match = text.match(/^[\u4e00-\u9fa5]|^[\s]+|^[\n\r]/);
-		Logger.debug('Chinese match result:', match);
 		if (!match) {
 			// Fallback for other characters (punctuation, English chars, etc.)
 			// Use [\s\S] to match any character including newlines
@@ -283,40 +268,21 @@ export function acceptNextWord(view: EditorView, granularity: 'word' | 'phrase' 
 	}
 	
 	remainingText = text.substring(nextChunk.length);
-	
-	Logger.debug('Result:', {
-		nextChunk,
-		nextChunkLength: nextChunk.length,
-		remainingText,
-		remainingTextLength: remainingText.length,
-		willClear: remainingText.length === 0
-	});
 
 	// Insert the next chunk and update suggestion with remaining text
 	// 注意：不使用 clearSuggestionEffect，因为热重载可能导致 effect 实例不匹配
 	// 而是用空字符串来触发清除逻辑（在 updateCurrentSuggestionEffect 处理器中有检查）
 	const effectToSend = updateCurrentSuggestionEffect.of(remainingText);
 	
-	Logger.debug('Sending effect:', {
-		effectType: remainingText.length > 0 ? 'updateCurrentSuggestion' : 'updateWithEmpty',
-		effectValue: remainingText,
-		effectValueLength: remainingText.length,
-		effectObject: effectToSend
-	});
-	
 	view.dispatch({
 		changes: { from: pos, insert: nextChunk },
 		selection: { anchor: pos + nextChunk.length },
 		effects: effectToSend,
 	});
-	
-	Logger.debug('Dispatch completed');
 
 	// 如果没有剩余文本，返回 false，表示补全已完成
 	// 这样可以防止在 effect 处理之前再次调用此函数
-	const hasRemaining = remainingText.length > 0;
-	Logger.debug('Returning:', { hasRemaining, willContinue: hasRemaining });
-	return hasRemaining;
+	return remainingText.length > 0;
 }
 
 /**
@@ -359,41 +325,8 @@ class InlineSuggestionWidget extends WidgetType {
 			dotsSpan.className = 'llmsider-loading-dots';
 			dotsSpan.innerHTML = `<span class="dot">•</span><span class="dot">•</span><span class="dot">•</span>`;
 			
-			// Add wave animation style
-			const style = document.createElement('style');
-			style.textContent = `
-				@keyframes llmsider-dot-wave {
-					0%, 60%, 100% { 
-						opacity: 0.3;
-						transform: translateY(0);
-					}
-					30% { 
-						opacity: 1;
-						transform: translateY(-3px);
-					}
-				}
-				.llmsider-loading-dots {
-					display: inline-flex;
-					gap: 2px;
-				}
-				.llmsider-loading-dots .dot {
-					animation: llmsider-dot-wave 1.4s ease-in-out infinite;
-					display: inline-block;
-				}
-				.llmsider-loading-dots .dot:nth-child(1) {
-					animation-delay: 0s;
-				}
-				.llmsider-loading-dots .dot:nth-child(2) {
-					animation-delay: 0.2s;
-				}
-				.llmsider-loading-dots .dot:nth-child(3) {
-					animation-delay: 0.4s;
-				}
-			`;
-			if (!document.getElementById('llmsider-dots-style')) {
-				style.id = 'llmsider-dots-style';
-				document.head.appendChild(style);
-			}
+			// Styles are now defined in styles.css instead of dynamic style element
+			// to comply with Obsidian plugin guidelines (no-forbidden-elements)
 			
 			loadingSpan.appendChild(dotsSpan);
 			container.appendChild(loadingSpan);

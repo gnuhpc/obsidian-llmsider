@@ -20,10 +20,10 @@ export class StreamManager {
 		this.sendButton.style.display = 'none';
 		this.stopButton.style.display = 'inline-block';
 
-		// Disable input while streaming
-		if (this.inputElement) {
-			this.inputElement.disabled = true;
-		}
+		// Keep input enabled during streaming so user can type
+		// if (this.inputElement) {
+		// 	this.inputElement.disabled = true;
+		// }
 
 		return this.streamController;
 	}
@@ -44,10 +44,10 @@ export class StreamManager {
 		this.sendButton.style.display = 'inline-block';
 		this.stopButton.style.display = 'none';
 
-		// Re-enable input
-		if (this.inputElement) {
-			this.inputElement.disabled = false;
-		}
+		// Input already enabled, no need to re-enable
+		// if (this.inputElement) {
+		// 	this.inputElement.disabled = false;
+		// }
 	}
 
 	/**
@@ -59,10 +59,10 @@ export class StreamManager {
 		this.sendButton.style.display = 'inline-block';
 		this.stopButton.style.display = 'none';
 
-		// Re-enable input
-		if (this.inputElement) {
-			this.inputElement.disabled = false;
-		}
+		// Input already enabled, no need to change
+		// if (this.inputElement) {
+		// 	this.inputElement.disabled = false;
+		// }
 	}
 
 	/**
@@ -84,5 +84,40 @@ export class StreamManager {
 	 */
 	setStopHandler(handler: () => void): void {
 		this.stopButton.onclick = handler;
+	}
+
+	/**
+	 * Pause streaming UI state without aborting the controller
+	 * Used when waiting for user interaction (e.g. tool confirmation)
+	 */
+	pauseStreaming(): void {
+		this.isStreaming = false;
+		
+		// Update UI
+		this.sendButton.style.display = 'inline-block';
+		this.stopButton.style.display = 'none';
+
+		// Re-enable input
+		if (this.inputElement) {
+			this.inputElement.disabled = false;
+		}
+	}
+
+	/**
+	 * Resume streaming UI state
+	 * Used when user interaction is complete and agent resumes
+	 */
+	resumeStreaming(): void {
+		this.isStreaming = true;
+		
+		// Update UI
+		this.sendButton.style.display = 'none';
+		this.stopButton.style.display = 'inline-block';
+
+		// Keep input enabled - users should be able to type during streaming/tool execution
+		// This is especially important for guided mode where users may want to add context
+		// if (this.inputElement) {
+		// 	this.inputElement.disabled = true;
+		// }
 	}
 }

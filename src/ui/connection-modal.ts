@@ -22,18 +22,42 @@ export class ConnectionModal extends Modal {
 	private regionInput?: TextComponent;
 	private deploymentNameInput?: TextComponent;
 	private apiVersionInput?: TextComponent;
+	private saveButton?: HTMLButtonElement;
+	
+	// Free Gemini specific fields
+	private geminiPSIDInput?: TextComponent;
+	private geminiPSIDTSInput?: TextComponent;
+	
+	// Proxy fields
+	private proxyEnabledToggle?: HTMLInputElement;
+	private proxyTypeDropdown?: DropdownComponent;
+	private proxyHostInput?: TextComponent;
+	private proxyPortInput?: TextComponent;
+	private proxyAuthToggle?: HTMLInputElement;
+	private proxyUsernameInput?: TextComponent;
+	private proxyPasswordInput?: TextComponent;
+	private proxySection?: HTMLElement;
+
+	// GitHub Copilot temporary tokens (stored during authentication)
+	private _tempGitHubToken?: string;
+	private _tempCopilotToken?: string;
+	private _tempTokenExpiry?: number;
+
+	private presetType?: string;
 
 	constructor(
 		app: App,
 		plugin: LLMSiderPlugin,
 		onSave: (connection: LLMConnection) => Promise<void>,
-		existingConnection?: LLMConnection
+		existingConnection?: LLMConnection,
+		presetType?: string
 	) {
 		super(app);
 		this.plugin = plugin;
 		this.existingConnection = existingConnection;
 		this.onSave = onSave;
 		this.i18n = plugin.getI18nManager()!;
+		this.presetType = presetType;
 	}
 
 	onOpen() {
@@ -53,27 +77,56 @@ export class ConnectionModal extends Modal {
 
 		// Connection Type
 		const typeGroup = formContainer.createDiv({ cls: 'llmsider-form-group' });
-		typeGroup.createEl('label', { text: this.i18n.t('ui.connectionType'), cls: 'llmsider-form-label' });
-		this.typeDropdown = new DropdownComponent(typeGroup);
+		
+		// Only show dropdown if no preset type is provided and not editing
+		if (!this.presetType && !this.existingConnection) {
+			typeGroup.createEl('label', { text: this.i18n.t('ui.connectionType'), cls: 'llmsider-form-label' });
+			this.typeDropdown = new DropdownComponent(typeGroup);
+			this.typeDropdown.addOption('openai', 'OpenAI');
+			this.typeDropdown.addOption('anthropic', 'Anthropic');
+			this.typeDropdown.addOption('azure-openai', 'Azure OpenAI');
+			this.typeDropdown.addOption('github-copilot', 'GitHub Copilot');
+			this.typeDropdown.addOption('gemini', 'Google Gemini');
+			this.typeDropdown.addOption('groq', 'Groq');
+			this.typeDropdown.addOption('xai', 'X.AI (Grok)');
+			this.typeDropdown.addOption('openrouter', 'OpenRouter');
+			this.typeDropdown.addOption('ollama', 'Ollama');
+			this.typeDropdown.addOption('qwen', 'Qwen (通义千问)');
+			this.typeDropdown.addOption('free-qwen', 'Free Qwen (免费通义千问)');
+			this.typeDropdown.addOption('free-deepseek', 'Free DeepSeek (免费 DeepSeek)');
+			this.typeDropdown.addOption('free-gemini', 'Free Gemini (免费 Gemini)');
+			this.typeDropdown.addOption('hugging-chat', 'Hugging Chat');
+			this.typeDropdown.addOption('openai-compatible', 'OpenAI-Compatible');
+			this.typeDropdown.selectEl.style.width = '100%';
+			this.typeDropdown.selectEl.style.boxSizing = 'border-box';
+			this.typeDropdown.setValue('openai');
+		} else {
+			// Create a hidden dropdown for internal use
+			this.typeDropdown = new DropdownComponent(typeGroup);
 		this.typeDropdown.addOption('openai', 'OpenAI');
 		this.typeDropdown.addOption('anthropic', 'Anthropic');
 		this.typeDropdown.addOption('azure-openai', 'Azure OpenAI');
 		this.typeDropdown.addOption('github-copilot', 'GitHub Copilot');
 		this.typeDropdown.addOption('gemini', 'Google Gemini');
 		this.typeDropdown.addOption('groq', 'Groq');
+		this.typeDropdown.addOption('xai', 'X.AI (Grok)');
+		this.typeDropdown.addOption('openrouter', 'OpenRouter');
 		this.typeDropdown.addOption('ollama', 'Ollama');
+		this.typeDropdown.addOption('opencode', 'OpenCode');
 		this.typeDropdown.addOption('qwen', 'Qwen (通义千问)');
-		this.typeDropdown.addOption('huggingface', 'Hugging Face (Local)');
+		this.typeDropdown.addOption('free-qwen', 'Free Qwen (免费通义千问)');
+		this.typeDropdown.addOption('free-deepseek', 'Free DeepSeek (免费 DeepSeek)');
+		this.typeDropdown.addOption('free-gemini', 'Free Gemini (免费 Gemini)');
+		this.typeDropdown.addOption('hugging-chat', 'Hugging Chat');
 		this.typeDropdown.addOption('openai-compatible', 'OpenAI-Compatible');
-		this.typeDropdown.selectEl.style.width = '100%';
-		this.typeDropdown.selectEl.style.boxSizing = 'border-box';
 		
 		if (this.existingConnection) {
 			this.typeDropdown.setValue(this.existingConnection.type);
-			// Disable type change when editing
-			this.typeDropdown.setDisabled(true);
-		} else {
-			this.typeDropdown.setValue('openai');
+		} else if (this.presetType) {
+			this.typeDropdown.setValue(this.presetType);
+		}
+		
+		typeGroup.style.display = 'none';
 		}
 
 		// Connection Name
@@ -101,11 +154,20 @@ export class ConnectionModal extends Modal {
 
 		// Dynamic fields based on type
 		const dynamicFieldsContainer = formContainer.createDiv({ cls: 'llmsider-dynamic-fields' });
-		this.renderDynamicFields(dynamicFieldsContainer, this.typeDropdown.getValue() as any);
+		
+		// Proxy Configuration Section (Always visible, after dynamic fields)
+		const proxyContainer = formContainer.createDiv({ cls: 'llmsider-proxy-container' });
+		this.renderProxySettings(proxyContainer);
+
+		// Instructions/Info Section (Always at the bottom)
+		const instructionsContainer = formContainer.createDiv({ cls: 'llmsider-instructions-container' });
+
+		this.renderDynamicFields(dynamicFieldsContainer, instructionsContainer, this.typeDropdown.getValue() as Exclude<LLMConnection['type'], 'local'>);
 
 		// Update dynamic fields when type changes
 		this.typeDropdown.onChange((value) => {
-			this.renderDynamicFields(dynamicFieldsContainer, value as any);
+			const newType = value as Exclude<LLMConnection['type'], 'local'>;
+			this.renderDynamicFields(dynamicFieldsContainer, instructionsContainer, newType);
 		});
 
 		// Buttons
@@ -119,15 +181,30 @@ export class ConnectionModal extends Modal {
 		cancelButton.onclick = () => this.close();
 
 		const saveButton = buttonGroup.createEl('button', { text: this.i18n.t('ui.save'), cls: 'mod-cta' });
-		saveButton.onclick = () => this.handleSave();
+		this.saveButton = saveButton; // Store reference for later use
+		saveButton.onclick = async () => {
+			// Disable button to prevent double-click
+			saveButton.disabled = true;
+			saveButton.textContent = this.i18n.t('ui.saving') || 'Saving...';
+			
+			try {
+				await this.handleSave();
+			} catch (error) {
+				Logger.error('Error in handleSave:', error);
+				// Re-enable button on error
+				saveButton.disabled = false;
+				saveButton.textContent = this.i18n.t('ui.save');
+			}
+		};
 	}
 
-	private renderDynamicFields(container: HTMLElement, type: 'openai' | 'anthropic' | 'qwen' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'huggingface' | 'github-copilot') {
+	private renderDynamicFields(container: HTMLElement, instructionsContainer: HTMLElement, type: Exclude<LLMConnection['type'], 'local'>) {
 		container.empty();
+		instructionsContainer.empty();
 
 		if (type === 'github-copilot') {
 			// GitHub Copilot - show authentication button
-			const infoGroup = container.createDiv({ cls: 'llmsider-form-group' });
+			const infoGroup = instructionsContainer.createDiv({ cls: 'llmsider-form-group' });
 			const infoBox = infoGroup.createDiv({ cls: 'llmsider-info-box' });
 			infoBox.style.padding = '12px';
 			infoBox.style.backgroundColor = 'var(--background-secondary)';
@@ -169,9 +246,9 @@ export class ConnectionModal extends Modal {
 			if (apiKeyGroup) {
 				apiKeyGroup.style.display = 'none';
 			}
-		} else if (type === 'huggingface') {
-			// Hugging Face local models - show info message
-			const infoGroup = container.createDiv({ cls: 'llmsider-form-group' });
+		} else if (type === 'hugging-chat') {
+			// Hugging Chat - show authentication info
+			const infoGroup = instructionsContainer.createDiv({ cls: 'llmsider-form-group' });
 			const infoBox = infoGroup.createDiv({ cls: 'llmsider-info-box' });
 			infoBox.style.padding = '12px';
 			infoBox.style.backgroundColor = 'var(--background-secondary)';
@@ -179,32 +256,63 @@ export class ConnectionModal extends Modal {
 			infoBox.style.marginTop = '8px';
 
 			infoBox.createEl('p', {
-				text: this.i18n.t('ui.huggingFaceLocalModelsTitle'),
+				text: this.i18n.t('ui.huggingChatTitle'),
 				cls: 'llmsider-info-title'
 			}).style.fontWeight = 'bold';
 
 			infoBox.createEl('p', {
-				text: this.i18n.t('ui.huggingFaceLocalModelsDesc'),
+				text: this.i18n.t('ui.huggingChatDesc'),
 				cls: 'llmsider-form-note'
 			});
 
 			infoBox.createEl('p', {
-				text: this.i18n.t('ui.huggingFaceLocalModelsBrowserRun'),
+				text: this.i18n.t('ui.huggingChatHowToGetCookie'),
 				cls: 'llmsider-form-note'
-			});
+			}).style.fontWeight = 'bold';
+
 			infoBox.createEl('p', {
-				text: this.i18n.t('ui.huggingFaceLocalModelsWebGPU'),
-				cls: 'llmsider-form-note'
-			});
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.huggingFaceLocalModelsEmbeddingOnly'),
+				text: this.i18n.t('ui.huggingChatStep1'),
 				cls: 'llmsider-form-note'
 			});
 
-			// Hide API key field for Hugging Face
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.huggingChatStep2'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.huggingChatStep3'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.huggingChatStep4'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.huggingChatStep5'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.huggingChatStep6'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.huggingChatNote'),
+				cls: 'llmsider-form-note'
+			}).style.fontStyle = 'italic';
+
+			// Update API key field label for Hugging Chat
 			const apiKeyGroup = this.apiKeyInput.inputEl.closest('.llmsider-form-group') as HTMLElement;
 			if (apiKeyGroup) {
-				apiKeyGroup.style.display = 'none';
+				const label = apiKeyGroup.querySelector('label');
+				if (label) {
+					label.textContent = this.i18n.t('ui.huggingChatApiKeyLabel');
+				}
+				this.apiKeyInput.setPlaceholder(this.i18n.t('ui.huggingChatApiKeyPlaceholder'));
 			}
 		} else {
 			// Show API key field for other types
@@ -265,7 +373,6 @@ export class ConnectionModal extends Modal {
 				this.apiVersionInput.setValue(this.existingConnection.apiVersion);
 			}
 		} else if (type === 'ollama') {
-			// Base URL (required for Ollama)
 			const baseUrlGroup = container.createDiv({ cls: 'llmsider-form-group' });
 			baseUrlGroup.createEl('label', { text: this.i18n.t('ui.ollamaServerUrl'), cls: 'llmsider-form-label' });
 			baseUrlGroup.createEl('p', { 
@@ -281,6 +388,44 @@ export class ConnectionModal extends Modal {
 			} else {
 				this.baseUrlInput.setValue('http://localhost:11434/v1');
 			}
+		} else if (type === 'opencode') {
+			const apiKeyGroup = this.apiKeyInput.inputEl.closest('.llmsider-form-group') as HTMLElement;
+			if (apiKeyGroup) {
+				apiKeyGroup.style.display = 'none';
+			}
+
+			const infoGroup = instructionsContainer.createDiv({ cls: 'llmsider-form-group' });
+			const infoBox = infoGroup.createDiv({ cls: 'llmsider-info-box' });
+			infoBox.style.padding = '12px';
+			infoBox.style.backgroundColor = 'var(--background-secondary)';
+			infoBox.style.borderRadius = '4px';
+			infoBox.style.marginTop = '8px';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.opencodeTitle'),
+				cls: 'llmsider-info-title'
+			}).style.fontWeight = 'bold';
+
+			infoBox.createEl('p', {
+				text: 'The OpenCode server will automatically start on http://127.0.0.1:4097',
+				cls: 'llmsider-form-note'
+			}).style.marginTop = '8px';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.opencodeDesc'),
+				cls: 'llmsider-form-note'
+			}).style.marginTop = '8px';
+
+			const requirementText = infoBox.createEl('p', {
+				cls: 'llmsider-form-note'
+			});
+			requirementText.style.cssText = 'margin-top: 12px; padding: 8px; background: var(--background-modifier-error-hover); border-left: 3px solid var(--text-error); border-radius: 3px;';
+			requirementText.innerHTML = '<strong>Requirement:</strong> OpenCode CLI must be installed<br/><code style="background: var(--code-background); padding: 2px 6px; border-radius: 3px; font-family: monospace;">npm install -g opencode</code>';
+
+			infoBox.createEl('p', {
+				text: 'The plugin will automatically manage the server lifecycle.',
+				cls: 'llmsider-form-note'
+			}).style.marginTop = '8px';
 		} else if (type === 'gemini') {
 			// Region (optional for Gemini)
 			const regionGroup = container.createDiv({ cls: 'llmsider-form-group' });
@@ -311,6 +456,240 @@ export class ConnectionModal extends Modal {
 			if (this.existingConnection && this.existingConnection.region) {
 				this.regionInput.setValue(this.existingConnection.region);
 			}
+		} else if (type === 'free-qwen') {
+			// Free Qwen - show info box explaining ticket requirement
+			const infoGroup = instructionsContainer.createDiv({ cls: 'llmsider-form-group' });
+			const infoBox = infoGroup.createDiv({ cls: 'llmsider-info-box' });
+			infoBox.style.padding = '12px';
+			infoBox.style.backgroundColor = 'var(--background-secondary)';
+			infoBox.style.borderRadius = '4px';
+			infoBox.style.marginTop = '8px';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenTitle'),
+				cls: 'llmsider-info-title'
+			}).style.fontWeight = 'bold';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenDesc'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenHowToGetToken'),
+				cls: 'llmsider-form-note'
+			}).style.fontWeight = 'bold';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenStep1'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenStep2'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenStep3'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenStep4'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenStep5'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenStep6'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeQwenNote'),
+				cls: 'llmsider-form-note'
+			}).style.fontStyle = 'italic';
+
+			// Update API key field label for Free Qwen
+			const apiKeyGroup = this.apiKeyInput.inputEl.closest('.llmsider-form-group') as HTMLElement;
+			if (apiKeyGroup) {
+				const label = apiKeyGroup.querySelector('label');
+				if (label) {
+					label.textContent = this.i18n.t('ui.freeQwenApiKeyLabel');
+				}
+				this.apiKeyInput.setPlaceholder(this.i18n.t('ui.freeQwenApiKeyPlaceholder'));
+			}
+		} else if (type === 'free-deepseek') {
+			// Free Deepseek - show info box explaining token requirement
+			const infoGroup = instructionsContainer.createDiv({ cls: 'llmsider-form-group' });
+			const infoBox = infoGroup.createDiv({ cls: 'llmsider-info-box' });
+			infoBox.style.padding = '12px';
+			infoBox.style.backgroundColor = 'var(--background-secondary)';
+			infoBox.style.borderRadius = '4px';
+			infoBox.style.marginTop = '8px';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekTitle'),
+				cls: 'llmsider-info-title'
+			}).style.fontWeight = 'bold';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekDesc'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekHowToGetToken'),
+				cls: 'llmsider-form-note'
+			}).style.fontWeight = 'bold';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekStep1'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekStep2'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekStep3'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekStep4'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekStep5'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekStep6'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeDeepSeekNote'),
+				cls: 'llmsider-form-note'
+			}).style.fontStyle = 'italic';
+
+			// Update API key field label for Free Deepseek
+			const apiKeyGroup = this.apiKeyInput.inputEl.closest('.llmsider-form-group') as HTMLElement;
+			if (apiKeyGroup) {
+				const label = apiKeyGroup.querySelector('label');
+				if (label) {
+					label.textContent = this.i18n.t('ui.freeDeepSeekApiKeyLabel');
+				}
+				this.apiKeyInput.setPlaceholder(this.i18n.t('ui.freeDeepSeekApiKeyPlaceholder'));
+			}
+		} else if (type === 'free-gemini') {
+			// Free Gemini - show info box explaining cookies requirement
+			const infoGroup = instructionsContainer.createDiv({ cls: 'llmsider-form-group' });
+			const infoBox = infoGroup.createDiv({ cls: 'llmsider-info-box' });
+			infoBox.style.padding = '12px';
+			infoBox.style.backgroundColor = 'var(--background-secondary)';
+			infoBox.style.borderRadius = '4px';
+			infoBox.style.marginTop = '8px';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiTitle'),
+				cls: 'llmsider-info-title'
+			}).style.fontWeight = 'bold';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiDesc'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiHowToGetCookies'),
+				cls: 'llmsider-form-note'
+			}).style.fontWeight = 'bold';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiStep1'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiStep2'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiStep3'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiStep4'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiStep5'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiStep6'),
+				cls: 'llmsider-form-note'
+			});
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.freeGeminiNote'),
+				cls: 'llmsider-form-note'
+			}).style.fontStyle = 'italic';
+
+			// Hide the default API key field
+			const apiKeyGroupGemini = this.apiKeyInput.inputEl.closest('.llmsider-form-group') as HTMLElement;
+			if (apiKeyGroupGemini) {
+				apiKeyGroupGemini.style.display = 'none';
+			}
+
+			// Add separate fields for __Secure-1PSID
+			const psidGroup = container.createDiv({ cls: 'llmsider-form-group' });
+			psidGroup.createEl('label', { text: '__Secure-1PSID:', cls: 'llmsider-form-label' });
+			this.geminiPSIDInput = new TextComponent(psidGroup);
+			this.geminiPSIDInput.setPlaceholder(this.i18n.t('ui.freeGeminiPSIDPlaceholder'));
+			this.geminiPSIDInput.inputEl.type = 'password';
+			this.geminiPSIDInput.inputEl.style.width = '100%';
+			this.geminiPSIDInput.inputEl.style.boxSizing = 'border-box';
+			
+			// Parse existing value if editing
+			if (this.existingConnection && this.existingConnection.apiKey) {
+				const parts = this.existingConnection.apiKey.split('|');
+				if (parts.length >= 1) {
+					this.geminiPSIDInput.setValue(parts[0]);
+				}
+			}
+
+			// Add separate fields for __Secure-1PSIDTS
+			const psidtsGroup = container.createDiv({ cls: 'llmsider-form-group' });
+			psidtsGroup.createEl('label', { text: '__Secure-1PSIDTS:', cls: 'llmsider-form-label' });
+			this.geminiPSIDTSInput = new TextComponent(psidtsGroup);
+			this.geminiPSIDTSInput.setPlaceholder(this.i18n.t('ui.freeGeminiPSIDTSPlaceholder'));
+			this.geminiPSIDTSInput.inputEl.type = 'password';
+			this.geminiPSIDTSInput.inputEl.style.width = '100%';
+			this.geminiPSIDTSInput.inputEl.style.boxSizing = 'border-box';
+			
+			// Parse existing value if editing
+			if (this.existingConnection && this.existingConnection.apiKey) {
+				const parts = this.existingConnection.apiKey.split('|');
+				if (parts.length >= 2) {
+					this.geminiPSIDTSInput.setValue(parts[1]);
+				}
+			}
 		} else if (type === 'openai-compatible') {
 			// Base URL (required for OpenAI-Compatible)
 			const baseUrlGroup = container.createDiv({ cls: 'llmsider-form-group' });
@@ -327,7 +706,7 @@ export class ConnectionModal extends Modal {
 				this.baseUrlInput.setValue(this.existingConnection.baseUrl);
 			}
 		}
-		// Anthropic and Groq don't need extra fields
+		// Anthropic, Groq, and X.AI don't need extra fields
 	}
 
 	private async authenticateGitHub(button: HTMLButtonElement, infoBox: HTMLElement) {
@@ -390,9 +769,9 @@ export class ConnectionModal extends Modal {
 			const user = await GitHubAuth.getGitHubUser(githubToken);
 
 			// Store tokens temporarily
-			(this as any)._tempGitHubToken = githubToken;
-			(this as any)._tempCopilotToken = copilotData.token;
-			(this as any)._tempTokenExpiry = copilotData.expires_at * 1000;
+			this._tempGitHubToken = githubToken;
+			this._tempCopilotToken = copilotData.token;
+			this._tempTokenExpiry = copilotData.expires_at * 1000;
 
 			// Update UI
 			statusEl.innerHTML = `${this.i18n.t('settingsPage.githubCopilotAuth.successfullyAuthenticated')} <strong>${user.login}</strong>`;
@@ -411,31 +790,166 @@ export class ConnectionModal extends Modal {
 		}
 	}
 
+	private renderProxySettings(container: HTMLElement, beforeInfoBox: boolean = false) {
+		// Remove existing proxy section if it exists
+		if (this.proxySection) {
+			this.proxySection.remove();
+		}
+		
+		// Proxy settings container
+		this.proxySection = container.createDiv({ cls: 'llmsider-proxy-settings' });
+		this.proxySection.style.marginTop = beforeInfoBox ? '0px' : '24px';
+		this.proxySection.style.marginBottom = beforeInfoBox ? '16px' : '0px';		// Enable proxy toggle - always visible
+		const proxyEnableGroup = this.proxySection.createDiv({ cls: 'llmsider-form-group' });
+		proxyEnableGroup.style.display = 'flex';
+		proxyEnableGroup.style.flexDirection = 'row';
+		proxyEnableGroup.style.alignItems = 'center';
+		proxyEnableGroup.style.justifyContent = 'flex-start';
+		proxyEnableGroup.style.gap = '8px';
+		
+		proxyEnableGroup.createEl('label', { text: this.i18n.t('ui.enableProxy') || 'Enable Proxy' });
+		this.proxyEnabledToggle = proxyEnableGroup.createEl('input', { type: 'checkbox' });
+		this.proxyEnabledToggle.checked = this.existingConnection?.proxyEnabled || false;
+
+		// Proxy details container - shown only when proxy is enabled
+		const proxyDetailsContainer = this.proxySection.createDiv({ cls: 'llmsider-proxy-details' });
+		proxyDetailsContainer.style.marginTop = '12px';
+
+		// Proxy type
+		const typeGroup = proxyDetailsContainer.createDiv({ cls: 'llmsider-form-group' });
+		typeGroup.createEl('label', { text: this.i18n.t('ui.proxyType') || 'Proxy Type', cls: 'llmsider-form-label' });
+		this.proxyTypeDropdown = new DropdownComponent(typeGroup);
+		this.proxyTypeDropdown.addOption('socks5', 'SOCKS5');
+		this.proxyTypeDropdown.addOption('http', 'HTTP');
+		this.proxyTypeDropdown.addOption('https', 'HTTPS');
+		this.proxyTypeDropdown.setValue(this.existingConnection?.proxyType || 'socks5');
+		this.proxyTypeDropdown.selectEl.style.width = '100%';
+
+		// Proxy host
+		const hostGroup = proxyDetailsContainer.createDiv({ cls: 'llmsider-form-group' });
+		hostGroup.createEl('label', { text: this.i18n.t('ui.proxyHost') || 'Proxy Host', cls: 'llmsider-form-label' });
+		this.proxyHostInput = new TextComponent(hostGroup);
+		this.proxyHostInput.setPlaceholder('127.0.0.1');
+		this.proxyHostInput.inputEl.style.width = '100%';
+		if (this.existingConnection?.proxyHost) {
+			this.proxyHostInput.setValue(this.existingConnection.proxyHost);
+		}
+
+		// Proxy port
+		const portGroup = proxyDetailsContainer.createDiv({ cls: 'llmsider-form-group' });
+		portGroup.createEl('label', { text: this.i18n.t('ui.proxyPort') || 'Proxy Port', cls: 'llmsider-form-label' });
+		this.proxyPortInput = new TextComponent(portGroup);
+		this.proxyPortInput.setPlaceholder('1080');
+		this.proxyPortInput.inputEl.style.width = '100%';
+		this.proxyPortInput.inputEl.type = 'number';
+		if (this.existingConnection?.proxyPort) {
+			this.proxyPortInput.setValue(String(this.existingConnection.proxyPort));
+		}
+
+		// Proxy authentication toggle
+		const authGroup = proxyDetailsContainer.createDiv({ cls: 'llmsider-form-group' });
+		authGroup.style.display = 'flex';
+		authGroup.style.alignItems = 'center';
+		authGroup.style.gap = '8px';
+		authGroup.style.marginTop = '12px';
+		
+		this.proxyAuthToggle = authGroup.createEl('input', { type: 'checkbox' });
+		this.proxyAuthToggle.checked = this.existingConnection?.proxyAuth || false;
+		authGroup.createEl('label', { text: this.i18n.t('ui.proxyRequiresAuth') || 'Proxy requires authentication' });
+
+		// Auth details container
+		const authDetailsContainer = proxyDetailsContainer.createDiv({ cls: 'llmsider-proxy-auth-details' });
+		authDetailsContainer.style.marginTop = '12px';
+
+		// Username
+		const usernameGroup = authDetailsContainer.createDiv({ cls: 'llmsider-form-group' });
+		usernameGroup.createEl('label', { text: this.i18n.t('ui.proxyUsername') || 'Username', cls: 'llmsider-form-label' });
+		this.proxyUsernameInput = new TextComponent(usernameGroup);
+		this.proxyUsernameInput.inputEl.style.width = '100%';
+		if (this.existingConnection?.proxyUsername) {
+			this.proxyUsernameInput.setValue(this.existingConnection.proxyUsername);
+		}
+
+		// Password
+		const passwordGroup = authDetailsContainer.createDiv({ cls: 'llmsider-form-group' });
+		passwordGroup.createEl('label', { text: this.i18n.t('ui.proxyPassword') || 'Password', cls: 'llmsider-form-label' });
+		this.proxyPasswordInput = new TextComponent(passwordGroup);
+		this.proxyPasswordInput.inputEl.type = 'password';
+		this.proxyPasswordInput.inputEl.style.width = '100%';
+		if (this.existingConnection?.proxyPassword) {
+			this.proxyPasswordInput.setValue(this.existingConnection.proxyPassword);
+		}
+
+		// Toggle visibility logic
+		const updateProxyDetailsVisibility = () => {
+			proxyDetailsContainer.style.display = this.proxyEnabledToggle!.checked ? 'block' : 'none';
+		};
+
+		const updateAuthDetailsVisibility = () => {
+			authDetailsContainer.style.display = this.proxyAuthToggle!.checked ? 'block' : 'none';
+		};
+
+		this.proxyEnabledToggle.addEventListener('change', updateProxyDetailsVisibility);
+		this.proxyAuthToggle.addEventListener('change', updateAuthDetailsVisibility);
+
+		updateProxyDetailsVisibility();
+		updateAuthDetailsVisibility();
+	}
+
 	private async handleSave() {
 		try {
-			const type = this.typeDropdown.getValue() as 'openai' | 'anthropic' | 'qwen' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'huggingface' | 'github-copilot';
-			const name = this.nameInput.getValue().trim();
-			const apiKey = (type === 'huggingface' || type === 'github-copilot') ? '' : this.apiKeyInput.getValue().trim();
-
+		const type = this.typeDropdown.getValue() as 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'hugging-chat' | 'github-copilot' | 'opencode' | 'openrouter';
+		const name = this.nameInput.getValue().trim();
+		let apiKey = (type === 'github-copilot' || type === 'opencode') ? '' : this.apiKeyInput.getValue().trim();
+			
+			// For Free Gemini, combine the two cookie fields
+			if (type === 'free-gemini') {
+				const psid = this.geminiPSIDInput?.getValue().trim() || '';
+				const psidts = this.geminiPSIDTSInput?.getValue().trim() || '';
+				
+				if (!psid || !psidts) {
+					new Notice(this.i18n.t('ui.bothCookiesRequired'));
+					if (!psid) {
+						this.geminiPSIDInput?.inputEl.focus();
+					} else {
+						this.geminiPSIDTSInput?.inputEl.focus();
+					}
+					this.restoreSaveButton();
+					return;
+				}
+				
+				// Combine with | separator
+				apiKey = `${psid}|${psidts}`;
+			}
+			
+			Logger.debug('[ConnectionModal] Saving connection:', { name, type, hasApiKey: !!apiKey });
+			
 			// Validation
 			if (!name) {
 				new Notice(this.i18n.t('ui.connectionNameRequired'));
 				this.nameInput.inputEl.focus();
+				this.restoreSaveButton();
+				return;
+			}
+			
+			if (!type) {
+				Logger.error('[ConnectionModal] Type is empty!', { dropdownValue: this.typeDropdown.getValue() });
+				new Notice(this.i18n.t('ui.connectionTypeRequired'));
+				this.restoreSaveButton();
 				return;
 			}
 
-			// API key not required for Hugging Face and GitHub Copilot
-			if (type !== 'huggingface' && type !== 'github-copilot' && !apiKey) {
-				new Notice(this.i18n.t('ui.apiKeyRequired'));
-				this.apiKeyInput.inputEl.focus();
-				return;
-			}
-
-			// GitHub Copilot specific validation
+		if (type !== 'github-copilot' && type !== 'ollama' && type !== 'opencode' && !apiKey) {
+			new Notice(this.i18n.t('ui.apiKeyRequired'));
+			this.apiKeyInput.inputEl.focus();
+			this.restoreSaveButton();
+			return;
+		}			// GitHub Copilot specific validation
 			if (type === 'github-copilot') {
-				const tempGitHubToken = (this as any)._tempGitHubToken;
+				const tempGitHubToken = this._tempGitHubToken;
 				if (!tempGitHubToken && !this.existingConnection?.githubToken) {
 					new Notice(this.i18n.t('settingsPage.githubCopilotAuth.pleaseAuthenticateFirst'));
+					this.restoreSaveButton();
 					return;
 				}
 			}
@@ -455,29 +969,41 @@ export class ConnectionModal extends Modal {
 				if (!baseUrl) {
 					new Notice(this.i18n.t('ui.azureEndpointRequired'));
 					this.baseUrlInput?.inputEl.focus();
+					this.restoreSaveButton();
 					return;
 				}
 				if (!deploymentName) {
 					new Notice(this.i18n.t('ui.deploymentNameRequired'));
 					this.deploymentNameInput?.inputEl.focus();
+					this.restoreSaveButton();
 					return;
 				}
-			} else if (type === 'ollama' || type === 'openai-compatible') {
-				baseUrl = this.baseUrlInput?.getValue().trim();
-				if (!baseUrl) {
-					const typeLabel = type === 'ollama' ? 'Ollama' : 'OpenAI-Compatible';
-					new Notice(this.i18n.t('ui.baseUrlRequired', { type: typeLabel }));
-					this.baseUrlInput?.inputEl.focus();
-					return;
-				}
-			} else if (type === 'openai') {
+		} else if (type === 'ollama' || type === 'openai-compatible') {
+			baseUrl = this.baseUrlInput?.getValue().trim();
+			if (!baseUrl) {
+				const typeLabel = type === 'ollama' ? 'Ollama' : 'OpenAI-Compatible';
+				new Notice(this.i18n.t('ui.baseUrlRequired', { type: typeLabel }));
+				this.baseUrlInput?.inputEl.focus();
+				this.restoreSaveButton();
+				return;
+			}
+		} else if (type === 'openai') {
 				organizationId = this.organizationIdInput?.getValue().trim() || undefined;
-			} else if (type === 'gemini' || type === 'qwen') {
+			} else if (type === 'gemini' || type === 'qwen' || type === 'free-qwen' || type === 'free-deepseek' || type === 'free-gemini') {
 				region = this.regionInput?.getValue().trim() || undefined;
 			}
 
+			// Proxy configuration
+			const proxyEnabled = this.proxyEnabledToggle?.checked || false;
+			const proxyType = this.proxyTypeDropdown?.getValue() as 'socks5' | 'http' | 'https' | undefined;
+			const proxyHost = this.proxyHostInput?.getValue().trim();
+			const proxyPort = this.proxyPortInput?.getValue().trim() ? parseInt(this.proxyPortInput.getValue().trim()) : undefined;
+			const proxyAuth = this.proxyAuthToggle?.checked || false;
+			const proxyUsername = this.proxyUsernameInput?.getValue().trim();
+			const proxyPassword = this.proxyPasswordInput?.getValue().trim();
+
 			const connection: LLMConnection = {
-				id: this.existingConnection?.id || `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+				id: this.existingConnection?.id || `conn-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
 				name,
 				type,
 				apiKey,
@@ -487,9 +1013,17 @@ export class ConnectionModal extends Modal {
 				deploymentName,
 				apiVersion,
 				// GitHub Copilot specific fields
-				githubToken: type === 'github-copilot' ? ((this as any)._tempGitHubToken || this.existingConnection?.githubToken) : undefined,
-				copilotToken: type === 'github-copilot' ? ((this as any)._tempCopilotToken || this.existingConnection?.copilotToken) : undefined,
-				tokenExpiry: type === 'github-copilot' ? ((this as any)._tempTokenExpiry || this.existingConnection?.tokenExpiry) : undefined,
+				githubToken: type === 'github-copilot' ? (this._tempGitHubToken || this.existingConnection?.githubToken) : undefined,
+				copilotToken: type === 'github-copilot' ? (this._tempCopilotToken || this.existingConnection?.copilotToken) : undefined,
+				tokenExpiry: type === 'github-copilot' ? (this._tempTokenExpiry || this.existingConnection?.tokenExpiry) : undefined,
+				// Proxy configuration
+				proxyEnabled,
+				proxyType: proxyEnabled ? proxyType : undefined,
+				proxyHost: proxyEnabled ? proxyHost : undefined,
+				proxyPort: proxyEnabled ? proxyPort : undefined,
+				proxyAuth: proxyEnabled ? proxyAuth : undefined,
+				proxyUsername: proxyEnabled && proxyAuth ? proxyUsername : undefined,
+				proxyPassword: proxyEnabled && proxyAuth ? proxyPassword : undefined,
 				enabled: this.existingConnection?.enabled ?? true,
 				created: this.existingConnection?.created || Date.now(),
 				updated: Date.now()
@@ -510,6 +1044,17 @@ export class ConnectionModal extends Modal {
 		} catch (error) {
 			Logger.error('Error saving connection:', error);
 			new Notice(this.i18n.t('ui.failedToSaveConnection'));
+			this.restoreSaveButton();
+		}
+	}
+
+	/**
+	 * Restore save button to enabled state
+	 */
+	private restoreSaveButton() {
+		if (this.saveButton) {
+			this.saveButton.disabled = false;
+			this.saveButton.textContent = this.i18n.t('ui.save');
 		}
 	}
 

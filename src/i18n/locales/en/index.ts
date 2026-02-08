@@ -3,28 +3,29 @@
  * Import and merge translations from submodules
  */
 
-import { enBase } from './base';
-import { enBuiltInPrompts } from './built-in-prompts';
-import { enCommon } from './common';
-import { enErrors } from './errors';
-import { enMCP } from './mcp';
-import { enStatus } from './status';
-import { enSuccess } from './success';
-import { enUI } from './ui';
-import { enSettings } from './settings';
-import { enTools } from './tools';
-import { enPlanExecute } from './plan-execute';
-import { 
-  enParameterNames, 
-  enToolCallPrompter, 
-  enAutocomplete, 
+import { enBase } from "./base";
+import { enBuiltInPrompts } from "./built-in-prompts";
+import { enCommon } from "./common";
+import { enErrors } from "./errors";
+import { enMCP } from "./mcp";
+import { enStatus } from "./status";
+import { enSuccess } from "./success";
+import { enUI } from "./ui";
+import { enSettings } from "./settings";
+import { enTools } from "./tools";
+import { enPlanExecute } from "./plan-execute";
+import {
+  enParameterNames,
+  enToolCallPrompter,
+  enAutocomplete,
   enQuickChat,
+  enAutoSummarize,
   enSelectionPopup,
   enCommands,
   enQuickChatUI,
   enMermaid,
-  enVectorDatabase
-} from './misc';
+  enVectorDatabase,
+} from "./misc";
 
 export const en = {
   // Base translations
@@ -32,6 +33,9 @@ export const en = {
 
   // Settings page (from settings.ts)
   settingsPage: enSettings.settingsPage,
+
+  // ChatView
+  chatView: enUI.chatView,
 
   // Plan-Execute framework (from plan-execute.ts)
   planExecute: enPlanExecute.planExecute,
@@ -66,6 +70,9 @@ export const en = {
   // Quick Chat
   quickChat: enQuickChat,
 
+  // Auto-Summarize
+  autoSummarize: enAutoSummarize,
+
   // Selection popup
   selectionPopup: enSelectionPopup,
 
@@ -88,5 +95,5 @@ export const en = {
   status: enStatus,
 
   // Notification messages (exported at top level for direct access)
-  notifications: enSettings.notifications
+  notifications: enSettings.notifications,
 };

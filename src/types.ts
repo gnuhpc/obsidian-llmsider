@@ -1,5 +1,7 @@
 // Core type definitions for LLMSider plugin
 
+import type { ToolCategory } from './types/tool-categories';
+
 // ============================================================================
 // LLM Provider Interfaces (New Architecture: Connection + Model)
 // ============================================================================
@@ -11,8 +13,8 @@
 export interface LLMConnection {
   id: string;                 // Unique identifier
   name: string;               // Display name
-  type: 'openai' | 'anthropic' | 'qwen' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'huggingface' | 'local' | 'github-copilot';
-  apiKey: string;             // API key (not required for huggingface, github-copilot)
+  type: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'local' | 'github-copilot' | 'hugging-chat' | 'openrouter' | 'opencode';
+  apiKey: string;             // API key (not required for github-copilot) - For hugging-chat, this is the hf-chat cookie value or base64 encoded username=xxx&password=xxx; For free-gemini, this is __Secure-1PSID and __Secure-1PSIDTS separated by |
   baseUrl?: string;           // Base URL (required for openai-compatible, ollama)
   organizationId?: string;    // Organization ID (OpenAI)
   region?: string;            // Region (Azure OpenAI, Qwen)
@@ -22,6 +24,14 @@ export interface LLMConnection {
   githubToken?: string;       // GitHub access token (for github-copilot)
   copilotToken?: string;      // Copilot API token (obtained from GitHub token)
   tokenExpiry?: number;       // Token expiry timestamp
+  // Proxy configuration
+  proxyEnabled?: boolean;     // Whether to use proxy for this connection
+  proxyType?: 'socks5' | 'http' | 'https'; // Proxy type
+  proxyHost?: string;         // Proxy host (e.g., 127.0.0.1)
+  proxyPort?: number;         // Proxy port (e.g., 1080)
+  proxyAuth?: boolean;        // Whether proxy requires authentication
+  proxyUsername?: string;     // Proxy username (if auth required)
+  proxyPassword?: string;     // Proxy password (if auth required)
   enabled: boolean;           // Whether this connection is enabled
   created: number;            // Creation timestamp
   updated: number;            // Last update timestamp
@@ -41,6 +51,7 @@ export interface LLMModel {
   topP?: number;              // Top P sampling
   enabled: boolean;           // Whether this model is enabled
   supportsVision?: boolean;   // Vision support (for compatible providers)
+  outputModalities?: string[]; // Output modalities (e.g., ['text', 'image'] for image generation)
   isEmbedding?: boolean;      // Whether this is an embedding model
   embeddingDimension?: number; // Embedding dimension (only for embedding models)
   isDefault?: boolean;        // Whether this is the default model for the connection
@@ -63,6 +74,7 @@ export interface LLMProvider {
   temperature?: number;
   topP?: number;
   enabled: boolean;
+  supportsVision?: boolean; // Manual override for vision support
 }
 
 export interface OpenAIProvider extends LLMProvider {
@@ -87,6 +99,24 @@ export interface QwenProvider extends LLMProvider {
   region?: string; // Alibaba Cloud region
 }
 
+export interface FreeQwenProvider extends LLMProvider {
+  name: 'free-qwen';
+  // apiKey here is actually tongyi_sso_ticket or login_aliyunid_ticket
+}
+
+export interface FreeGeminiProvider extends LLMProvider {
+  name: 'free-gemini';
+  // apiKey here is actually __Secure-1PSID|__Secure-1PSIDTS (separated by |)
+  // Proxy configuration
+  proxyEnabled?: boolean;
+  proxyType?: 'socks5' | 'http' | 'https';
+  proxyHost?: string;
+  proxyPort?: number;
+  proxyAuth?: boolean;
+  proxyUsername?: string;
+  proxyPassword?: string;
+}
+
 export interface AzureOpenAIProvider extends LLMProvider {
   name: 'azure-openai';
   baseUrl: string; // Required: Azure endpoint URL
@@ -109,13 +139,18 @@ export interface GroqProvider extends LLMProvider {
   baseUrl?: string; // Optional: Custom endpoint
 }
 
-export type ProviderType = OpenAIProvider | AnthropicProvider | OpenAICompatibleProvider | QwenProvider | AzureOpenAIProvider | OllamaProvider | GeminiProvider | GroqProvider;
+export interface XAIProvider extends LLMProvider {
+  name: 'xai';
+  baseUrl?: string; // Optional: Custom endpoint
+}
+
+export type ProviderType = OpenAIProvider | AnthropicProvider | OpenAICompatibleProvider | QwenProvider | FreeQwenProvider | FreeGeminiProvider | AzureOpenAIProvider | OllamaProvider | GeminiProvider | GroqProvider | XAIProvider;
 
 // ============================================================================
 // Chat & Message Interfaces
 // ============================================================================
 
-export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 
 // Content types for multimodal support
 export interface TextContent {
@@ -138,25 +173,25 @@ export interface ToolCallExecution {
   id: string;
   toolName: string;
   server?: string;
-  parameters: any;
-  result?: any;
-  error?: any;
+  parameters: unknown;
+  result?: unknown;
+  error?: unknown;
   status: 'pending' | 'running' | 'completed' | 'failed';
   timestamp: number;
   executionTime?: number; // milliseconds
   // Enhanced logging for tool execution indicators
   requestData?: {
     method: string;
-    params: any;
+    params: unknown;
     timestamp: number;
     source: 'user' | 'system' | 'auto'; // Request source
   };
   responseData?: {
-    result: any;
-    error?: any;
+    result: unknown;
+    error?: unknown;
     timestamp: number;
     statusCode?: number;
-    metadata?: any;
+    metadata?: unknown;
   };
   // UI display information
   displayStatus?: 'detecting' | 'executing' | 'completed' | 'failed';
@@ -170,18 +205,18 @@ export interface ToolCallRecord {
   server?: string;
   request: {
     method: string;
-    parameters: any;
+    parameters: unknown;
     timestamp: number;
     messageId?: string; // Associated chat message ID
     source: 'user' | 'system' | 'auto';
   };
   response?: {
-    result: any;
-    error?: any;
+    result: unknown;
+    error?: unknown;
     timestamp: number;
     executionTime: number;
     statusCode?: number;
-    metadata?: any;
+    metadata?: unknown;
   };
   status: 'pending' | 'running' | 'completed' | 'failed';
   displayData?: {
@@ -223,15 +258,15 @@ export interface ChatMessage {
     unifiedDiff?: string; // Generated unified diff text
     hasEnhancedDiff?: boolean; // For enhanced diff rendering
     hasJSDiff?: boolean; // For JSDiff rendering using jsdiff library
-    diffResult?: any; // Enhanced diff result object
+    diffResult?: unknown; // Enhanced diff result object
     hasMultipleReferences?: boolean; // Whether multiple file references are present (disables diff/apply)
     // MCP-related metadata
     mcpTool?: string; // Name of MCP tool associated with this message
     mcpServer?: string; // MCP server that provided the tool
     mcpResourceUri?: string; // URI of MCP resource referenced
     toolStatus?: string; // Status of MCP tool execution
-    toolResult?: any; // Result of MCP tool execution
-    toolError?: any; // Error from MCP tool execution
+    toolResult?: unknown; // Result of MCP tool execution
+    toolError?: unknown; // Error from MCP tool execution
     mcpError?: boolean; // Whether this is an MCP error message
     errorType?: string; // Type of error that occurred
     errorCategory?: string; // Category of error (network, permission, parameter, etc.)
@@ -244,6 +279,8 @@ export interface ChatMessage {
     isSystemResponse?: boolean; // Whether this is a system response message
     followsToolExecution?: boolean; // Whether this follows tool execution
     originalAssistantMessageId?: string; // Original assistant message ID
+    // Generated images metadata (for image generation models)
+    generatedImages?: GeneratedImage[]; // Images generated by the assistant
     // Tool execution display metadata
     isToolDetection?: boolean; // Whether this is a tool detection message
     toolNames?: string[]; // Names of tools detected
@@ -254,10 +291,15 @@ export interface ChatMessage {
     totalCount?: number; // Total number of tools to execute
     isToolExecutionResult?: boolean; // Whether this is a tool execution result message
     toolName?: string; // Name of the tool for execution messages
+    parameters?: Record<string, any>; // Parameters passed to tool (for tool result messages)
     resultMessage?: string; // Result message for tool execution
     // Plan-Execute framework metadata
     phase?: 'plan' | 'thought' | 'action' | 'observation' | 'final_answer' | 'system_reminder'; // Plan-Execute phase
     error?: string; // Error message for failed phases
+    // Additional tool-related metadata
+    isFollowUpMessage?: boolean; // Whether this is a follow-up message after tool execution
+    toolCalls?: unknown[]; // Tool calls array for Mastra Memory storage
+    isSuccess?: boolean; // Whether tool execution was successful
     isSystemMessage?: boolean; // Whether this is a system-generated message
     attachments?: {
       filename: string;
@@ -268,7 +310,8 @@ export interface ChatMessage {
     planExecuteState?: PlanExecuteState;
     isPlanExecuteMode?: boolean;
     planExecutePhases?: PlanExecutePhase[];
-    planTasks?: any[]; // Saved plan tasks for reload reconstruction
+    planTasks?: unknown[]; // Saved plan tasks for reload reconstruction
+    executionMode?: 'sequential' | 'dag'; // Execution mode for plan-execute framework
     // Guided mode metadata
     isGuidedQuestion?: boolean; // Whether this is a guided mode question from AI
     guidedOptions?: string[]; // Available options for user to choose
@@ -276,9 +319,11 @@ export interface ChatMessage {
     guidedStepNumber?: number; // Current step number in guided flow
     guidedContext?: string; // Context/state for current guided conversation
     // Guided mode tool support
-    suggestedToolCalls?: any[]; // Tools suggested by AI in guided mode
+    suggestedToolCalls?: unknown[]; // Tools suggested by AI in guided mode
     requiresToolConfirmation?: boolean; // Whether user needs to confirm tool execution
     toolExecutionApproved?: boolean; // Whether user approved the tool execution
+    isPreToolExplanation?: boolean; // Whether this is explanation text before tool execution
+    toolsToExecute?: string[]; // Names of tools that will be executed after this explanation
     // Error handling
     hasError?: boolean; // Whether this message contains an error
     // Internal messages (not displayed in UI)
@@ -294,6 +339,7 @@ export interface ChatSession {
   updated: number;
   provider: string;
   mode: 'ask' | 'action';
+  conversationMode?: ConversationMode; // Save conversation mode (normal/guided/agent) for this session
 }
 
 // ============================================================================
@@ -306,8 +352,8 @@ export interface PlanExecutePhase {
   timestamp: number;
   metadata?: {
     toolName?: string;
-    toolArgs?: any;
-    toolResult?: any;
+    toolArgs?: unknown;
+    toolResult?: unknown;
     error?: string;
     index?: number;
   };
@@ -327,8 +373,8 @@ export interface PlanExecuteIndicatorState {
   phase: 'plan' | 'thought' | 'action_intent' | 'action_executing' | 'observation' | 'final_answer';
   content?: string;
   toolName?: string;
-  toolArgs?: any;
-  result?: any;
+  toolArgs?: unknown;
+  result?: unknown;
   error?: string;
   progress?: { current: number; total: number };
 }
@@ -360,6 +406,8 @@ export interface PromptTemplate {
   order: number;
   lastUsed?: number; // Optional timestamp of last usage
   searchKeywords?: string[]; // For cross-language search (optional)
+  usageCount?: number; // Number of times the prompt has been used
+  pinned?: boolean; // Whether the prompt is pinned
 }
 
 // ============================================================================
@@ -398,21 +446,23 @@ export interface MCPServerRuntime extends MCPServerConfig {
 export interface MCPTool {
   name: string;
   description?: string;
-  inputSchema: any;
+  inputSchema: unknown;
   server: string; // Server ID that provides this tool
   enabled?: boolean; // Whether this tool is enabled for use
 }
 
 // Built-in tools interface
 export interface BuiltInTool {
+  id?: string; // Optional identifier (defaults to name if not provided)
   name: string;
   description: string;
   inputSchema: {
     type: 'object';
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required: string[];
   };
-  category: 'file-management' | 'file-system' | 'utility' | 'web-content';
+  outputSchema?: unknown; // JSON Schema for output, following same format as MCP tools
+  category: ToolCategory;
   enabled?: boolean; // Whether this tool is enabled for use
 }
 
@@ -443,29 +493,29 @@ export interface MCPRequest {
   jsonrpc: '2.0';
   id: string | number;
   method: string;
-  params?: any;
+  params?: unknown;
 }
 
 export interface MCPResponse {
   jsonrpc: '2.0';
   id: string | number;
-  result?: any;
+  result?: unknown;
   error?: {
     code: number;
     message: string;
-    data?: any;
+    data?: unknown;
   };
 }
 
 export interface MCPNotification {
   jsonrpc: '2.0';
   method: string;
-  params?: any;
+  params?: unknown;
 }
 
 export interface MCPError extends Error {
   code?: number;
-  data?: any;
+  data?: unknown;
 }
 
 export interface ConnectionOptions {
@@ -535,6 +585,7 @@ export interface LLMSiderSettings {
   };
 
   // Built-in tools permissions
+  // @deprecated - Now managed directly in database (tool_settings table), kept for backward compatibility
   builtInToolsPermissions: Record<string, boolean>; // tool name -> enabled (default all true)
   
   // Tool auto-execution settings (for both built-in and MCP tools)
@@ -545,7 +596,8 @@ export interface LLMSiderSettings {
   // Autocomplete settings
   autocomplete: {
     enabled: boolean; // Global toggle for autocomplete
-    granularity: 'word' | 'phrase' | 'short-sentence' | 'long-sentence'; // Completion length
+    modelId?: string; // Specific model ID for autocompletion (if not set, use default model)
+    granularity: 'phrase' | 'short-sentence' | 'long-sentence'; // Completion length
     tone: string; // Writing tone (formal, casual, professional, friendly)
     domain: string; // Domain/field for context (technical, academic, creative, general)
     triggerDelay: number; // Delay before triggering completion (ms)
@@ -556,9 +608,8 @@ export interface LLMSiderSettings {
   inlineQuickChat: {
     enabled: boolean; // Global toggle for quick chat
     triggerKey: string; // Keyboard shortcut to trigger (default: 'Ctrl+/')
-    showOnSelection: boolean; // Automatically show when text is selected
+    showOnSelection: boolean; // Automatically show Quick Chat button when text is selected
     enableDiffPreview: boolean; // Show inline diff for replacements
-    showQuickChatButton: boolean; // Show Quick Chat button when text is selected
   };
 
   // Selection Popup settings
@@ -575,10 +626,29 @@ export interface LLMSiderSettings {
     tavilyApiKey?: string; // Tavily API key
   };
 
+  // Memory System settings
+  memorySettings: {
+    enableWorkingMemory: boolean; // Enable working memory (user preferences, personal info)
+    workingMemoryScope: 'resource' | 'thread'; // Working memory scope: resource (global) or thread (per session)
+    enableConversationHistory: boolean; // Enable conversation history for context continuity
+    conversationHistoryLimit: number; // Maximum number of conversation messages to retain (default: 10)
+    // Conversation Compaction Settings
+    enableCompaction: boolean; // Enable intelligent conversation history compaction
+    compactionThreshold: number; // Token threshold to trigger compaction (default: 65536)
+    compactionTarget: number; // Target token count after compaction (default: 4000)
+    compactionPreserveCount: number; // Number of recent messages to preserve unmodified (default: 4)
+    compactionModel: string; // Model to use for summarization - format: connectionId::modelId
+    enableSemanticRecall: boolean; // Enable semantic recall based on vector similarity
+    semanticRecallLimit: number; // Maximum number of similar conversations to return (default: 5)
+    embeddingModelId: string; // Embedding model ID for semantic recall - format: connectionId::modelId (required when semantic recall is enabled)
+  };
+
   // Vector Database settings
   vectorSettings: {
     enabled: boolean; // Whether to load vector database on startup (search enhancement)
     showSimilarNotes: boolean; // Whether to show similar notes at the bottom of notes
+    similarNotesCollapsed: boolean; // Whether similar notes section is collapsed by default
+    similarNotesHideByDefault: boolean; // Whether to hide similar notes by default until hover
     autoSearchEnabled: boolean; // Whether to automatically search local notes during chat
     suggestRelatedFiles: boolean; // Whether to suggest related files when adding context
     suggestionTimeout: number; // Timeout in milliseconds before suggested file disappears (default: 5000)
@@ -589,13 +659,16 @@ export interface LLMSiderSettings {
     chunkOverlap: number; // Chunk overlap in characters (for character strategy)
     topK: number; // Number of results to return in searches
     embeddingModelId: string; // Embedding model ID - format: connectionId::modelId (remote API only)
+    contextExcerptLength: number; // Maximum length of context excerpts sent to LLM (default: 500 characters, 0 = send full content)
   };
 
   // Advanced settings
   debugMode: boolean;
   enableDiffRenderingInActionMode: boolean; // Toggle for diff rendering in action mode messages
   enableDebugLogging: boolean; // Enable debug logging to console for troubleshooting
-  requireConfirmationForTools: boolean; // Ask user before executing MCP tools and built-in tools
+  maxBuiltInToolsSelection: number; // Maximum number of built-in tools that can be enabled (default: 64)
+  maxMCPToolsSelection: number; // Maximum number of MCP tools that can be enabled (default: 64)
+  planExecutionMode: 'sequential' | 'dag'; // Plan execution mode: sequential (default) or dag (parallel)
 }
 
 // ============================================================================
@@ -606,7 +679,7 @@ export interface LLMError {
   code: string;
   message: string;
   provider?: string;
-  details?: any;
+  details?: unknown;
   retryable: boolean;
   timestamp: number;
 }
@@ -653,37 +726,28 @@ export interface ToolCallResult {
   isError?: boolean;
 }
 
+export interface GeneratedImage {
+	type: 'image_url';
+	image_url: {
+		url: string; // Base64 data URL
+	};
+}
+
 export interface LLMResponse {
-  content: string;
-  model: string;
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-  finishReason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error';
-  metadata?: Record<string, any>;
-  toolCalls?: ToolCall[];
-}
+	content: string;
+	model: string;
+	usage: {
+		promptTokens: number;
+		completionTokens: number;
+		totalTokens: number;
+	};
+	finishReason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error';
+	metadata?: Record<string, unknown>;
+	toolCalls?: ToolCall[];
+	images?: GeneratedImage[]; // Generated images for image generation models
 
-export interface StreamingResponse {
-  delta: string;
-  isComplete: boolean;
-  usage?: LLMResponse['usage'];
-  toolCalls?: ToolCall[]; // Tool calls in streaming response
-  metadata?: {
-    warning?: string;
-    message?: string;
-    [key: string]: any;
-  };
-}
-
-// ============================================================================
-// Plugin State Interfaces
-// ============================================================================
-
-export interface PluginState {
   isLoaded: boolean;
+  isLoadingSession?: boolean;
   activeView?: string;
   currentSession?: string;
   providerStatuses: Record<string, ProviderStatus>;
@@ -740,9 +804,8 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
   inlineQuickChat: {
     enabled: false, // Default disabled for first-time installation
     triggerKey: 'Mod+/',
-    showOnSelection: false,
+    showOnSelection: false, // Auto-enabled when Quick Chat is enabled
     enableDiffPreview: true, // Default enabled for diff preview
-    showQuickChatButton: false // Default disabled for button
   },
   selectionPopup: {
     showAddToContext: true // Show "Add to Context" button by default
@@ -754,24 +817,44 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
     serpapiKey: '',
     tavilyApiKey: ''
   },
+  memorySettings: {
+    enableWorkingMemory: true, // Enable working memory by default
+    workingMemoryScope: 'resource', // Default to resource level (global)
+    enableConversationHistory: true, // Enable conversation history by default
+    conversationHistoryLimit: 10, // Keep last 10 messages
+    // Conversation Compaction defaults
+    enableCompaction: true, // Enable compaction by default
+    compactionThreshold: 65536, // Trigger compaction when conversation exceeds 65536 tokens
+    compactionTarget: 4000, // Compress to ~4000 tokens
+    compactionPreserveCount: 4, // Keep 4 most recent messages unmodified
+    compactionModel: '', // Empty = use default model from first available connection
+    enableSemanticRecall: false, // Disabled by default (requires vector DB)
+    semanticRecallLimit: 5, // Return top 5 similar conversations
+    embeddingModelId: '', // Empty = use same model as vector DB, or specify connectionId::modelId
+  },
   vectorSettings: {
     enabled: false, // Default disabled - whether to load vector DB on startup
     showSimilarNotes: true, // Show similar notes by default when vector DB is enabled
+    similarNotesCollapsed: false, // Default expanded - similar notes section starts expanded
+    similarNotesHideByDefault: false, // Default visible - don't hide until hover
     autoSearchEnabled: false, // Default disabled - whether to auto-search during chat
     suggestRelatedFiles: false, // Default disabled - suggest related files when adding context
     suggestionTimeout: 5000, // Default 5 seconds before suggestion disappears
-    storagePath: '.obsidian/plugins/obsidian-llmsider/vector-data',
+    storagePath: 'plugins/obsidian-llmsider/vector-data', // Will be prefixed with vault.configDir
     indexName: 'vault-semantic-index',
     chunkingStrategy: 'semantic', // Default to semantic chunking
     chunkSize: 1000,
     chunkOverlap: 100,
     topK: 5,
-    embeddingModelId: '' // User must select from Connection-Model (remote API only)
+    embeddingModelId: '', // User must select from Connection-Model (remote API only)
+    contextExcerptLength: 500 // Default 500 characters per excerpt
   },
   debugMode: false,
   enableDiffRenderingInActionMode: false, // Default to disabled
   enableDebugLogging: false, // Default to disabled - enable debug logging for troubleshooting
-  requireConfirmationForTools: true, // Default to true - require confirmation before executing tools
+  maxBuiltInToolsSelection: 64, // Maximum number of built-in tools that can be enabled
+  maxMCPToolsSelection: 64, // Maximum number of MCP tools that can be enabled
+  planExecutionMode: 'sequential', // Default to sequential execution mode
 };
 
 // ============================================================================

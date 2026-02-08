@@ -17,9 +17,9 @@ export class ChunkMetaStore {
   private metaFilePath: string;
   private isDirty: boolean = false;
 
-  constructor(vault: Vault, metaFilePath: string = '.obsidian/vector-meta.json') {
+  constructor(vault: Vault, metaFilePath?: string) {
     this.vault = vault;
-    this.metaFilePath = metaFilePath;
+    this.metaFilePath = metaFilePath || `${vault.configDir}/vector-meta.json`;
   }
 
   /**
@@ -69,8 +69,15 @@ export class ChunkMetaStore {
       }
 
       // Convert Map to object for JSON serialization
-      const data = Object.fromEntries(this.metaStore);
-      const content = JSON.stringify(data, null, 2);
+      // Remove content field to save disk space
+      const dataWithoutContent: Record<string, any> = {};
+      for (const [key, value] of this.metaStore.entries()) {
+        dataWithoutContent[key] = {
+          ...value,
+          content: undefined // Don't persist content
+        };
+      }
+      const content = JSON.stringify(dataWithoutContent, null, 2);
 
       // Write to file
       await adapter.write(this.metaFilePath, content);
@@ -92,9 +99,16 @@ export class ChunkMetaStore {
 
   /**
    * Set metadata for a chunk
+   * NOTE: We don't store content in metaStore to save memory
+   * Only store metadata needed for sync (hash, timestamp, etc.)
    */
   set(chunkId: string, metadata: ChunkMetadata): void {
-    this.metaStore.set(chunkId, metadata);
+    // Create a copy without content to save memory
+    const metadataWithoutContent = {
+      ...metadata,
+      content: undefined // Don't store content in memory
+    };
+    this.metaStore.set(chunkId, metadataWithoutContent as ChunkMetadata);
     this.isDirty = true;
   }
 

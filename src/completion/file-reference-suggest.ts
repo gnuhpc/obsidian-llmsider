@@ -311,7 +311,7 @@ export class FileReferenceSuggest extends EditorSuggest<FileSuggestion> {
 		// 查找聊天视图并通知文件引用
 		const chatLeaves = this.app.workspace.getLeavesOfType('llmsider-chat-view');
 		if (chatLeaves.length > 0) {
-			const chatView = chatLeaves[0].view as any;
+			const chatView = chatLeaves[0].view as unknown;
 			if (chatView.addFileReference) {
 				chatView.addFileReference(file);
 			}

@@ -28,7 +28,6 @@ export interface ToolsTranslation {
   
   // Tool categories (organized by functionality)
   categories: {
-    fileManagement: ToolCategoryTranslation;
     fileSystem: ToolCategoryTranslation;
     editor: ToolCategoryTranslation;
     noteManagement: ToolCategoryTranslation;
@@ -46,7 +45,6 @@ export interface ToolsTranslation {
     derivatives: ToolCategoryTranslation;
     microstructure: ToolCategoryTranslation;
     credit: ToolCategoryTranslation;
-    alternative: ToolCategoryTranslation;
     international: ToolCategoryTranslation;
     macro: ToolCategoryTranslation;
     industry: ToolCategoryTranslation;

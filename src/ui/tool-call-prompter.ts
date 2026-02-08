@@ -4,8 +4,8 @@ import LLMSiderPlugin from '../main';
 export interface ToolCallData {
 	id: string;
 	toolName: string;
-	parameters: any;
-	result?: any;
+	parameters: unknown;
+	result?: unknown;
 	error?: string;
 	startTime: number;
 	endTime?: number;

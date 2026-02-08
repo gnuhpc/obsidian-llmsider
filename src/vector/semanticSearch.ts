@@ -11,9 +11,21 @@ import { Logger } from './../utils/logger';
  */
 export class SemanticSearchManager {
   private vectorDB: IVectorDatabase;
+  private excerptLength: number = 500; // Default excerpt length
 
-  constructor(vectorDB: IVectorDatabase) {
+  constructor(vectorDB: IVectorDatabase, excerptLength?: number) {
     this.vectorDB = vectorDB;
+    if (excerptLength !== undefined) {
+      this.excerptLength = excerptLength;
+    }
+  }
+
+  /**
+   * Update excerpt length setting
+   * @param length New excerpt length (0 = send full content)
+   */
+  setExcerptLength(length: number): void {
+    this.excerptLength = length;
   }
 
   /**
@@ -39,7 +51,46 @@ export class SemanticSearchManager {
   }
 
   /**
+   * Extract relevant excerpt from content
+   * Returns the most relevant portion of text, prioritizing complete sentences
+   * @param content Full content
+   * @param maxLength Maximum length of excerpt (default: 500 characters)
+   * @returns Relevant excerpt
+   */
+  private extractRelevantExcerpt(content: string, maxLength: number = 500): string {
+    if (content.length <= maxLength) {
+      return content;
+    }
+
+    // Try to extract complete sentences
+    const sentences = content.split(/[.!?]+\s+/);
+    let excerpt = '';
+    
+    for (const sentence of sentences) {
+      const trimmedSentence = sentence.trim();
+      if (!trimmedSentence) continue;
+      
+      if ((excerpt + trimmedSentence).length <= maxLength) {
+        excerpt += (excerpt ? ' ' : '') + trimmedSentence + '.';
+      } else {
+        break;
+      }
+    }
+
+    // If we got at least some content, return it
+    if (excerpt.length > 50) {
+      return excerpt;
+    }
+
+    // Otherwise, just truncate at word boundary
+    const truncated = content.substring(0, maxLength);
+    const lastSpace = truncated.lastIndexOf(' ');
+    return lastSpace > 0 ? truncated.substring(0, lastSpace) + '...' : truncated + '...';
+  }
+
+  /**
    * Format search results for LLM context
+   * Only sends the most relevant excerpts instead of full chunks to reduce token usage
    * @param results Search results
    * @returns Formatted string for LLM context
    */
@@ -51,12 +102,17 @@ export class SemanticSearchManager {
     const contextParts: string[] = [];
     
     contextParts.push('# Relevant Context from Your Vault\n');
-    contextParts.push('Below are the most relevant passages from your notes:\n');
+    contextParts.push('Below are the most relevant excerpts from your notes:\n');
     
     results.forEach((item, index) => {
+      // Use configured excerpt length (0 = send full content)
+      const content = this.excerptLength > 0 
+        ? this.extractRelevantExcerpt(item.content, this.excerptLength)
+        : item.content;
+      
       contextParts.push(`\n## Source ${index + 1}: ${item.filePath}`);
       contextParts.push(`Relevance: ${(item.score * 100).toFixed(1)}%`);
-      contextParts.push(`\n${item.content}\n`);
+      contextParts.push(`\n${content}\n`);
       contextParts.push('---');
     });
 

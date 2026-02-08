@@ -16,10 +16,16 @@ export const zhBase = {
   messageActions: {
     toggleDiffRendering: '切换差异渲染',
     applyChanges: '应用更改',
+    copy: '复制',
     copyAsMarkdown: '复制为Markdown',
+    copyAsPlainText: '复制为普通文本',
     generateNewNote: '生成新笔记',
+    insertAtCursor: '插入到光标处',
+    updateNoteTitle: '更新笔记标题',
     copyMessage: '复制消息',
-    editAndResend: '编辑并重发'
+    editAndResend: '编辑并重发',
+    editMessage: '编辑消息',
+    regenerate: '重新生成'
   },
 
   // 基础设置项

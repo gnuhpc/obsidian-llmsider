@@ -91,7 +91,7 @@ export class WebSocketTransport implements MCPTransport {
           }
           
           if (this.ws?.readyState !== WebSocket.OPEN) {
-            reject(error);
+            reject(error instanceof Error ? error : new Error(String(error)));
           }
         };
 
@@ -109,7 +109,7 @@ export class WebSocketTransport implements MCPTransport {
       } catch (error) {
         this.connectionStatus.connecting = false;
         this.connectionStatus.lastError = (error as Error).message;
-        reject(error);
+        reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
@@ -243,7 +243,7 @@ export class STDIOTransport implements MCPTransport {
           NODE_PATH: process.env.NODE_PATH || '/opt/homebrew/lib/node_modules'
         };
 
-        const spawnOptions: any = {
+        const spawnOptions: unknown = {
           stdio: ['pipe', 'pipe', 'pipe'],
           env: enhancedEnv,
           cwd: this.options.cwd
@@ -326,13 +326,17 @@ export class STDIOTransport implements MCPTransport {
               /Proxy established successfully/,
               /Press Ctrl\+C to exit/,
               // Notifications
-              /notifications\/initialized/
+              /notifications\/initialized/,
+              // OAuth configuration discovery
+              /Discovering OAuth server configuration/,
+              // Closing braces for JSON output
+              /^\s*\}\s*$/
             ];
 
             const shouldIgnore = ignoredPatterns.some(pattern => pattern.test(trimmedLine));
 
             if (!shouldIgnore && trimmedLine) {
-              Logger.error('Process stderr:', line);
+              Logger.warn('Process stderr:', line);
             }
           }
           
@@ -353,7 +357,7 @@ export class STDIOTransport implements MCPTransport {
           }
           
           if (!this.connectionStatus.connected) {
-            reject(error);
+            reject(error instanceof Error ? error : new Error(String(error)));
           }
         });
 
@@ -371,7 +375,7 @@ export class STDIOTransport implements MCPTransport {
       } catch (error) {
         this.connectionStatus.connecting = false;
         this.connectionStatus.lastError = (error as Error).message;
-        reject(error);
+        reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
@@ -687,7 +691,7 @@ export class StreamableHTTPTransport implements MCPTransport {
 
     try {
       // The actual connection is established here when the first request is sent
-      await this.transport.send(message as any);
+      await this.transport.send(message as unknown);
     } catch (error) {
       // Handle connection errors that occur during send
       if (error instanceof Error) {

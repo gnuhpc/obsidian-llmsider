@@ -4,7 +4,6 @@
 
 export interface ToolCategoriesTranslation {
   // Core Functionality
-  fileManagement: string;
   fileSystem: string;
   editor: string;
   noteManagement: string;
@@ -26,7 +25,6 @@ export interface ToolCategoriesTranslation {
   derivatives: string;
   microstructure: string;
   credit: string;
-  alternative: string;
   international: string;
   // Economic & Industry
   macro: string;

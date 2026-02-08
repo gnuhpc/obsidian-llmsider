@@ -1,4 +1,4 @@
-import { App, Notice, TFolder, Modal, TFile, MarkdownView } from 'obsidian';
+import { App, Notice, TFolder, Modal, TFile, MarkdownView, normalizePath } from 'obsidian';
 import { Logger } from './../utils/logger';
 import { ChatMode, PromptTemplate } from '../types';
 import LLMSiderPlugin from '../main';
@@ -7,6 +7,13 @@ import { FileSuggestions } from './file-suggestions';
 import { PromptManager } from '../core/prompt-manager';
 import { PromptSelector } from './prompt-selector';
 import { SmartSearchModal } from './smart-search-modal';
+import * as fs from 'fs';
+import * as path from 'path';
+
+type ChatViewContextModalHost = {
+	isExecuting: () => boolean;
+	showContextModal: (title: string, content: string, type?: string) => void;
+};
 
 export class InputHandler {
 	private app: App;
@@ -15,6 +22,7 @@ export class InputHandler {
 	private fileSuggestions: FileSuggestions;
 	private promptManager: PromptManager;
 	private promptSelector: PromptSelector;
+	private chatView?: ChatViewContextModalHost; // Reference to parent ChatView
 	
 	// UI elements
 	private inputElement: HTMLTextAreaElement;
@@ -22,6 +30,7 @@ export class InputHandler {
 	private providerSelect: HTMLSelectElement;
 	private contextDisplay: HTMLElement;
 	private inputContainer: HTMLElement;
+	private viewContainer?: HTMLElement;
 	
 	// State
 	private currentMode: ChatMode;
@@ -33,6 +42,9 @@ export class InputHandler {
 
 	// Track which files were added by which directory placeholder
 	private directoryFileMap: Map<string, string[]> = new Map();
+
+	// Store dragged folder path from global drag events
+	private draggedFolderPath: string | null = null;
 
 	// Callbacks
 	private onSendMessage?: (content: string) => void;
@@ -47,6 +59,7 @@ export class InputHandler {
 		providerSelect: HTMLSelectElement,
 		contextDisplay: HTMLElement,
 		inputContainer: HTMLElement,
+		viewContainer?: HTMLElement,
 		initialMode: ChatMode = 'ask'
 	) {
 		this.app = app;
@@ -57,6 +70,7 @@ export class InputHandler {
 		this.providerSelect = providerSelect;
 		this.contextDisplay = contextDisplay;
 		this.inputContainer = inputContainer;
+		this.viewContainer = viewContainer;
 		this.currentMode = initialMode;
 
 		// Initialize file suggestions
@@ -95,6 +109,13 @@ export class InputHandler {
 	}
 
 	/**
+	 * Set reference to parent ChatView
+	 */
+	setChatView(chatView: ChatViewContextModalHost): void {
+		this.chatView = chatView;
+	}
+
+	/**
 	 * Update current mode
 	 */
 	setMode(mode: ChatMode): void {
@@ -125,6 +146,14 @@ export class InputHandler {
 		// Drag and drop support for files and folders
 		this.setupDragAndDropEvents();
 
+		// Paste support for files
+		this.setupPasteEvents();
+
+		// Optimize prompt button click
+		window.addEventListener('llmsider-optimize-prompt', () => {
+			this.handleOptimizePrompt();
+		});
+
 		// Send button click
 		this.sendButton.addEventListener('click', () => {
 			this.handleSendMessage();
@@ -132,34 +161,66 @@ export class InputHandler {
 
 		// Provider select change
 		this.providerSelect.addEventListener('change', async () => {
+			// Prevent provider change during execution
+			if (this.chatView?.isExecuting()) {
+				new Notice(this.plugin.i18n.t('ui.cannotChangeProviderDuringExecution') || 'Cannot change provider during execution');
+				this.providerSelect.value = this.plugin.settings.activeProvider || '';
+				return;
+			}
+			
 			const selectedProviderId = this.providerSelect.value;
+			
+			// Skip if empty or no providers configured
+			if (!selectedProviderId) {
+				return;
+			}
 			
 			// Parse connection and model IDs from provider ID (connectionId::modelId format)
 			if (selectedProviderId.includes('::')) {
 				const [connectionId, modelId] = selectedProviderId.split('::');
+				Logger.debug('[InputHandler] Provider change requested:', { selectedProviderId, connectionId, modelId });
 				
-				// Check if the connection/model combination is enabled
+				// Check if the connection/model combination is valid
 				const connection = this.plugin.settings.connections.find(c => c.id === connectionId);
 				const model = this.plugin.settings.models.find(m => m.id === modelId);
 				
-				if (!connection?.enabled || !model?.enabled) {
-					new (this.plugin.app as any).Notice('This connection or model is disabled. Please enable it in Settings.');
+				Logger.debug('[InputHandler] Validation result:', {
+					connectionFound: !!connection,
+					modelFound: !!model,
+					connectionEnabled: connection?.enabled,
+					modelEnabled: model?.enabled
+				});
+				
+				if (!connection) {
+					Logger.error('[InputHandler] Connection not found:', connectionId);
+					new Notice(this.plugin.i18n.t('ui.connectionNotFound'));
 					this.providerSelect.value = this.plugin.settings.activeProvider || '';
 					return;
 				}
 				
-				// Check if provider is available (initialized)
-				if (!this.plugin.getProvider(selectedProviderId)) {
-					new (this.plugin.app as any).Notice('This provider is not available. Please check your connection settings.');
+				if (!model) {
+					Logger.error('[InputHandler] Model not found:', modelId);
+					Logger.error('[InputHandler] Available models:', this.plugin.settings.models.map(m => ({ id: m.id, name: m.name, enabled: m.enabled })));
+					new Notice(this.plugin.i18n.t('ui.modelNotFound'));
 					this.providerSelect.value = this.plugin.settings.activeProvider || '';
 					return;
 				}
 				
-				// Set the active provider
-				await this.plugin.setActiveProvider(selectedProviderId);
+				if (!connection.enabled || !model.enabled) {
+					Logger.warn('[InputHandler] Connection or model is disabled:', { connectionEnabled: connection.enabled, modelEnabled: model.enabled });
+					new Notice(this.plugin.i18n.t('ui.connectionOrModelDisabled'));
+					this.providerSelect.value = this.plugin.settings.activeProvider || '';
+					return;
+				}
+				
+				// Set the active connection and model - this will initialize the provider if needed
+				Logger.debug('[InputHandler] Calling setActiveConnectionAndModel...');
+				await this.plugin.setActiveConnectionAndModel(connectionId, modelId);
+				Logger.debug('[InputHandler] Provider change completed successfully');
 			} else {
-				// Invalid provider ID format
-				new (this.plugin.app as any).Notice('Invalid provider format. Please select a valid provider.');
+				// Invalid provider ID format (not empty but doesn't contain ::)
+				Logger.error('[InputHandler] Invalid provider ID format:', selectedProviderId);
+				new Notice(this.plugin.i18n.t('ui.invalidProviderFormat'));
 				this.providerSelect.value = this.plugin.settings.activeProvider || '';
 				return;
 			}
@@ -249,20 +310,66 @@ export class InputHandler {
 	 * Setup drag and drop event handlers for files, folders, and text
 	 */
 	private setupDragAndDropEvents(): void {
-		// Prevent default drag behaviors on the input element
-		this.inputElement.addEventListener('dragover', (event: DragEvent) => {
+		const target = this.viewContainer || this.inputElement;
+
+		// Listen to global dragstart to capture full path from source
+		document.addEventListener('dragstart', (event: DragEvent) => {
+			// Reset previous drag path
+			this.draggedFolderPath = null;
+			
+			// Try to get the dragged element
+			const draggedElement = event.target as HTMLElement;
+			
+			if (draggedElement) {
+				// Try to find path from the element or its parents
+				let currentEl: HTMLElement | null = draggedElement;
+				while (currentEl) {
+					// 1. Try data-path attribute (common in Obsidian)
+					const dataPath = currentEl.getAttribute('data-path');
+					if (dataPath) {
+						this.draggedFolderPath = dataPath;
+						break;
+					}
+
+					// 2. Try Obsidian's internal __file property
+					// @ts-ignore - Obsidian stores file/folder reference
+					const file = currentEl.__file;
+					if (file) {
+						if (file instanceof TFolder || file instanceof TFile) {
+							this.draggedFolderPath = file.path;
+							break;
+						} else if (typeof file.path === 'string') {
+							// Fallback for plain objects that look like TFile/TFolder
+							this.draggedFolderPath = file.path;
+							break;
+						}
+					}
+					currentEl = currentEl.parentElement;
+				}
+			}
+		}, true); // Use capture phase
+
+		// Prevent default drag behaviors on the target element
+		target.addEventListener('dragover', (event: DragEvent) => {
 			event.preventDefault();
 			event.stopPropagation();
 			this.inputElement.classList.add('llmsider-input-dragover');
 		});
 
-		this.inputElement.addEventListener('dragleave', (event: DragEvent) => {
+		target.addEventListener('dragleave', (event: DragEvent) => {
 			event.preventDefault();
 			event.stopPropagation();
+			
+			// If we have a view container, check if we're actually leaving it
+			if (this.viewContainer && event.relatedTarget && 
+				this.viewContainer.contains(event.relatedTarget as Node)) {
+				return;
+			}
+			
 			this.inputElement.classList.remove('llmsider-input-dragover');
 		});
 
-		this.inputElement.addEventListener('drop', async (event: DragEvent) => {
+		target.addEventListener('drop', async (event: DragEvent) => {
 			event.preventDefault();
 			event.stopPropagation();
 			this.inputElement.classList.remove('llmsider-input-dragover');
@@ -271,36 +378,84 @@ export class InputHandler {
 			const dragData = event.dataTransfer;
 			if (!dragData) return;
 
-			Logger.debug('Drop event received');
+			// Try to get Obsidian-specific drag data first
+			let obsidianDragData = '';
 			
-			// Try multiple data types that Obsidian might use
-			let obsidianDragData = dragData.getData('text/plain');
+			// Try all available data types
+			for (const type of dragData.types) {
+				const data = dragData.getData(type);
+				if (data && !obsidianDragData) {
+					obsidianDragData = data;
+				}
+			}
 			
-			// Log all available types for debugging
-			Logger.debug('Available drag data types:', dragData.types);
-			Logger.debug('Drag data (text/plain):', obsidianDragData);
+			// Check if there's a file object in the drag event (Obsidian internal drag)
+			// @ts-ignore - Check for Obsidian-specific properties
+			if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+				// @ts-ignore
+				const file = event.dataTransfer.files[0];
+				// @ts-ignore - In Obsidian, files might have a path property
+				if (file && file.path) {
+					obsidianDragData = file.path;
+				}
+			}
 			
 			if (!obsidianDragData) {
-				// Try other formats
-				obsidianDragData = dragData.getData('text/html') || 
-								   dragData.getData('text/uri-list') ||
-								   dragData.getData('text');
-				Logger.debug('Trying alternative data:', obsidianDragData);
+				obsidianDragData = dragData.getData('text/plain');
+			}
+			
+			// If we captured a folder path from dragstart event, use it as priority
+			if (this.draggedFolderPath) {
+				obsidianDragData = this.draggedFolderPath;
 			}
 			
 			if (obsidianDragData) {
 				try {
+					// Check for multiple lines first (multiple files dragged)
+					const lines = obsidianDragData.split(/\r?\n/).filter(line => line.trim().length > 0);
+					
+					if (lines.length > 1) {
+						let successCount = 0;
+						
+						for (const line of lines) {
+							let filePath = line.trim();
+							
+							// Handle Obsidian URI format for each line
+							if (filePath.startsWith('obsidian://')) {
+								try {
+									const url = new URL(filePath);
+									const fileParam = url.searchParams.get('file');
+									if (fileParam) {
+										filePath = decodeURIComponent(fileParam);
+									}
+								} catch (e) {
+									// Ignore parse errors
+								}
+							}
+							// Handle wiki link format for each line
+							else if (filePath.startsWith('[[') && filePath.endsWith(']]')) {
+								filePath = filePath.slice(2, -2);
+							}
+							
+							// Try to handle as file/folder path
+							if (await this.handleDroppedPath(filePath)) {
+								successCount++;
+							}
+						}
+						
+						if (successCount > 0) {
+							return;
+						}
+					}
+
 					// Handle Obsidian URI format
 					if (obsidianDragData.startsWith('obsidian://')) {
-						// Parse Obsidian URI: obsidian://open?vault=...&file=...
-						Logger.debug('Parsing Obsidian URI:', obsidianDragData);
 						const url = new URL(obsidianDragData);
 						const fileParam = url.searchParams.get('file');
 						
 						if (fileParam) {
 							// Decode the file path
 							const filePath = decodeURIComponent(fileParam);
-							Logger.debug('Decoded file path:', filePath);
 							await this.handleDroppedPath(filePath);
 							return;
 						}
@@ -310,7 +465,6 @@ export class InputHandler {
 					let filePath = obsidianDragData;
 					if (filePath.startsWith('[[') && filePath.endsWith(']]')) {
 						filePath = filePath.slice(2, -2);
-						Logger.debug('Wiki link format, extracted:', filePath);
 						await this.handleDroppedPath(filePath);
 						return;
 					}
@@ -320,18 +474,44 @@ export class InputHandler {
 					
 					// If not a file path, treat as selected text
 					if (!isFilePath) {
-						Logger.debug('Treating dropped content as selected text');
 						await this.handleDroppedText(obsidianDragData);
 					}
 					
 				} catch (error) {
 					Logger.error('Error processing drop:', error);
 					const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-					new Notice(`Error processing dropped item: ${errorMessage}`);
+					new Notice(this.plugin.getI18nManager()?.t('notifications.ui.errorProcessingDroppedItem', { error: errorMessage }) || `Error processing dropped item: ${errorMessage}`);
 				}
 			} else {
-				Logger.debug('No drag data found');
-				new Notice('Unable to process dropped item');
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.unableToProcessDroppedItem') || 'Unable to process dropped item');
+			}
+		});
+	}
+
+	/**
+	 * Setup paste event handler
+	 */
+	private setupPasteEvents(): void {
+		this.inputElement.addEventListener('paste', async (event: ClipboardEvent) => {
+			const clipboardData = event.clipboardData;
+			if (!clipboardData) return;
+
+			// Check for files in clipboard
+			if (clipboardData.files && clipboardData.files.length > 0) {
+				Logger.debug('Paste event contains files:', clipboardData.files.length);
+				event.preventDefault();
+				
+				for (let i = 0; i < clipboardData.files.length; i++) {
+					const file = clipboardData.files[i];
+					// In Electron/Obsidian, the File object usually has a 'path' property
+					// @ts-ignore - 'path' property exists in Electron environment
+					const filePath = file.path;
+					
+					if (filePath) {
+						Logger.debug('Processing pasted file path:', filePath);
+						await this.handleDroppedPath(filePath);
+					}
+				}
 			}
 		});
 	}
@@ -356,7 +536,7 @@ export class InputHandler {
 			new Notice(result.message);
 			this.updateContextDisplay();
 		} else {
-			new Notice('Failed to add text: ' + result.message);
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToAddText', { error: result.message }) || 'Failed to add text: ' + result.message);
 		}
 	}
 
@@ -365,20 +545,16 @@ export class InputHandler {
 	 * Returns true if successfully handled as file/folder, false otherwise
 	 */
 	private async handleDroppedPath(filePath: string): Promise<boolean> {
-		Logger.debug('Handling dropped path:', filePath);
-		
 		// Try direct path first
 		let abstractFile = this.app.vault.getAbstractFileByPath(filePath);
 		
 		// If not found and doesn't have extension, try adding .md
 		if (!abstractFile && !filePath.includes('.')) {
 			const mdPath = filePath + '.md';
-			Logger.debug('Trying with .md extension:', mdPath);
 			abstractFile = this.app.vault.getAbstractFileByPath(mdPath);
 		}
 		
 		if (abstractFile) {
-			Logger.debug('Found file/folder:', abstractFile.path);
 			if (abstractFile instanceof TFolder) {
 				// It's a folder
 				await this.handleFolderDropped(abstractFile);
@@ -389,54 +565,139 @@ export class InputHandler {
 				return true;
 			}
 		} else {
-			Logger.debug('Not found by path, trying basename search:', filePath);
-			
-			// Extract just the filename (last part of path)
-			const pathParts = filePath.split('/');
-			const fileName = pathParts[pathParts.length - 1];
-			Logger.debug('Extracted filename:', fileName);
-			
-			// Try to find the file by various name matches
-			const allFiles = this.app.vault.getFiles();
-			const file = allFiles.find(f => 
-				f.basename === filePath ||  // Match full path as basename
-				f.basename === fileName ||   // Match just filename as basename
-				f.path === filePath ||       // Match full path
-				f.path === filePath + '.md' || // Match full path with .md
-				f.name === filePath ||       // Match as name
-				f.name === fileName ||       // Match just filename as name
-				f.path.endsWith('/' + filePath) || // Match relative path
-				f.path.endsWith('/' + filePath + '.md') // Match relative path with .md
-			);
-			
-			if (file) {
-				Logger.debug('Found file by search:', file.path);
-				await this.handleFileDropped(file);
+			// Check if it's an external file path
+			const externalFileHandled = await this.handleExternalFile(filePath);
+			if (externalFileHandled) {
 				return true;
-			} else {
-				// Try folders
-				const allFolders = this.app.vault.getAllLoadedFiles().filter(f => f instanceof TFolder) as TFolder[];
-				const folder = allFolders.find(f => 
-					f.name === filePath || 
-					f.name === fileName ||
-					f.path === filePath ||
-					f.path.endsWith('/' + filePath)
-				);
-				
-				if (folder) {
-					Logger.debug('Found folder:', folder.path);
-					await this.handleFolderDropped(folder);
-					return true;
-				} else {
-					Logger.debug('File or folder not found after exhaustive search');
-					Logger.debug('Searched for:', { filePath, fileName });
-					// Not a file/folder path, return false so it can be treated as text
-					return false;
-				}
 			}
+			
+			// Not a file/folder path, return false so it can be treated as text
+			return false;
 		}
 		
 		return false;
+	}
+
+	/**
+	 * Handle external file (outside vault)
+	 */
+	private async handleExternalFile(filePath: string): Promise<boolean> {
+		try {
+			// Check if file exists
+			if (!fs.existsSync(filePath)) {
+				Logger.debug('External file does not exist:', filePath);
+				return false;
+			}
+
+			const stats = fs.statSync(filePath);
+			if (stats.isDirectory()) {
+				Logger.debug('External path is a directory, not supported yet:', filePath);
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.externalFoldersNotSupported') || 'External folders are not supported');
+				return false;
+			}
+
+			const fileName = path.basename(filePath);
+			const ext = path.extname(filePath).toLowerCase();
+			
+			Logger.debug('Processing external file:', { filePath, fileName, ext });
+
+			// For image files, copy to vault
+			const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp'];
+			if (imageExtensions.includes(ext)) {
+				await this.handleExternalImage(filePath, fileName);
+				return true;
+			}
+
+			// For text files, read and add to context
+			const textExtensions = ['.md', '.txt', '.json', '.js', '.ts', '.py', '.java', '.cpp', '.c', '.h', '.css', '.html', '.xml', '.yaml', '.yml'];
+			if (textExtensions.includes(ext)) {
+				await this.handleExternalTextFile(filePath, fileName);
+				return true;
+			}
+
+			// For other files, show notice
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.unsupportedFileType', { ext }) || `Unsupported file type: ${ext}`);
+			return false;
+
+		} catch (error) {
+			Logger.error('Error handling external file:', error);
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToReadFile') || 'Failed to read file');
+			return false;
+		}
+	}
+
+	/**
+	 * Handle external image - copy to vault attachments folder
+	 */
+	private async handleExternalImage(filePath: string, fileName: string): Promise<void> {
+		try {
+			// Read file as buffer
+			const fileBuffer = fs.readFileSync(filePath);
+			const arrayBuffer = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength);
+
+			// Get attachments folder from settings or use default
+			const attachmentFolder = (this.app.vault as any).getConfig('attachmentFolderPath') || 'attachments';
+			
+			// Ensure attachment folder exists
+			if (!await this.app.vault.adapter.exists(attachmentFolder)) {
+				await this.app.vault.createFolder(attachmentFolder);
+			}
+
+			// Generate unique filename if needed
+			let targetFileName = fileName;
+			let targetPath = normalizePath(`${attachmentFolder}/${targetFileName}`);
+			let counter = 1;
+			while (await this.app.vault.adapter.exists(targetPath)) {
+				const ext = path.extname(fileName);
+				const base = path.basename(fileName, ext);
+				targetFileName = `${base}-${counter}${ext}`;
+				targetPath = normalizePath(`${attachmentFolder}/${targetFileName}`);
+				counter++;
+			}
+
+			// Write file to vault
+			await this.app.vault.adapter.writeBinary(targetPath, arrayBuffer);
+			
+			// Get the created file
+			const vaultFile = this.app.vault.getAbstractFileByPath(targetPath);
+			if (vaultFile instanceof TFile) {
+				Logger.debug('External image copied to vault:', targetPath);
+				await this.handleFileDropped(vaultFile);
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.imageCopiedToVault', { path: targetPath }) || `Image copied to: ${targetPath}`);
+			}
+
+		} catch (error) {
+			Logger.error('Error copying external image:', error);
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToCopyImage') || 'Failed to copy image to vault');
+		}
+	}
+
+	/**
+	 * Handle external text file - read and add to context
+	 */
+	private async handleExternalTextFile(filePath: string, fileName: string): Promise<void> {
+		try {
+			const content = fs.readFileSync(filePath, 'utf-8');
+			
+			Logger.debug('Read external text file:', {
+				fileName,
+				size: content.length
+			});
+
+			// Add to context with file name as title
+			const result = await this.contextManager.addTextToContext(content, fileName);
+			
+			if (result.success) {
+				new Notice(result.message);
+				this.updateContextDisplay();
+			} else {
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToAddFile', { error: result.message }) || 'Failed to add file: ' + result.message);
+			}
+
+		} catch (error) {
+			Logger.error('Error reading external text file:', error);
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToReadFile') || 'Failed to read file');
+		}
 	}
 
 	/**
@@ -462,10 +723,30 @@ export class InputHandler {
 		// Store placeholder mapping
 		this.addPlaceholderMapping(displayName, file.path);
 		
-		// Add file to context
-		const result = await this.contextManager.addFileToContext(file);
+		// Add file to context with current provider information
+		// Get provider type from connection settings
+		const currentProviderValue = this.providerSelect.value;
+		let providerType: string | undefined = undefined;
+		
+		if (currentProviderValue && currentProviderValue.includes('::')) {
+			const [connectionId] = currentProviderValue.split('::');
+			const connection = this.plugin.settings.connections.find(c => c.id === connectionId);
+			
+			if (connection) {
+				providerType = connection.type; // e.g., 'free-deepseek', 'free-qwen', 'openai', etc.
+				
+				Logger.debug('File upload - connection type:', {
+					connectionId: connectionId,
+					connectionName: connection.name,
+					connectionType: connection.type
+				});
+			}
+		}
+		
+		const result = await this.contextManager.addFileToContext(file, undefined, providerType);
 		if (result.success) {
-			new Notice(`Added file: ${displayName}`);
+			const i18n = this.plugin.getI18nManager();
+			new Notice(i18n?.t('notifications.ui.addedFile', { name: displayName }) || `Added file: ${displayName}`);
 		} else {
 			new Notice(result.message);
 		}
@@ -503,7 +784,8 @@ export class InputHandler {
 		this.addPlaceholderMapping(`📁${displayName}`, folder.path);
 		
 		// Add folder to context
-		new Notice(`Processing directory "${displayName}"...`);
+		const i18n = this.plugin.getI18nManager();
+		new Notice(i18n?.t('notifications.ui.processingDirectory', { name: displayName }) || `Processing directory "${displayName}"...`);
 		
 		try {
 			// Store current context count to track which files were added by this directory
@@ -526,7 +808,8 @@ export class InputHandler {
 		} catch (error) {
 			Logger.error('Error processing directory:', error);
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-			new Notice(`Error processing directory: ${errorMessage}`);
+			const i18n = this.plugin.getI18nManager();
+			new Notice(i18n?.t('notifications.ui.errorProcessingDirectory', { error: errorMessage }) || `Error processing directory: ${errorMessage}`);
 		}
 		
 		// Update UI
@@ -582,6 +865,98 @@ export class InputHandler {
 		// Call callback if provided
 		if (this.onSendMessage) {
 			this.onSendMessage(finalContent);
+		}
+	}
+
+	/**
+	 * Handle optimize prompt action
+	 */
+	private async handleOptimizePrompt(): Promise<void> {
+		const currentPrompt = this.inputElement.value.trim();
+		
+		// Check if there's a prompt to optimize
+		if (!currentPrompt) {
+			new Notice(this.plugin.i18n.t('ui.noPromptToOptimize') || 'Please enter a prompt first');
+			return;
+		}
+		
+		// Check if provider is available
+		const availableProviders = this.plugin.getAvailableProviders();
+		if (availableProviders.length === 0) {
+			new Notice(this.plugin.i18n.t('ui.noProvidersConfigured') || 'No providers configured');
+			return;
+		}
+		
+		// Show loading notice
+		const loadingNotice = new Notice(this.plugin.i18n.t('ui.optimizingPrompt') || 'Optimizing prompt...', 0);
+		
+		try {
+			// Get active provider
+			const activeProvider = this.plugin.settings.activeProvider;
+			if (!activeProvider) {
+				throw new Error('No active provider');
+			}
+			
+			// Call LLM to optimize
+			const provider = this.plugin.getProvider(activeProvider);
+			if (!provider) {
+				throw new Error('Provider not found');
+			}
+			
+			// Build optimization prompt with clear instructions
+			const systemMessage = `You are a prompt optimization expert. Your task is to enhance user prompts to make them clearer, more specific, and more effective for AI models to understand and respond to.
+
+Rules:
+1. Keep the user's core intent intact
+2. Make the prompt more specific and actionable
+3. Add necessary context if missing
+4. Structure the prompt logically
+5. Use clear and concise language
+6. Return ONLY the optimized prompt without any explanation or additional text
+7. Maintain the same language as the original prompt (Chinese/English)`;
+			
+			// Prepare messages for the LLM
+			const messages = [
+				{
+					id: Date.now().toString(),
+					role: 'user' as const,
+					content: `Original prompt: ${currentPrompt}
+
+Please optimize this prompt to be clearer and more effective. Return ONLY the optimized prompt.`,
+					timestamp: Date.now()
+				}
+			];
+			
+			// Call provider using sendMessage (non-streaming for simplicity)
+			const response = await provider.sendMessage(messages, undefined, systemMessage);
+			
+			// Extract optimized prompt from response
+			const optimizedPrompt = response.content.trim();
+			
+			if (!optimizedPrompt) {
+				throw new Error('Empty response from LLM');
+			}
+			
+			// Update input with optimized prompt
+			this.inputElement.value = optimizedPrompt;
+			this.autoResizeTextarea();
+			this.updateSendButton();
+			
+			// Hide loading notice
+			loadingNotice.hide();
+			
+			// Show success notice
+			new Notice(this.plugin.i18n.t('ui.promptOptimized') || 'Prompt optimized', 3000);
+			
+			// Focus back on input
+			this.inputElement.focus();
+			
+		} catch (error) {
+			Logger.error('[OptimizePrompt] Failed to optimize prompt:', error);
+			loadingNotice.hide();
+			
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+			new Notice(this.plugin.i18n.t('ui.promptOptimizationFailed') || 'Failed to optimize prompt: ' + errorMessage, 5000);
 		}
 	}
 
@@ -780,7 +1155,7 @@ export class InputHandler {
 		const providers = this.plugin.getAvailableProvidersWithNames();
 		
 		if (providers.length === 0) {
-			const option = this.providerSelect.createEl('option', { text: 'No providers configured' });
+			const option = this.providerSelect.createEl('option', { text: this.plugin.i18n.t('ui.noProvidersConfigured') });
 			option.disabled = true;
 			return;
 		}
@@ -869,7 +1244,16 @@ export class InputHandler {
 		// Display current note context(s) as inline tags
 		const noteContexts = this.contextManager.getCurrentNoteContext();
 		noteContexts.forEach((noteContext) => {
-			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag' });
+			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-clickable' });
+
+			contextTag.onclick = (e) => {
+				// Ignore clicks on the remove button
+				if ((e.target as HTMLElement).closest('.llmsider-context-remove')) return;
+
+				e.preventDefault();
+				e.stopPropagation();
+				this.chatView?.showContextModal(noteContext.name, noteContext.content, noteContext.type);
+			};
 			
 			// Use different icon based on file type
 			let iconSVG = '';
@@ -922,7 +1306,8 @@ export class InputHandler {
 				title: 'Remove note context'
 			});
 
-			removeBtn.onclick = () => {
+			removeBtn.onclick = (e) => {
+				e.stopPropagation();
 				// Remove from context manager
 				this.contextManager.removeNoteContext(noteContext.name);
 				
@@ -936,7 +1321,14 @@ export class InputHandler {
 		// Display selected text context as inline tag
 		const selectedTextContext = this.contextManager.getSelectedTextContext();
 		if (selectedTextContext) {
-			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag' });
+			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-clickable' });
+
+			contextTag.onclick = (e) => {
+				if ((e.target as HTMLElement).closest('.llmsider-context-remove')) return;
+				e.preventDefault();
+				e.stopPropagation();
+				this.chatView?.showContextModal('选中文本', selectedTextContext.text, 'text');
+			};
 			
 			contextTag.createEl('span', { 
 				cls: 'llmsider-context-icon',
@@ -955,7 +1347,8 @@ export class InputHandler {
 				title: 'Remove selected text'
 			});
 
-			removeBtn.onclick = () => {
+			removeBtn.onclick = (e) => {
+				e.stopPropagation();
 				this.contextManager.removeSelectedTextContext();
 				this.updateContextDisplay();
 			};
@@ -965,7 +1358,7 @@ export class InputHandler {
 	/**
 	 * Handle file selected from suggestions
 	 */
-	private async handleFileSelected(file: any): Promise<void> {
+	private async handleFileSelected(file: unknown): Promise<void> {
 		const result = await this.contextManager.addFileToContext(file);
 
 		if (result.success) {
@@ -1050,7 +1443,7 @@ export class InputHandler {
 	 * Handle folder selected from suggestions
 	 */
 	private async handleFolderSelected(folder: TFolder): Promise<void> {
-		new Notice(`Processing directory "${folder.name}"...`);
+		new Notice(this.plugin.i18n.t('ui.processingDirectory', {name: folder.name}) || `Processing directory "${folder.name}"...`);
 
 		try {
 			// Store current context count to track which files were added by this directory
@@ -1073,18 +1466,17 @@ export class InputHandler {
 					totalFiles: newlyAddedFiles.length
 				});
 
-				new Notice(result.message);
-				this.updateContextDisplay();
-			} else {
-				new Notice(result.message);
-			}
-		} catch (error) {
-			Logger.error('Failed to include directory from @ suggestion:', error);
-			new Notice(`Failed to process directory: ${error instanceof Error ? error.message : 'Unknown error'}`);
-		}
-	}
 
-	// Store captured selection to preserve across menu interactions
+			new Notice(result.message);
+			this.updateContextDisplay();
+		} else {
+			new Notice(result.message);
+		}
+	} catch (error) {
+		Logger.error('Failed to include directory from @ suggestion:', error);
+		new Notice(this.plugin.i18n.t('ui.failedToProcessDirectory', {error: error instanceof Error ? error.message : 'Unknown error'}) || `Failed to process directory: ${error instanceof Error ? error.message : 'Unknown error'}`);
+	}
+}	// Store captured selection to preserve across menu interactions
 	private capturedSelection: string | null = null;
 
 	/**
@@ -1151,6 +1543,17 @@ export class InputHandler {
 					<circle cx="12" cy="12" r="10"></circle>
 					<line x1="2" y1="12" x2="22" y2="12"></line>
 					<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+				</svg>`
+			},
+			{
+				action: 'epub-page',
+				label: i18n?.t('ui.includeEpubPageContent') || 'Current Epub Page',
+				description: i18n?.t('ui.includeEpubPageContentDesc') || 'Get content from current epub page',
+				iconSvg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+					<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+					<path d="M12 6v8"></path>
+					<path d="M8 10h8"></path>
 				</svg>`
 			},
 			{
@@ -1245,6 +1648,24 @@ export class InputHandler {
 				}, 10);
 				
 				return; // Early return to skip the menu.remove() below
+			} else if (action === 'epub-page') {
+				// Close menu immediately to prevent UI blocking
+				menu.remove();
+				this.capturedSelection = null;
+				
+				// Show loading notice and fetch content asynchronously
+				const loadingNotice = new Notice(this.plugin.i18n.t('ui.fetchingEpubPageContent') || 'Fetching epub page content...', 0);
+				
+				// Use setTimeout to ensure UI updates before starting fetch
+				setTimeout(async () => {
+					try {
+						await this.includeEpubPageContent();
+					} finally {
+						loadingNotice.hide();
+					}
+				}, 10);
+				
+				return; // Early return to skip the menu.remove() below
 			}
 			
 			// Clear captured selection after use
@@ -1296,11 +1717,13 @@ export class InputHandler {
 		// Create and show folder selection modal
 		const folderModal = new FolderSelectionModal(this.app, async (folder: TFolder) => {
 			if (!folder) {
-				new Notice('No directory selected');
+				const i18n = this.plugin.getI18nManager();
+				new Notice(i18n?.t('notifications.ui.noDirectorySelected') || 'No directory selected');
 				return;
 			}
 			
-			new Notice(`Processing directory "${folder.name}"...`);
+			const i18n = this.plugin.getI18nManager();
+			new Notice(i18n?.t('notifications.ui.processingDirectory', { name: folder.name }) || `Processing directory "${folder.name}"...`);
 			
 			try {
 				const result = await this.contextManager.includeDirectory(folder);
@@ -1313,7 +1736,8 @@ export class InputHandler {
 				}
 			} catch (error) {
 				Logger.error('Failed to include directory:', error);
-				new Notice(`Failed to process directory: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				const i18n = this.plugin.getI18nManager();
+				new Notice(i18n?.t('notifications.ui.failedToProcessDirectory', { error: error instanceof Error ? error.message : 'Unknown error' }) || `Failed to process directory: ${error instanceof Error ? error.message : 'Unknown error'}`);
 			}
 		});
 		
@@ -1342,7 +1766,7 @@ export class InputHandler {
 		// Method 1: Try from active markdown view editor (highest priority for editor selection)
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView) {
-			const editor = (activeView as any).editor;
+			const editor = (activeView as unknown).editor;
 			if (editor && editor.getSelection) {
 				selectedText = editor.getSelection();
 				Logger.debug('Captured from MarkdownView editor:', selectedText.length);
@@ -1482,6 +1906,46 @@ export class InputHandler {
 			Logger.error('Error fetching webpage content:', error);
 			const errorMsg = error instanceof Error ? error.message : this.plugin.i18n.t('ui.webpageContentFetchFailed');
 			new Notice(`${this.plugin.i18n.t('ui.webpageContentFetchFailed')}: ${errorMsg}`, 5000);
+		}
+	}
+
+	/**
+	 * Include current epub page content as context
+	 */
+	private async includeEpubPageContent(): Promise<void> {
+		try {
+			const result = await this.contextManager.includeEpubPageContent();
+			
+			// Check if current session has existing conversation history
+			const currentSession = this.plugin.settings.chatSessions[0];
+			const hasHistory = currentSession && currentSession.messages.length > 0;
+			
+			if (result.success) {
+				// Format message with i18n
+				let message = '';
+				if (result.contentLength && result.bookTitle) {
+					message = `${this.plugin.i18n.t('ui.epubPageContentFetched')}: ${result.bookTitle} (${result.contentLength} ${this.plugin.i18n.t('ui.characters')})`;
+				} else {
+					message = this.plugin.i18n.t('ui.epubPageContentFetched');
+				}
+				
+				// Show appropriate notice based on conversation history
+				if (hasHistory) {
+					new Notice(message + ' - ' + this.plugin.i18n.t('ui.contextAddedWithHistory'), 6000);
+				} else {
+					new Notice(message, 4000);
+				}
+				// Update context display asynchronously to avoid blocking
+				requestAnimationFrame(() => {
+					this.updateContextDisplay();
+				});
+			} else {
+				new Notice(result.message, 5000);
+			}
+		} catch (error) {
+			Logger.error('Error fetching epub page content:', error);
+			const errorMsg = error instanceof Error ? error.message : this.plugin.i18n.t('ui.epubPageContentFetchFailed');
+			new Notice(`${this.plugin.i18n.t('ui.epubPageContentFetchFailed')}: ${errorMsg}`, 5000);
 		}
 	}
 
@@ -1719,7 +2183,7 @@ export class InputHandler {
 	/**
 	 * Find file by display name in the vault
 	 */
-	private findFileByName(displayName: string): any {
+	private findFileByName(displayName: string): unknown {
 		try {
 			// Get all files from the vault
 			const files = this.app.vault.getFiles();
@@ -1771,14 +2235,14 @@ class FolderSelectionModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl('h2', { text: 'Select Directory' });
-		contentEl.createEl('p', { text: 'Choose a directory to include all its files in the context:' });
+		contentEl.createEl('h2', { text: this.plugin.i18n.t('ui.selectDirectory') });
+		contentEl.createEl('p', { text: this.plugin.i18n.t('ui.chooseDirectoryPrompt') });
 
 		// Get all folders from the vault
 		this.folders = this.getAllFolders();
 
 		if (this.folders.length === 0) {
-			contentEl.createEl('p', { text: 'No directories found in vault.' });
+			contentEl.createEl('p', { text: this.plugin.i18n.t('ui.noDirectoriesFound') });
 			return;
 		}
 
@@ -1811,7 +2275,7 @@ class FolderSelectionModal extends Modal {
 
 		// Cancel button
 		const buttonContainer = contentEl.createDiv({ cls: 'llmsider-modal-buttons' });
-		const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+		const cancelButton = buttonContainer.createEl('button', { text: this.plugin.i18n.t('ui.cancelButton') });
 		cancelButton.onclick = () => this.close();
 	}
 

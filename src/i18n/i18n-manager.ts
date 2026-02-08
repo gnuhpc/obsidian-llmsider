@@ -18,7 +18,7 @@ export type { TranslationKeys };
 
 export class I18nManager {
 private currentLanguage: SupportedLanguage = 'en';
-private translations: Record<SupportedLanguage, any> = {} as any;
+private translations: Record<SupportedLanguage, unknown> = {} as unknown;
 private fallbackLanguage: SupportedLanguage = 'en';
 private languageChangeListeners: Array<(language: SupportedLanguage) => void> = [];
 
@@ -108,7 +108,7 @@ private languageChangeListeners: Array<(language: SupportedLanguage) => void> = 
     save: 'Save',
     cancel: 'Cancel',
     delete: 'Delete'
-  } as any;
+  } as unknown;
 }
 
 	/**
@@ -116,7 +116,7 @@ private languageChangeListeners: Array<(language: SupportedLanguage) => void> = 
 	 */
 	t(keyPath: string, params?: Record<string, string | number>): string {
 		const keys = keyPath.split('.');
-		let value: any = this.translations[this.currentLanguage];
+		let value: unknown = this.translations[this.currentLanguage];
 
 		// Navigate through nested keys
 		for (const key of keys) {

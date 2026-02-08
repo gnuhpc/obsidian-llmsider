@@ -1,46 +1,9 @@
 import { I18nManager } from '../../i18n/i18n-manager';
+import { CATEGORY_I18N_MAP } from '../../types/tool-categories';
 
 // Category mapping to i18n keys - shared across settings and UI
-export const categoryMap: Record<string, string> = {
-	// Core
-	'file-management': 'fileManagement',
-	'file-system': 'fileSystem',
-	'editor': 'editor',
-	'note-management': 'noteManagement',
-	'search': 'search',
-	'utility': 'utility',
-	// Web
-	'web-content': 'webContent',
-	'search-engines': 'searchEngines',
-	// Markets
-	'stock': 'stock',
-	'financial': 'financial',
-	'futures': 'futures',
-	'bonds': 'bonds',
-	'options': 'options',
-	'funds': 'funds',
-	'forex': 'forex',
-	'crypto': 'crypto',
-	// Advanced Markets
-	'derivatives': 'derivatives',
-	'microstructure': 'microstructure',
-	'credit': 'credit',
-	'alternative': 'alternative',
-	'international': 'international',
-	'commodity': 'commodity',
-	'technical': 'technical',
-	// Data
-	'macro': 'macro',
-	'industry': 'industry',
-	'news': 'news',
-	'sentiment': 'sentiment',
-	'esg': 'esg',
-	'risk': 'risk',
-	// Others
-	'weather': 'weather',
-	'entertainment': 'entertainment',
-	'other': 'other'
-};
+// Now sourced from central definition to ensure consistency
+export const categoryMap = CATEGORY_I18N_MAP;
 
 // Get category display name with i18n - shared across settings and UI
 export function getCategoryDisplayName(category: string, i18n: I18nManager): string {

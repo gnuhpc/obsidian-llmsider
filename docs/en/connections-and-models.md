@@ -37,8 +37,12 @@ A **Model** is a specific AI model configuration within a connection:
 
 ### Step 2: Add a Connection
 
-#### Option A: Choose from Provider Cards
 Click on any provider card to start configuration:
+
+![Available Connection Providers](../assets/screenshots/connection-providers.png)
+*Available AI provider connections in LLMSider*
+
+#### Supported Providers
 
 <table>
 <tr>
@@ -95,6 +99,12 @@ Click on any provider card to start configuration:
    Base URL: https://generativelanguage.googleapis.com/v1
    ```
 
+6. **OpenCode**
+   ```
+   Server URL: http://localhost:4097
+   (No API key needed, local HTTP server)
+   ```
+
 6. **Groq**
    ```
    API Key: gsk_...
@@ -125,9 +135,50 @@ Click on any provider card to start configuration:
     API Key: Your API key (if required)
     ```
 
+11. **xAI (Grok)**
+    ```
+    API Key: xai-...
+    Base URL: https://api.x.ai/v1
+    ```
+
+12. **OpenRouter**
+    ```
+    API Key: sk-or-...
+    Base URL: https://openrouter.ai/api/v1
+    ```
+
+13. **Free Qwen**
+    ```
+    (No API Key required, built-in free access)
+    ```
+
+14. **Free DeepSeek**
+    ```
+    (No API Key required, built-in free access)
+    ```
+
+15. **Free Gemini**
+    ```
+    (No API Key required, built-in free access)
+    ```
+
+16. **Hugging Chat**
+    ```
+    (No API Key required, supports various open source models)
+    ```
+
+17. **Local**
+    ```
+    Base URL: http://localhost:1234/v1
+    (Supports LM Studio, LocalAI, etc.)
+    ```
+
 ### Step 3: Configure Connection Settings
 
 Fill in the connection form:
+
+![Edit Connection Dialog](../assets/screenshots/edit-connection.png)
+*Connection configuration with proxy settings and authentication*
 
 | Field | Description | Required |
 |-------|-------------|----------|
@@ -152,6 +203,9 @@ Fill in the connection form:
 
 1. **Click "Add Model"** under any connection
 2. **Fill in Model Details**:
+
+   ![Add Model Configuration](../assets/screenshots/add-model-dialog.png)
+   *Model configuration dialog with temperature and vision support settings*
 
    | Field | Description | Example |
    |-------|-------------|---------|
@@ -211,16 +265,168 @@ Maximum response length:
 
 | Use Case | Recommended Model | Why |
 |----------|-------------------|-----|
-| **Quick Responses** | GPT-3.5 Turbo | Fast, cost-effective |
-| **Complex Reasoning** | GPT-4, Claude 3 Opus | Superior logic |
-| **Code Generation** | GPT-4, Claude 3.5 Sonnet | Code understanding |
-| **Long Context** | Claude 3 (200K tokens) | Large document analysis |
-| **Local Privacy** | Ollama (Llama 3) | No API calls |
-| **Embeddings** | text-embedding-3-small | Quality + speed |
+| **Chinese Conversation** | Qwen Max, DeepSeek V3.2 | Superior Chinese understanding and generation |
+| **English Conversation** | Claude 3.5 Sonnet, Claude 3 Opus | Top-tier English expression and reasoning |
+| **Code Generation** | Claude 3.5 Sonnet, GPT-4o | Strong code understanding and generation |
+| **Long Text Analysis** | Claude 3.5 Sonnet (200K tokens), Gemini 1.5 Pro (2M tokens) | Ultra-long context windows |
+| **Multimodal Vision** | GPT-4o, Gemini 1.5 Pro, Qwen VL Max | Image-text understanding |
+| **Text-to-Image** | DALL-E 3 (OpenAI), Qwen VL Plus/Max, Gemini 3 Pro Image | Generate images from text descriptions |
+| **Quick Responses** | GPT-4o mini, DeepSeek Chat | Fast, cost-effective |
+| **Local Privacy** | Ollama (Qwen2.5, Llama 3.3) | Fully offline, no API calls |
+| **Embeddings** | text-embedding-3-large, bge-large-zh-v1.5 | Semantic search quality |
+
+### Multimodal Support (Image & File Analysis)
+
+Some connection types support **image recognition and file parsing**, allowing you to upload images, PDFs, or other files for analysis in conversations:
+
+| Connection Type | Multimodal Support | Description |
+|---------|------------|------|
+| **OpenAI** | ✅ Select models | GPT-4o, GPT-4 Turbo, GPT-4 Vision, etc. |
+| **Qwen** | ✅ Select models | Models with "vision" or "vl" in the name |
+| **Free Qwen** | ✅ All models | All models support multimodal input |
+| **Free DeepSeek** | ✅ All models | All models support image uploads |
+| **GitHub Copilot** | ✅ Select models | GPT-4 series models supported |
+| **Hugging Chat** | ✅ Select models | Only models with "vision" (e.g., Llama 3.2 11B Vision) |
+| **OpenAI Compatible** | ✅ Configurable | Manual config or auto-detection (LLaVA, MiniCPM-V, CogVLM, Gemini Vision, etc.) |
+| **Anthropic (Claude)** | ❌ Pending | Not supported in current version |
+| **Other Providers** | ❌ Not supported | Azure OpenAI, Gemini, Groq, Ollama, etc. currently unsupported |
+
+> 💡 **Tip**: In the chat interface, models with multimodal support will display an attachment button (📎), and you can drag and drop images or PDF files directly into the conversation.
+
+### Text-to-Image Support
+
+Some connection types support **Text-to-Image** functionality, allowing you to generate images from text descriptions:
+
+| Connection Type | Text-to-Image Support | Description |
+|---------|------------|------|
+| **OpenAI** | ✅ DALL-E models | dall-e-3, dall-e-2 models support image generation |
+| **Qwen** | ✅ Select models | qwen-vl-plus, qwen-vl-max and other VL series models |
+| **Gemini** | ✅ Image models | Gemini 3 Pro Image (nano banana) supports text-to-image |
+| **OpenAI Compatible** | ✅ Configurable | Services compatible with OpenAI image generation API |
+| **Other Providers** | ❌ Not supported | Other providers not currently supported |
+
+**How to Use:**
+1. Select a text-to-image capable model (e.g., DALL-E 3, Qwen VL Plus, or Gemini 3 Pro Image)
+2. Describe the image you want to generate in the conversation
+3. AI will automatically invoke image generation and return the result
+4. Generated images appear in chat messages and can be downloaded
+
+**Example Prompts:**
+```
+"Draw an orange cat under moonlight, watercolor style"
+"Generate a modern minimalist logo with a tech innovation theme"
+"Create a sunset over mountains in oil painting style"
+```
+
+> 💡 **Tip**: DALL-E 3 generates high-quality images, while Qwen VL series supports Chinese prompts and responds quickly. Gemini 3 Pro Image (nano banana) offers innovative image generation capabilities.
 
 ---
 
 ## 🔧 Advanced Configuration
+
+### Proxy Settings
+
+LLMSider supports configuring proxy servers for each connection individually. This is useful when:
+- You're behind a corporate firewall
+- Need to route traffic through a specific proxy
+- Using services blocked in your region
+- Want to enhance privacy and security
+
+#### Enabling Proxy
+
+1. **Open Connection Settings**
+   - Navigate to Settings → LLMSider → Connections and Models
+   - Click the edit icon (✏️) next to your connection
+
+2. **Configure Proxy Settings**:
+
+   | Field | Description | Example |
+   |-------|-------------|----------|
+   | **Enable Proxy** | Toggle to enable proxy for this connection | ✅ |
+   | **Proxy Type** | Select proxy protocol | SOCKS5 / HTTP / HTTPS |
+   | **Proxy Host** | Proxy server address | 127.0.0.1 or proxy.example.com |
+   | **Proxy Port** | Proxy server port | 1080 (SOCKS5) / 8080 (HTTP) |
+   | **Authentication** | Enable if proxy requires login | ✅/❌ |
+   | **Username** | Proxy username (if auth enabled) | user123 |
+   | **Password** | Proxy password (if auth enabled) | ******** |
+
+3. **Save and Test**
+   - Click "Save" to apply settings
+   - Send a test message to verify connectivity
+
+#### Proxy Types
+
+**SOCKS5** (Recommended)
+- Most versatile and secure
+- Works with all providers
+- Better performance than HTTP proxies
+- Common port: 1080
+
+**HTTP/HTTPS**
+- Standard web proxies
+- Wide compatibility
+- May have limitations with streaming
+- Common port: 8080, 3128
+
+#### Common Proxy Setups
+
+**Local Shadowsocks/V2Ray:**
+```
+Proxy Type: SOCKS5
+Proxy Host: 127.0.0.1
+Proxy Port: 1080
+Authentication: Disabled
+```
+
+**Corporate Proxy with Auth:**
+```
+Proxy Type: HTTP
+Proxy Host: proxy.company.com
+Proxy Port: 8080
+Authentication: Enabled
+Username: your_username
+Password: your_password
+```
+
+**Clash/ClashX:**
+```
+Proxy Type: HTTP or SOCKS5
+Proxy Host: 127.0.0.1
+Proxy Port: 7890 (HTTP) or 7891 (SOCKS5)
+Authentication: Disabled
+```
+
+#### Per-Connection Proxy
+
+- Each connection can have its own proxy settings
+- Example use cases:
+  - Use proxy for OpenAI (blocked in region)
+  - Direct connection for Ollama (local)
+  - Different proxies for different providers
+
+#### Troubleshooting Proxy Issues
+
+**Connection Timeout:**
+- Verify proxy host and port are correct
+- Check if proxy server is running
+- Test proxy with other applications
+
+**Authentication Failed:**
+- Double-check username and password
+- Ensure proxy allows authentication
+- Try without authentication first
+
+**Slow Performance:**
+- Try SOCKS5 instead of HTTP
+- Check proxy server load
+- Consider using a faster proxy
+
+**Works for Some Providers, Not Others:**
+- Some providers may block proxy IPs
+- Try a different proxy server
+- Check provider's terms of service
+
+> 💡 **Tip**: You can enable proxy for specific connections only. For example, use proxy for OpenAI while keeping Ollama direct.
 
 ### Connection-Level Features
 
@@ -352,4 +558,4 @@ Process images alongside text (GPT-4 Vision)
 
 ---
 
-**Need Help?** [Open an issue](https://github.com/llmsider/obsidian-llmsider/issues) or join our [Discord](https://discord.gg/llmsider)
+**Need Help?** [Open an issue](https://github.com/gnuhpc/obsidian-llmsider/issues)

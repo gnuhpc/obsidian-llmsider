@@ -439,4 +439,4 @@ Output: Thank you for your email. I'll review the proposal and get back
 
 ---
 
-**Need Help?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [Discord](https://discord.gg/llmsider)
+**Need Help?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)

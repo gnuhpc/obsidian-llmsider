@@ -67,7 +67,7 @@ export class FileParser {
 	private static async extractPDFText(buffer: ArrayBuffer, filename: string): Promise<string> {
 		try {
 			// Access Obsidian's PDF.js from the global window object
-			const pdfjsLib = (window as any).pdfjsLib;
+			const pdfjsLib = (window as unknown).pdfjsLib;
 			if (!pdfjsLib) {
 				throw new Error('PDF.js library not available in Obsidian');
 			}
@@ -88,7 +88,7 @@ export class FileParser {
 					
 					// Extract text items
 					const pageText = textContent.items
-						.map((item: any) => item.str || '')
+						.map((item: unknown) => item.str || '')
 						.join(' ')
 						.trim();
 					
@@ -158,7 +158,7 @@ export class FileParser {
 		
 		try {
 			// Import FileToMarkdown library
-			let convertToMarkdown: any;
+			let convertToMarkdown: unknown;
 			try {
 				// Try dynamic import first
 				const fileToMarkdown = await import('filetomarkdown');
@@ -186,7 +186,7 @@ export class FileParser {
 			}
 			
 			// Import Node.js modules for file operations
-			let fs: any, path: any, os: any;
+			let fs: unknown, path: unknown, os: unknown;
 			try {
 				fs = require('fs');
 				path = require('path');

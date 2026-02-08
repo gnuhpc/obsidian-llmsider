@@ -1,0 +1,825 @@
+/* builtin-tools.css - Built-in Tools Management UI Styles */
+
+/* ============================================================================
+   Built-in Tools Modern Layout Styles
+   ============================================================================ */
+
+/* Category cards grid */
+.llmsider-builtin-category-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+    grid-auto-flow: dense;
+}
+
+/* Built-in tools details row (similar to MCP tool details row) */
+.llmsider-builtin-tools-details-row {
+    grid-column: 1 / -1;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 16px;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 1000px;
+        padding-top: 16px;
+        padding-bottom: 16px;
+    }
+}
+
+/* Category card */
+.llmsider-builtin-category-card {
+    background: var(--background-primary);
+    border: 2px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: relative;
+}
+
+.llmsider-builtin-category-card:hover {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.llmsider-builtin-category-card.active,
+.llmsider-builtin-category-card.expanded {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background: var(--background-primary-alt);
+}
+
+/* Disabled category card - gray background similar to disconnected MCP server */
+.llmsider-builtin-category-card.category-disabled {
+    background: var(--background-modifier-border-hover);
+    opacity: 0.7;
+}
+
+.llmsider-builtin-category-card.category-disabled:hover {
+    opacity: 0.8;
+}
+
+/* Category header (contains icon and name) */
+.llmsider-category-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Category icon */
+.llmsider-category-icon,
+.llmsider-category-icon-container {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: var(--background-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+    color: var(--text-muted);
+}
+
+.llmsider-category-icon svg,
+.llmsider-category-icon-container svg {
+    width: 16px;
+    height: 16px;
+}
+
+.llmsider-builtin-category-card.active .llmsider-category-icon,
+.llmsider-builtin-category-card.active .llmsider-category-icon-container,
+.llmsider-builtin-category-card.expanded .llmsider-category-icon,
+.llmsider-builtin-category-card.expanded .llmsider-category-icon-container {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.llmsider-builtin-category-card:hover .llmsider-category-icon,
+.llmsider-builtin-category-card:hover .llmsider-category-icon-container {
+    transform: scale(1.05);
+}
+
+/* Category name */
+.llmsider-category-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin: 0;
+    white-space: nowrap;
+}
+
+/* Category tool count */
+.llmsider-category-tool-count {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin-left: auto;
+}
+
+.llmsider-builtin-category-card.active .llmsider-category-tool-count,
+.llmsider-builtin-category-card.expanded .llmsider-category-tool-count {
+    color: var(--interactive-accent);
+}
+
+/* Expand arrow */
+.llmsider-category-expand-arrow {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.llmsider-builtin-category-card.expanded .llmsider-category-expand-arrow {
+    transform: rotate(180deg);
+}
+
+.llmsider-category-expand-arrow svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Category toggle */
+.llmsider-category-toggle,
+.llmsider-category-toggle-container {
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+/* Modern toggle switch */
+.llmsider-toggle-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    background: var(--background-modifier-border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.llmsider-toggle-switch.active {
+    background: var(--interactive-accent);
+}
+
+.llmsider-toggle-switch.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.llmsider-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.llmsider-toggle-switch.active .llmsider-toggle-thumb {
+    transform: translateX(16px);
+}
+
+/* ============================================================================
+   MCP Tool Management Styles (Used by Built-in Tools Renderer)
+   ============================================================================ */
+
+/* Server tool groups */
+.llmsider-mcp-server-tool-group {
+    margin: 4px 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+}
+
+.llmsider-mcp-server-tool-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--background-modifier-hover);
+    gap: 12px;
+}
+
+.llmsider-mcp-server-tool-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.llmsider-mcp-server-tool-info h4 {
+    margin: 0;
+    color: var(--text-normal);
+    font-size: 16px;
+}
+
+.llmsider-mcp-server-tool-status {
+    font-size: 12px;
+    margin-top: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.llmsider-mcp-server-tool-status.connected {
+    background: var(--color-green);
+    color: white;
+}
+
+.llmsider-mcp-server-tool-status.disconnected {
+    background: var(--color-red);
+    color: white;
+}
+
+.llmsider-mcp-server-tool-toggle {
+    flex-shrink: 0;
+}
+
+/* MCP Toggle styles */
+.llmsider-mcp-toggle-label-compact {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.llmsider-mcp-toggle-input-compact {
+    display: none;
+}
+
+.llmsider-mcp-toggle-slider-compact {
+    position: relative;
+    width: 32px;
+    height: 16px;
+    background: var(--background-modifier-border);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.llmsider-mcp-toggle-slider-compact::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.llmsider-mcp-toggle-input-compact:checked + .llmsider-mcp-toggle-slider-compact {
+    background: var(--text-accent);
+}
+
+.llmsider-mcp-toggle-input-compact:checked + .llmsider-mcp-toggle-slider-compact::before {
+    transform: translateX(16px);
+}
+
+/* Server tools collapsible section */
+.llmsider-mcp-server-tools-details {
+    margin: 0;
+    border: none;
+}
+
+.llmsider-mcp-server-tools-summary {
+    cursor: pointer;
+    padding: 6px 12px;
+    background: var(--background-modifier-hover);
+    border-top: 1px solid var(--background-modifier-border);
+    color: var(--text-accent);
+    font-size: 12px;
+    font-weight: 500;
+    user-select: none;
+    transition: background-color 0.2s ease;
+    list-style: none;
+}
+
+.llmsider-mcp-server-tools-summary::-webkit-details-marker {
+    display: none;
+}
+
+.llmsider-mcp-server-tools-summary:hover {
+    background: var(--background-modifier-border);
+}
+
+.llmsider-mcp-tools-list-items {
+    padding: 0;
+}
+
+/* MCP Tool item */
+.llmsider-mcp-tool-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    transition: background 0.2s ease;
+}
+
+.llmsider-mcp-tool-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.llmsider-mcp-tool-info {
+    flex: 1;
+    margin-right: 12px;
+}
+
+.llmsider-mcp-tool-name strong {
+    color: var(--text-normal);
+    font-size: 14px;
+}
+
+.llmsider-mcp-tool-description {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 2px;
+    line-height: 1.5;
+}
+
+.llmsider-mcp-tool-toggle {
+    flex-shrink: 0;
+}
+
+/* MCP Tool Schema */
+.llmsider-mcp-tool-schema {
+    margin-top: 4px;
+}
+
+.llmsider-mcp-tool-schema summary {
+    cursor: pointer;
+    color: var(--text-accent);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.llmsider-mcp-tool-schema-content {
+    margin-top: 8px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 12px;
+    font-family: var(--font-monospace);
+    color: var(--text-normal);
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Empty states */
+.llmsider-mcp-tool-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+}
+
+.llmsider-mcp-tool-empty p {
+    margin: 0;
+    font-style: italic;
+}
+
+/* ============================================================================
+   Category Details & Tools List
+   ============================================================================ */
+
+/* Category details container - spans all grid columns */
+.llmsider-builtin-tools-details-container {
+    grid-column: 1 / -1; /* Span all columns */
+}
+
+.llmsider-builtin-tools-details {
+    background: var(--background-primary);
+    border: 2px solid var(--background-modifier-border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 16px;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Details header */
+.llmsider-category-details-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-details-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin: 0;
+}
+
+.llmsider-details-count {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+/* Tools list */
+.llmsider-tools-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Tool item */
+.llmsider-tool-item {
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    max-width: 800px;
+}
+
+.llmsider-tool-item:hover {
+    border-color: var(--interactive-accent);
+    background: var(--background-primary);
+    transform: translateX(4px);
+}
+
+/* Tool content */
+.llmsider-tool-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.llmsider-tool-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin-bottom: 4px;
+}
+
+.llmsider-tool-description {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* Tool toggle container */
+.llmsider-tool-toggle-container {
+    flex-shrink: 0;
+}
+
+/* Modern tool card - styled primarily via inline styles in JS */
+.llmsider-modern-tool-card {
+    /* Most styling done inline, but provide fallback */
+    box-sizing: border-box;
+}
+
+.llmsider-modern-tool-main {
+    /* Layout handled inline */
+    box-sizing: border-box;
+}
+
+.llmsider-modern-tool-info {
+    /* Flex handled inline */
+    box-sizing: border-box;
+}
+
+.llmsider-modern-tool-info h3 {
+    cursor: pointer;
+}
+
+.llmsider-modern-tool-info h3:hover {
+    color: var(--interactive-accent);
+    text-decoration: underline;
+}
+
+.llmsider-modern-tool-controls {
+    /* Flex handled inline */
+    box-sizing: border-box;
+}
+
+/* ============================================================================
+   Tool Details Modal
+   ============================================================================ */
+
+/* Modal overlay */
+.llmsider-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Modal content */
+.llmsider-modal-content {
+    background: var(--background-primary);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    max-width: 700px;
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Modal header */
+.llmsider-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-modal-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin: 0;
+}
+
+.llmsider-modal-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.llmsider-modal-close:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+/* Modal body */
+.llmsider-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.llmsider-modal-description {
+    font-size: 14px;
+    color: var(--text-normal);
+    line-height: 1.6;
+    margin: 0 0 20px 0;
+}
+
+.llmsider-modal-question {
+    font-size: 14px;
+    color: var(--text-normal);
+    line-height: 1.6;
+    margin: 12px 0 0 0;
+}
+
+/* Server info section */
+.llmsider-modal-server-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 12px 0 20px 0;
+    padding: 8px 12px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+}
+
+.llmsider-modal-server-info strong {
+    color: var(--text-normal);
+}
+
+/* Schema section */
+.llmsider-modal-schema-section {
+    margin-top: 24px;
+}
+
+.llmsider-schema-toggle {
+    margin: 0;
+}
+
+.llmsider-schema-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-accent);
+    cursor: pointer;
+    padding: 8px 0;
+    list-style: none;
+}
+
+.llmsider-schema-summary::-webkit-details-marker {
+    display: none;
+}
+
+.llmsider-schema-chevron {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.llmsider-schema-toggle[open] .llmsider-schema-chevron {
+    transform: rotate(180deg);
+}
+
+.llmsider-schema-content {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    color: var(--text-normal);
+    overflow-x: auto;
+    margin-top: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ============================================================================
+   Built-in Tools Header Actions
+   ============================================================================ */
+
+.llmsider-builtin-tools-header-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 20px;
+    margin-bottom: 12px;
+}
+
+.llmsider-builtin-tools-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.llmsider-tools-toggle-all-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-tools-toggle-all-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.llmsider-builtin-tools-search-container {
+    margin-bottom: 12px;
+}
+
+.llmsider-builtin-tools-search-input {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-builtin-tools-search-input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+/* ============================================================================
+   Responsive Design
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .llmsider-builtin-category-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .llmsider-modal-content {
+        max-width: 100%;
+        max-height: 90vh;
+    }
+
+    .llmsider-modal-body {
+        padding: 16px;
+    }
+
+    .llmsider-builtin-tools-details {
+        padding: 16px;
+    }
+}
+
+/* Dark theme adjustments */
+.theme-dark .llmsider-mcp-server-tool-group {
+    background: var(--background-secondary);
+}
+
+.theme-dark .llmsider-mcp-server-tools-summary {
+    background: var(--background-primary);
+}
+
+.theme-dark .llmsider-mcp-server-tools-summary:hover {
+    background: var(--background-modifier-hover);
+}
+
+.theme-dark .llmsider-mcp-server-tool-header {
+    background: var(--background-primary);
+}
+
+.theme-dark .llmsider-mcp-tool-schema-content {
+    background: var(--background-primary);
+}
+
+/* Light theme adjustments */
+.theme-light .llmsider-mcp-server-tool-group {
+    background: var(--background-secondary);
+}
+
+.theme-light .llmsider-mcp-server-tools-summary {
+    background: var(--background-primary);
+}
+
+.theme-light .llmsider-mcp-server-tools-summary:hover {
+    background: var(--background-modifier-hover);
+}
+
+.theme-light .llmsider-mcp-tool-schema-content {
+    background: var(--background-primary);
+}

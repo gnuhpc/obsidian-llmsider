@@ -1,0 +1,1444 @@
+/* settings.css - Settings Page Styles
+   This file contains all styles for the LLMSider settings page
+*/
+
+/* ============================================================================
+   Settings Page & Provider Management Styles
+   ============================================================================ */
+
+/* ============================================================================
+   Unified Section Styles
+   ============================================================================ */
+
+/* Section header outside border */
+.llmsider-section-header {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--text-normal);
+	margin-top: 20px;
+	margin-bottom: 12px;
+	line-height: 1.4;
+}
+
+/* First section header has no top margin */
+.llmsider-section-header-first {
+	margin-top: 0;
+}
+
+/* Section container with border */
+.llmsider-settings-section-container {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 20px;
+	background: var(--background-secondary);
+	margin-bottom: 20px;
+}
+
+/* Subsection header inside border */
+.llmsider-subsection-header {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-normal);
+	margin-top: 0;
+	margin-bottom: 12px;
+	line-height: 1.4;
+}
+
+/* Additional spacing for subsection headers with top margin */
+.llmsider-subsection-header-spaced {
+	margin-top: 24px;
+}
+
+/* ============================================================================
+   Common Layout Components
+   ============================================================================ */
+
+/* Section description text */
+.llmsider-section-description {
+	color: var(--text-muted);
+	font-size: 12px;
+	margin-bottom: 16px;
+	line-height: 1.5;
+}
+
+/* Top controls row (search + actions) */
+.llmsider-top-controls-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 16px;
+	margin-top: 0;
+	gap: 12px;
+}
+
+/* Search input in top controls */
+.llmsider-search-input {
+	flex: 1;
+	padding: 8px 12px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	font-size: 14px;
+	color: var(--text-normal);
+}
+
+.llmsider-search-input:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+}
+
+.llmsider-search-input::placeholder {
+	color: var(--text-muted);
+}
+
+/* Actions container (buttons on right side) */
+.llmsider-actions-container {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+/* Warning box */
+.llmsider-warning-box {
+	color: var(--text-error);
+	font-size: 12px;
+	padding: 12px;
+	background-color: var(--background-modifier-error);
+	border-radius: 4px;
+	margin-bottom: 12px;
+	line-height: 1.5;
+}
+
+/* Flex row container */
+.llmsider-flex-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Header container with title and stats */
+.llmsider-header-container {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 20px;
+	margin-bottom: 12px;
+}
+
+/* Title and stats container (vertical) */
+.llmsider-title-stats-container {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+/* Stats display text */
+.llmsider-stats-display {
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.4;
+}
+
+.llmsider-stats-display-hidden {
+	display: none !important;
+}
+
+.llmsider-stats-display-visible {
+	display: block !important;
+}
+
+/* Error display text */
+.llmsider-error-display {
+	font-size: 12px;
+	color: var(--text-error);
+	line-height: 1.4;
+	margin-top: 4px;
+}
+
+.llmsider-error-display-hidden {
+	display: none !important;
+}
+
+.llmsider-error-display-visible {
+	display: block !important;
+}
+
+/* No results state */
+.llmsider-no-results {
+	padding: 20px;
+	text-align: center;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	color: var(--text-muted);
+}
+
+/* Label text (14px, normal color) */
+.llmsider-label-text {
+	font-size: 14px;
+	color: var(--text-normal);
+}
+
+/* Header row (flex, space-between) */
+.llmsider-header-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+/* Inline batch actions - push to right */
+.llmsider-tool-inline-batch-actions {
+	margin-left: auto;
+}
+
+/* Custom Prompt Templates Settings */
+.llmsider-prompt-container {
+    margin-top: 20px;
+}
+
+.llmsider-add-prompt-container {
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.llmsider-add-prompt-btn {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-add-prompt-btn:hover {
+    background: var(--interactive-accent-hover);
+    transform: translateY(-1px);
+}
+
+.llmsider-prompts-empty {
+    text-align: center;
+    padding: 40px 20px;
+    background: var(--background-secondary);
+    border: 1px dashed var(--background-modifier-border);
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+.llmsider-prompts-empty-text {
+    color: var(--text-muted);
+    font-style: italic;
+    margin: 0;
+}
+
+.llmsider-custom-prompts-list {
+    display: grid;
+    gap: 16px;
+    margin-top: 20px;
+}
+
+/* Prompt Card List - Compact Two-line Layout */
+.llmsider-prompt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 600px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.llmsider-prompt-list.llmsider-collapsed {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+}
+
+/* Tab Navigation */
+.llmsider-prompt-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--background-modifier-border);
+    margin-bottom: 12px;
+}
+
+.llmsider-prompt-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.llmsider-prompt-tab:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.llmsider-prompt-tab-active {
+    color: var(--interactive-accent);
+    border-bottom-color: var(--interactive-accent);
+}
+
+/* Prompt Card - Compact Two-line Layout */
+.llmsider-prompt-card {
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    padding: 6px 10px;
+}
+
+.llmsider-prompt-card:hover {
+    border-color: var(--background-modifier-border-hover);
+    background: var(--background-secondary);
+}
+
+/* First Row - Title + Description + Actions */
+.llmsider-prompt-card-first-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+/* Header - Title and Description */
+.llmsider-prompt-card-header {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Title Line - Title + Badge */
+.llmsider-prompt-card-title-line {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.llmsider-prompt-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+    white-space: nowrap;
+}
+
+/* Description (on same line as title) */
+.llmsider-prompt-card-description {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Built-in Badge */
+.llmsider-prompt-builtin-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Action Buttons Container */
+.llmsider-prompt-card-actions {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+/* Action Button Styles */
+.llmsider-prompt-action-btn {
+    background: transparent;
+    border: none;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    color: var(--text-muted);
+    transition: all 0.15s ease;
+}
+
+.llmsider-prompt-action-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.llmsider-prompt-action-btn svg {
+    width: 13px;
+    height: 13px;
+}
+
+.llmsider-prompt-action-delete:hover {
+    background: var(--color-red);
+    color: white;
+}
+
+/* Second Row - Prompt Content Preview */
+.llmsider-prompt-card-second-row {
+    padding-left: 0;
+}
+
+.llmsider-prompt-card-content-preview {
+    font-size: 12px;
+    color: var(--text-faint);
+    font-family: var(--font-monospace);
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: var(--background-secondary);
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+/* Prompt Template Modal */
+.llmsider-prompt-info {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 16px 0;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.llmsider-prompt-info p {
+    margin: 0 0 8px 0;
+    color: var(--text-normal);
+}
+
+.llmsider-prompt-info p:last-child {
+    margin-bottom: 0;
+}
+
+.llmsider-prompt-info code {
+    background: var(--background-modifier-border);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+}
+
+/* Model Modal Form Styles */
+.llmsider-model-form,
+.llmsider-connection-form {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-top: 20px;
+}
+
+.llmsider-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+    align-items: flex-start;
+}
+
+.llmsider-form-group input,
+.llmsider-form-group select,
+.llmsider-form-group .setting-item-control {
+    box-sizing: border-box;
+}
+
+.llmsider-form-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin-bottom: 0;
+    text-align: left;
+}
+
+/* Proxy Settings Specific Styles */
+.llmsider-proxy-settings {
+    text-align: left;
+}
+
+.llmsider-proxy-settings .llmsider-form-group {
+    align-items: flex-start;
+    text-align: left;
+}
+
+.llmsider-proxy-settings .llmsider-form-group label {
+    text-align: left;
+}
+
+.llmsider-proxy-details,
+.llmsider-proxy-auth-details {
+    width: 100%;
+    text-align: left;
+}
+
+.llmsider-form-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.llmsider-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.llmsider-slider-row .slider {
+    flex: 1;
+}
+
+.llmsider-slider-value {
+    min-width: 50px;
+    text-align: right;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--interactive-accent);
+}
+
+.llmsider-note-text,
+.llmsider-loading-text,
+.llmsider-error-text {
+    font-size: 12px;
+    margin: 4px 0 8px 0;
+}
+
+.llmsider-note-text {
+    color: var(--text-muted);
+}
+
+.llmsider-loading-text {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.llmsider-error-text {
+    color: var(--text-error);
+}
+
+.llmsider-modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-modal-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.llmsider-modal-buttons button:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.llmsider-modal-save-btn {
+    background: var(--interactive-accent) !important;
+    color: var(--text-on-accent) !important;
+    border-color: var(--interactive-accent) !important;
+}
+
+.llmsider-modal-save-btn:hover {
+    background: var(--interactive-accent-hover) !important;
+    border-color: var(--interactive-accent-hover) !important;
+}
+
+/* Dark theme adjustments */
+.theme-dark .llmsider-prompt-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.theme-dark .llmsider-prompt-info {
+    background: #1e1e1e;
+    border-color: #404040;
+}
+
+/* ============================================================================
+   Connections & Models - Settings UI
+   ============================================================================ */
+
+/* MCP Section Header */
+.llmsider-mcp-section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.llmsider-mcp-section-header .llmsider-mcp-header-content {
+    flex: 1;
+}
+
+.llmsider-mcp-section-header .llmsider-mcp-header-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 16px;
+}
+
+/* Main container */
+.llmsider-connections-container {
+    max-width: 100%;
+}
+
+/* Add Connection Section */
+.llmsider-add-connection-section {
+    margin-bottom: 24px;
+}
+
+.llmsider-connection-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.llmsider-connection-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-connection-card:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.llmsider-connection-card-icon {
+    width: 32px;
+    height: 32px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-connection-card-icon svg {
+    width: 24px;
+    height: 24px;
+    color: var(--text-normal);
+}
+
+.llmsider-connection-card:hover .llmsider-connection-card-icon svg {
+    color: var(--interactive-accent);
+}
+
+.llmsider-connection-card-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+/* Connections List */
+.llmsider-connections-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Connection Item Card */
+.llmsider-connection-item {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Connection Header */
+.llmsider-connection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--background-secondary);
+}
+
+.llmsider-connection-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.llmsider-connection-collapse-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.llmsider-connection-collapse-btn:hover {
+    color: var(--text-normal);
+}
+
+.llmsider-connection-collapse-btn svg {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.2s ease;
+}
+
+.llmsider-connection-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0px;
+}
+
+.llmsider-connection-name-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.llmsider-connection-name {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.llmsider-connection-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.llmsider-connection-type-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+}
+
+.llmsider-connection-type-logo svg {
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+}
+
+.llmsider-connection-header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Switch */
+.llmsider-switch-container {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.llmsider-switch-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.llmsider-switch-label {
+    display: block;
+    width: 44px;
+    height: 24px;
+    background: var(--background-modifier-border);
+    border-radius: 12px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.llmsider-switch-label::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+}
+
+.llmsider-switch-input:checked + .llmsider-switch-label {
+    background: var(--interactive-accent);
+}
+
+.llmsider-switch-input:checked + .llmsider-switch-label::after {
+    transform: translateX(20px);
+}
+
+/* Models Section */
+.llmsider-models-section {
+    padding: 12px 16px;
+    background: var(--background-primary-alt);
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-models-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.llmsider-models-count {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.llmsider-add-model-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-add-model-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.llmsider-add-model-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Models List */
+.llmsider-models-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Model Card */
+.llmsider-model-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-model-card:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.llmsider-model-card-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.llmsider-model-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.llmsider-model-card-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-model-card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.llmsider-model-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-model-card-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.llmsider-model-card-details {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.llmsider-model-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.llmsider-model-default-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Icon Action Buttons */
+.llmsider-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-icon-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.llmsider-icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.llmsider-icon-btn.delete-btn:hover {
+    color: var(--color-red);
+}
+
+.llmsider-icon-btn.copy-btn:hover {
+    color: var(--interactive-accent);
+}
+
+/* Empty State */
+.llmsider-connection-empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+}
+
+.llmsider-connection-empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.llmsider-connection-empty-text {
+    font-size: 14px;
+    margin: 0;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* Collapsed State */
+.llmsider-connection-item.collapsed .llmsider-models-section {
+    display: none;
+}
+
+.llmsider-connection-item.collapsed .llmsider-connection-collapse-btn svg {
+    transform: rotate(-90deg);
+}
+
+/* Connection Form Container */
+.llmsider-connection-form-container {
+    padding: 20px;
+}
+
+/* Provider Selector Grid */
+.llmsider-provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.llmsider-provider-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px 16px;
+    background: var(--background-secondary);
+    border: 2px solid var(--background-modifier-border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-provider-card:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.llmsider-provider-card.selected {
+    border-color: var(--interactive-accent);
+    background: var(--background-modifier-hover);
+}
+
+.llmsider-provider-logo {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.llmsider-provider-logo svg {
+    width: 32px;
+    height: 32px;
+    color: var(--text-normal);
+}
+
+.llmsider-provider-card.selected .llmsider-provider-logo svg {
+    color: var(--interactive-accent);
+}
+
+.llmsider-provider-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+/* Form Fields */
+.llmsider-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.llmsider-form-field label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.llmsider-form-field input,
+.llmsider-form-field select {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    color: var(--text-normal);
+    font-size: 14px;
+}
+
+.llmsider-form-field input:focus,
+.llmsider-form-field select:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+}
+
+.llmsider-form-field small {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* Buttons Row */
+.llmsider-buttons-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.llmsider-btn:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.llmsider-btn-primary {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
+.llmsider-btn-primary:hover {
+    background: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+}
+
+/* Scrollable sections */
+.llmsider-models-section {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .llmsider-connection-cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    
+    .llmsider-provider-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+    
+    .llmsider-connection-header-left {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .llmsider-connection-name-container {
+        flex-wrap: wrap;
+    }
+}
+
+/* ============================================================================
+   Prompt Management Styles
+   ============================================================================ */
+
+/* Prompt Management Controls */
+.llmsider-prompt-controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    align-items: center;
+}
+
+.llmsider-prompt-search {
+    flex: 1;
+    min-width: 200px;
+}
+
+.llmsider-prompt-search-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-prompt-search-input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+.llmsider-prompt-search-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Prompt List */
+.llmsider-prompt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.llmsider-prompt-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.llmsider-prompt-section-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-normal);
+    border-bottom: 2px solid var(--background-modifier-border);
+    padding-bottom: 8px;
+    line-height: 1.4;
+}
+
+.llmsider-prompt-empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+    background: var(--background-secondary);
+    border-radius: 8px;
+    border: 1px dashed var(--background-modifier-border);
+}
+
+/* Prompt Card */
+.llmsider-prompt-card {
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.2s ease;
+}
+
+.llmsider-prompt-card:hover {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.llmsider-prompt-card.llmsider-prompt-builtin {
+    background: var(--background-secondary);
+}
+
+.llmsider-prompt-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.llmsider-prompt-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.llmsider-prompt-card-title h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+    line-height: 1.4;
+}
+
+.llmsider-prompt-builtin-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.llmsider-prompt-card-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.llmsider-prompt-action-btn {
+    padding: 6px;
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.llmsider-prompt-action-btn:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+    color: var(--text-normal);
+}
+
+.llmsider-prompt-action-btn.llmsider-prompt-action-delete:hover {
+    border-color: var(--text-error);
+    color: var(--text-error);
+    background: var(--background-modifier-error);
+}
+
+.llmsider-prompt-card-body {
+    margin-bottom: 12px;
+}
+
+.llmsider-prompt-card-description {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.llmsider-prompt-card-footer {
+    border-top: 1px solid var(--background-modifier-border);
+    padding-top: 12px;
+}
+
+.llmsider-prompt-card-preview {
+    margin: 0;
+    padding: 12px;
+    background: var(--background-secondary);
+    border-radius: 4px;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Prompt Management Modal */
+.llmsider-prompt-modal .modal-button-container {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.llmsider-prompt-modal .llmsider-prompt-content-container {
+    width: 100%;
+}
+
+.llmsider-prompt-modal .llmsider-prompt-content-input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+    transition: all 0.2s ease;
+}
+
+.llmsider-prompt-modal .llmsider-prompt-content-input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+.llmsider-prompt-modal .llmsider-prompt-info {
+    margin-top: 8px;
+}
+
+.llmsider-prompt-modal .llmsider-prompt-error {
+    padding: 12px;
+    margin-top: 12px;
+    background: var(--background-modifier-error);
+    border: 1px solid var(--text-error);
+    border-radius: 6px;
+    color: var(--text-error);
+}
+
+.llmsider-prompt-modal .llmsider-prompt-error p {
+    margin: 0;
+    font-size: 12px;
+}
+
+/* Confirm Dialog */
+.llmsider-confirm-dialog {
+    padding: 20px;
+    background: var(--background-primary);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.llmsider-confirm-dialog p {
+    margin: 0 0 16px 0;
+    color: var(--text-normal);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .llmsider-prompt-controls {
+        flex-direction: column;
+    }
+
+    .llmsider-prompt-search {
+        width: 100%;
+    }
+
+    .llmsider-prompt-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .llmsider-prompt-card-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}

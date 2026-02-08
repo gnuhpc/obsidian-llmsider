@@ -1,10 +1,15 @@
-import { MarkdownRenderer, Component, App, Notice } from 'obsidian';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { MarkdownRenderer, Component, App, Notice, MarkdownView, setIcon, Modal } from 'obsidian';
 import { Logger } from './../utils/logger';
 import { ChatMessage, MessageContent, PlanExecutePhase, PlanExecuteState } from '../types';
 import LLMSiderPlugin from '../main';
 import { ToolCallPrompter, ToolCallData } from './tool-call-prompter';
 import { ToolResultCard, ToolResultData } from './tool-result-card';
-import { PlanExecuteTracker, Task, TaskStatus, ToolCall } from '../plan-execute/plan-execute-tracker';
+import { MessageActions } from './message-actions';
+import { PlanExecuteTracker, Task } from '../processors/plan-execute-tracker';
+import { getAllBuiltInTools } from '../tools/built-in-tools';
+import { renderRestoredDAGPlan, transformSequentialToLinear, type RestoredPlan } from './plan-dag-restoration';
+
 
 export class MessageRenderer {
 	private app: App;
@@ -13,57 +18,39 @@ export class MessageRenderer {
 	private isBufferingXml: boolean = false;
 	private pendingContent: string = '';
 	private toolCallPrompter: ToolCallPrompter;
+	private messageActions: MessageActions;
 	// Track mermaid blocks being streamed: messageId -> { startIndex, mermaidId, code }[]
 	private streamingMermaidBlocks: Map<string, Array<{ startIndex: number; mermaidId: string; code: string; completed: boolean }>> = new Map();
+	
+	// Throttling for streaming updates
+	private streamingThrottleMap: Map<HTMLElement, {
+		lastUpdate: number;
+		pendingContent: string | null;
+		timeoutId: number | null;
+	}> = new Map();
+	private readonly STREAMING_THROTTLE_MS = 100; // Update at most every 100ms
+	private readonly STREAMING_FINAL_DELAY_MS = 50; // Short delay for final update
 
 	constructor(app: App, plugin: LLMSiderPlugin) {
 		this.app = app;
 		this.plugin = plugin;
 		this.toolCallPrompter = new ToolCallPrompter(app, plugin);
+		this.messageActions = new MessageActions({
+			app: app,
+			plugin: plugin,
+			i18n: plugin.getI18nManager()
+		});
 	}
 
 	/**
 	 * Render a chat message to a DOM element
 	 */
 	renderMessage(container: HTMLElement, message: ChatMessage): HTMLElement {
+		Logger.debug('[TRACE] renderMessage called for:', message.id);
 
 		// Skip rendering internal messages (used only for AI context)
 		if (message.metadata?.internalMessage) {
 			return container.createDiv({ cls: 'llmsider-internal-message', attr: { 'style': 'display: none;' } });
-		}
-
-		// Check if this is a historical Plan-Execute message with saved tasks
-		// If so, render as independent tracker instead of standard message
-		const isPlanExecuteMode = (message.metadata as any)?.isPlanExecuteMode === true;
-		const savedTasks = (message.metadata as any)?.planTasks;
-		
-		if (message.role === 'assistant' && isPlanExecuteMode && savedTasks && Array.isArray(savedTasks) && savedTasks.length > 0) {
-			Logger.debug('Rendering historical plan as independent tracker (early check)');
-			
-			// Create tracker container directly
-			const trackerContainer = container.createDiv({ 
-				cls: 'llmsider-plan-execute-tracker llmsider-history-plan' 
-			});
-			
-			// Render the tracker
-			const tracker = new PlanExecuteTracker(trackerContainer, {
-				tasks: savedTasks as Task[],
-				isExecuting: false, // Historical plan, not executing
-				expandable: true,
-				onTaskRetry: (taskId: string) => {
-					Logger.debug('Historical plan retry not supported:', taskId);
-				},
-				onTaskSkip: (taskId: string) => {
-					Logger.debug('Historical plan skip not supported:', taskId);
-				},
-				onTaskRegenerateAndRetry: (taskId: string) => {
-					Logger.debug('Historical plan regenerate not supported:', taskId);
-				},
-				i18n: this.plugin.getI18nManager()!
-			});
-			
-			// Return the tracker container instead of a message element
-			return trackerContainer;
 		}
 
 		const messageClasses = [`llmsider-message`, `llmsider-${message.role}`];
@@ -97,6 +84,9 @@ export class MessageRenderer {
 			this.renderUserMessage(contentEl, message);
 			// Add hover actions for user messages
 			this.addUserMessageActions(messageEl, message);
+		} else if (message.role === 'system' && message.metadata?.toolResult) {
+			// Render system tool result messages as cards
+			this.renderToolResultCard(contentEl, message);
 		} else {
 			this.renderUserMessage(contentEl, message);
 		}
@@ -125,35 +115,40 @@ export class MessageRenderer {
 	/**
 	 * Render assistant message with special handling for working indicators and diffs
 	 */
-	private renderAssistantMessage(messageEl: HTMLElement, contentEl: HTMLElement, message: ChatMessage): void {
+	public renderAssistantMessage(messageEl: HTMLElement, contentEl: HTMLElement, message: ChatMessage): void {
+		// Check if this is a saved plan message (after reload) - restore tracker
+		if (message.metadata?.phase === 'plan' && message.metadata?.planTasks) {
+			this.restorePlanTracker(contentEl, message);
+			return;
+		}
 
-// Render provider tabs if there are multiple provider responses
-if (message.providerResponses && Object.keys(message.providerResponses).length > 0) {
-this.renderProviderTabsForMessage(messageEl, message);
+		// Render provider tabs if there are multiple provider responses
+		if (message.providerResponses && Object.keys(message.providerResponses).length > 0) {
+			this.renderProviderTabsForMessage(messageEl, message);
 
-// Render content from active provider instead of message.content
-const activeProvider = message.activeProvider || Object.keys(message.providerResponses)[0];
-const activeResponse = message.providerResponses[activeProvider];
+			// Render content from active provider instead of message.content
+			const activeProvider = message.activeProvider || Object.keys(message.providerResponses)[0];
+			const activeResponse = message.providerResponses[activeProvider];
 
-// Always try to render content if activeResponse exists
-// Even if content is empty, we'll show an empty content area (tabs will be visible)
-if (activeResponse) {
-const responseContent = activeResponse.content ? this.extractTextContent(activeResponse.content) : '';
-if (responseContent.trim()) {
-this.renderMarkdownContent(contentEl, responseContent);
-}
-// If content is empty, don't show loading indicator - just leave content empty
-// This allows tabs to be visible during streaming before content arrives
-}
-return; // Don't render the original content
-}
+			// Always try to render content if activeResponse exists
+			// Even if content is empty, we'll show an empty content area (tabs will be visible)
+			if (activeResponse) {
+				const responseContent = activeResponse.content ? this.extractTextContent(activeResponse.content) : '';
+				if (responseContent.trim()) {
+					this.renderMarkdownContent(contentEl, responseContent);
+				}
+				// If content is empty, don't show loading indicator - just leave content empty
+				// This allows tabs to be visible during streaming before content arrives
+			}
+			return; // Don't render the original content
+		}
 
-// Only add "Add Provider" button if there are NO provider tabs
-// (when provider tabs exist, they already have a "+" button)
-if (!message.providerResponses || Object.keys(message.providerResponses).length === 0) {
-// Add "Add Provider" button for multi-provider comparison (shown on hover)
-this.addProviderComparisonButton(messageEl, message);
-}
+		// Only add "Add Provider" button if there are NO provider tabs
+		// (when provider tabs exist, they already have a "+" button)
+		if (!message.providerResponses || Object.keys(message.providerResponses).length === 0) {
+			// Add "Add Provider" button for multi-provider comparison (shown on hover)
+			this.addProviderComparisonButton(messageEl, message);
+		}
 
 		// Add action buttons for guided mode messages (after rendering content)
 		if (message.metadata?.isGuidedQuestion) {
@@ -161,7 +156,11 @@ this.addProviderComparisonButton(messageEl, message);
 		}
 
 		// Check if this is a tool result - render with card component
-		if (message.metadata?.toolResult) {
+		// NOTE: Don't return early! Assistant messages can have both text content AND tool results
+		// We'll render tool cards after rendering the main content below
+		const hasToolResult = message.metadata?.toolResult;
+		if (hasToolResult && message.role === 'system') {
+			// System messages with tool results ONLY show the tool card (no text content)
 			this.renderToolResultCard(contentEl, message);
 			return;
 		}
@@ -208,28 +207,6 @@ this.addProviderComparisonButton(messageEl, message);
 			return;
 		}
 
-		// Check if message is Plan-Execute mode
-		// Priority: 1) metadata.isPlanExecuteMode flag, 2) XML tags (for backward compatibility)
-		// Note: Historical plans with saved tasks are already handled in renderMessage()
-		const isPlanExecuteMode = (message.metadata as any)?.isPlanExecuteMode === true;
-		const hasXMLTags = this.containsPlanExecuteXML(textContent);
-		const savedTasks = (message.metadata as any)?.planTasks;
-		
-		if (isPlanExecuteMode || hasXMLTags) {
-			Logger.debug('Detected Plan-Execute mode:', {
-				messageId: message.id,
-				hasFlag: isPlanExecuteMode,
-				hasXML: hasXMLTags,
-				phase: (message.metadata as any)?.phase,
-				hasSavedTasks: !!savedTasks && Array.isArray(savedTasks)
-			});
-			
-			// Render as Plan-Execute mode inside message content (for streaming or no saved tasks)
-			// Historical plans with saved tasks are already rendered as independent trackers in renderMessage()
-			this.renderPlanExecuteContent(contentEl, textContent, false, savedTasks);
-			return;
-		}
-
 		// Check if diff rendering is enabled for this specific message
 		// First check message-level setting, then fall back to global setting
 		const messageDiffState = (message.metadata as any)?.diffRenderingEnabled;
@@ -258,6 +235,24 @@ this.addProviderComparisonButton(messageEl, message);
 		} else {
 			// Regular markdown rendering (either diff disabled or no diff data)
 			this.renderMarkdownContent(contentEl, this.extractTextContent(message.content));
+		}
+
+		// Add action buttons for assistant messages (unless already added for guided mode)
+		// Skip if message is still working/streaming
+		if (!message.metadata?.isWorking && !message.metadata?.isGuidedQuestion) {
+			this.addMessageActions(messageEl, message);
+		}
+
+		// Finally, if this assistant message has tool results, render them AFTER the text content
+		if (hasToolResult && message.role === 'assistant') {
+			// Create a separate container for tool cards after the text content
+			const toolCardContainer = contentEl.createDiv({ cls: 'llmsider-tool-card-container' });
+			this.renderToolResultCard(toolCardContainer, message);
+		}
+
+		// Render generated images if present
+		if (message.metadata?.generatedImages && Array.isArray(message.metadata.generatedImages)) {
+			this.renderGeneratedImages(contentEl, message.metadata.generatedImages);
 		}
 	}
 
@@ -320,17 +315,31 @@ this.addProviderComparisonButton(messageEl, message);
 
 		const actionsEl = messageEl.createDiv({ cls: 'llmsider-message-actions' });
 
-		// Copy button - for user messages
 		const i18n = this.plugin.getI18nManager();
+
+		// Copy button - for user messages
 		const copyBtn = actionsEl.createEl('button', {
 			cls: 'llmsider-action-btn',
-			title: i18n?.t('messageActions.copyMessage') || 'Copy message'
+			title: i18n?.t('messageActions.copyMessage') || 'Copy message',
+			attr: { 'aria-label': i18n?.t('messageActions.copyMessage') || 'Copy message' }
 		});
 		copyBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
 			<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
 		</svg>`;
 		copyBtn.onclick = () => this.copyUserMessage(message);
+
+		// Edit button - edit user message
+		const editBtn = actionsEl.createEl('button', {
+			cls: 'llmsider-action-btn',
+			title: i18n?.t('messageActions.editMessage') || 'Edit message',
+			attr: { 'aria-label': i18n?.t('messageActions.editMessage') || 'Edit message' }
+		});
+		editBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+			<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+		</svg>`;
+		editBtn.onclick = () => this.editMessage(message);
 	}
 
 	/**
@@ -353,22 +362,23 @@ this.addProviderComparisonButton(messageEl, message);
 	 * Render special system messages (tool execution, detection, etc.)
 	 */
 	private renderSystemMessage(contentEl: HTMLElement, message: ChatMessage): void {
-		const metadata = message.metadata as any;
+		const metadata = message.metadata as unknown;
 		
 		// Add special styling for tool-related messages
-		if (metadata?.isToolDetection) {
+		const meta = metadata as any;
+		if (meta?.isToolDetection) {
 			contentEl.classList.add('llmsider-tool-detection-message');
-		} else if (metadata?.isToolExecution) {
+		} else if (meta?.isToolExecution) {
 			contentEl.classList.add('llmsider-tool-execution-message');
 			// Add animation for running tools
-			if (metadata.executionStatus === 'running') {
+			if (meta.executionStatus === 'running') {
 				contentEl.classList.add('llmsider-tool-running');
 			}
-		} else if (metadata?.isToolExecutionResult) {
+		} else if (meta?.isToolExecutionResult) {
 			contentEl.classList.add('llmsider-tool-result-message');
-			if (metadata.executionStatus === 'completed') {
+			if (meta.executionStatus === 'completed') {
 				contentEl.classList.add('llmsider-tool-success');
-			} else if (metadata.executionStatus === 'failed') {
+			} else if (meta.executionStatus === 'failed') {
 				contentEl.classList.add('llmsider-tool-error');
 			}
 		}
@@ -429,7 +439,7 @@ this.addProviderComparisonButton(messageEl, message);
 				// Construct ToolResultData from metadata
 				const toolData: ToolResultData = {
 					toolName: execution.toolName,
-					parameters: execution.parameters,
+					parameters: execution.parameters as any,
 					result: execution.result,
 					status: execution.status === 'completed' ? 'success' : 
 					        execution.status === 'failed' ? 'error' : 'pending',
@@ -438,8 +448,20 @@ this.addProviderComparisonButton(messageEl, message);
 				
 				// Create the tool result card
 				new ToolResultCard(contentEl, toolData);
+			} else if (message.metadata?.toolName) {
+				// Construct ToolResultData from metadata + content (backward compatibility)
+				const toolData: ToolResultData = {
+					toolName: message.metadata.toolName,
+					parameters: message.metadata.parameters || {},
+					result: message.content, // Content is the result
+					status: 'success', // Assume success if no error metadata
+					timestamp: new Date(message.timestamp)
+				};
+				
+				// Create the tool result card
+				new ToolResultCard(contentEl, toolData);
 			} else {
-				// Try parsing as JSON (backward compatibility)
+				// Try parsing as JSON (backward compatibility for very old format)
 				const toolData: ToolResultData = JSON.parse(message.content as string);
 				new ToolResultCard(contentEl, toolData);
 			}
@@ -467,6 +489,25 @@ this.addProviderComparisonButton(messageEl, message);
 			let processedContent = content;
 			let hasAnyMermaid = false;
 			let hasIncompleteMermaid = false;
+			
+			// Strip memory markers (both complete and incomplete)
+			processedContent = processedContent.replace(/\[MEMORY_UPDATE\][\s\S]*?\[\/MEMORY_UPDATE\]/g, '');
+			const incompleteMarkerIndex = processedContent.indexOf('[MEMORY_UPDATE]');
+			if (incompleteMarkerIndex !== -1) {
+				processedContent = processedContent.substring(0, incompleteMarkerIndex);
+			}
+			processedContent = processedContent.trim();
+			
+			// Handle YAML front matter - render as code block to avoid Obsidian's table rendering
+			if (processedContent.trimStart().startsWith('---')) {
+				const yamlMatch = processedContent.match(/^---\n([\s\S]*?)\n---/);
+				if (yamlMatch) {
+					// Replace YAML front matter with a code block
+					const yamlContent = yamlMatch[1];
+					const restContent = processedContent.substring(yamlMatch[0].length);
+					processedContent = `\`\`\`yaml\n${yamlContent}\n\`\`\`${restContent}`;
+				}
+			}
 			
 			// First, replace all complete mermaid blocks with placeholders
 			if (processedContent.includes('```mermaid')) {
@@ -510,8 +551,8 @@ this.addProviderComparisonButton(messageEl, message);
 				for (let i = mermaidBlocks.length - 1; i >= 0; i--) {
 					const block = mermaidBlocks[i];
 					const mermaidId = block.complete 
-						? `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-						: `mermaid-streaming-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+						? `mermaid-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+						: `mermaid-streaming-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 					
 					const placeholderClass = block.complete 
 						? 'mermaid-placeholder'
@@ -527,12 +568,21 @@ this.addProviderComparisonButton(messageEl, message);
 			}
 			
 			// Render the processed content
+			// Unload previous component if exists (for re-renders)
+			const existingComponent = (contentEl as any)._llmsiderMarkdownComponent;
+			if (existingComponent) {
+				existingComponent.unload();
+			}
+			
+			const component = new Component();
+			(contentEl as any)._llmsiderMarkdownComponent = component; // Store for cleanup
+			
 			MarkdownRenderer.render(
 				this.app,
 				processedContent,
 				contentEl,
 				'',
-				new Component()
+				component
 			);
 			
 			// Add click-to-render UI for mermaid placeholders
@@ -628,12 +678,13 @@ this.addProviderComparisonButton(messageEl, message);
 					});
 					
 					// Render using Obsidian's markdown renderer which handles mermaid
+					const component = new Component();
 					await MarkdownRenderer.render(
 						this.app,
 						'```mermaid\n' + mermaidCode + '\n```',
 						mermaidContainer,
 						'',
-						new Component()
+						component
 					);
 
 					// Initialize zoom and pan state
@@ -700,12 +751,14 @@ this.addProviderComparisonButton(messageEl, message);
 
 					// Close modal when clicking backdrop
 					backdrop.onclick = () => {
+						component.unload();
 						modal.remove();
 					};
 
 					// Close modal when clicking outside the content
 					modal.onclick = (e) => {
 						if (e.target === modal) {
+							component.unload();
 							modal.remove();
 						}
 					};
@@ -777,7 +830,8 @@ this.addProviderComparisonButton(messageEl, message);
 		
 		const closeBtn = tab.createEl('button', {
 			cls: 'llmsider-provider-tab-close-btn',
-			title: 'Remove this response'
+			title: 'Remove this response',
+			attr: { 'aria-label': 'Remove this response' }
 		});
 		closeBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<line x1="18" y1="6" x2="6" y2="18"></line>
@@ -948,7 +1002,8 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 		// Add "+" button to add more providers
 		const addBtn = tabsContainer.createEl('button', { 
 			cls: 'llmsider-provider-tab-add-btn',
-			title: 'Compare with another model'
+			title: 'Compare with another model',
+			attr: { 'aria-label': 'Compare with another model' }
 		});
 		// Use the same git-branch icon for consistency
 		addBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1002,7 +1057,8 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 		const i18n = this.plugin.getI18nManager();
 		const addProviderBtn = messageEl.createEl('button', {
 			cls: 'llmsider-add-provider-btn',
-			title: i18n?.t('ui.addModelForComparison') || 'Compare with another model'
+			title: i18n?.t('ui.addModelForComparison') || 'Compare with another model',
+			attr: { 'aria-label': i18n?.t('ui.addModelForComparison') || 'Compare with another model' }
 		});
 		
 		// Icon showing git-branch style (representing comparison/branching)
@@ -1072,8 +1128,8 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 		const hasMultipleReferences = message.metadata?.hasMultipleReferences === true;
 
 		// Check if message has text reference context (selected text ONLY, not context files)
-		const hasTextReference = metadata?.isSelectedTextMode === true || 
-		                         metadata?.selectedTextContext !== undefined;
+		const hasTextReference = (metadata as any)?.isSelectedTextMode === true || 
+		                         (metadata as any)?.selectedTextContext !== undefined;
 
 		// Add diff toggle button for non-agent mode - only show when there's text/file content AND selected text reference
 		// Hide if multiple references are present
@@ -1081,7 +1137,8 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			const i18n = this.plugin.getI18nManager();
 			const diffToggleBtn = actionsEl.createEl('button', {
 				cls: 'llmsider-action-btn llmsider-diff-toggle-btn',
-				title: i18n?.t('messageActions.toggleDiffRendering') || 'Toggle Diff Rendering'
+				title: i18n?.t('messageActions.toggleDiffRendering') || 'Toggle Diff Rendering',
+				attr: { 'aria-label': i18n?.t('messageActions.toggleDiffRendering') || 'Toggle Diff Rendering' }
 			});
 
 			// Set button appearance based on message-specific or global state
@@ -1113,7 +1170,8 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			const i18n = this.plugin.getI18nManager();
 			const applyBtn = actionsEl.createEl('button', {
 				cls: 'llmsider-action-btn llmsider-apply-btn',
-				title: i18n?.t('messageActions.applyChanges') || 'Apply Changes'
+				title: i18n?.t('messageActions.applyChanges') || 'Apply Changes',
+				attr: { 'aria-label': i18n?.t('messageActions.applyChanges') || 'Apply Changes' }
 			});
 			applyBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<polyline points="20 6 9 17 4 12"></polyline>
@@ -1121,22 +1179,65 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			applyBtn.onclick = () => this.applyChanges(message);
 		}
 
-		// Copy as Markdown button - ALWAYS add for assistant messages
+		// Copy button with dropdown - ALWAYS add for assistant messages
 		const i18n = this.plugin.getI18nManager();
-		const copyBtn = actionsEl.createEl('button', {
-			cls: 'llmsider-action-btn',
-			title: i18n?.t('messageActions.copyAsMarkdown') || 'Copy as Markdown'
+		const copyBtnContainer = actionsEl.createEl('div', {
+			cls: 'llmsider-action-btn-dropdown-container'
+		});
+		
+		const copyBtn = copyBtnContainer.createEl('button', {
+			cls: 'llmsider-action-btn llmsider-copy-dropdown-btn',
+			title: i18n?.t('messageActions.copy') || 'Copy',
+			attr: { 'aria-label': i18n?.t('messageActions.copy') || 'Copy' }
 		});
 		copyBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
 			<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
 		</svg>`;
-		copyBtn.onclick = () => this.copyAsMarkdown(message);
+		
+		const dropdownMenu = copyBtnContainer.createEl('div', {
+			cls: 'llmsider-copy-dropdown-menu'
+		});
+		dropdownMenu.style.display = 'none';
+		
+		const copyAsMarkdownOption = dropdownMenu.createEl('div', {
+			cls: 'llmsider-copy-dropdown-item',
+			text: i18n?.t('messageActions.copyAsMarkdown') || 'Copy as Markdown'
+		});
+		copyAsMarkdownOption.onclick = (e) => {
+			e.stopPropagation();
+			this.copyAsMarkdown(message);
+			dropdownMenu.style.display = 'none';
+		};
+		
+		const copyAsPlainTextOption = dropdownMenu.createEl('div', {
+			cls: 'llmsider-copy-dropdown-item',
+			text: i18n?.t('messageActions.copyAsPlainText') || 'Copy as Plain Text'
+		});
+		copyAsPlainTextOption.onclick = (e) => {
+			e.stopPropagation();
+			this.copyAsPlainText(message);
+			dropdownMenu.style.display = 'none';
+		};
+		
+		copyBtn.onclick = (e) => {
+			e.stopPropagation();
+			const isVisible = dropdownMenu.style.display !== 'none';
+			document.querySelectorAll('.llmsider-copy-dropdown-menu').forEach(menu => {
+				(menu as HTMLElement).style.display = 'none';
+			});
+			dropdownMenu.style.display = isVisible ? 'none' : 'block';
+		};
+		
+		document.addEventListener('click', () => {
+			dropdownMenu.style.display = 'none';
+		});
 
 		// Generate new Note button - ALWAYS add for assistant messages
 		const noteBtn = actionsEl.createEl('button', {
 			cls: 'llmsider-action-btn',
-			title: i18n?.t('messageActions.generateNewNote') || 'Generate new Note'
+			title: i18n?.t('messageActions.generateNewNote') || 'Generate new Note',
+			attr: { 'aria-label': i18n?.t('messageActions.generateNewNote') || 'Generate new Note' }
 		});
 		noteBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -1145,6 +1246,31 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			<line x1="9" y1="15" x2="15" y2="15"></line>
 		</svg>`;
 		noteBtn.onclick = () => this.generateNewNote(message);
+
+		// Insert at Cursor button - ALWAYS add for assistant messages
+		const insertBtn = actionsEl.createEl('button', {
+			cls: 'llmsider-action-btn',
+			title: i18n?.t('messageActions.insertAtCursor') || 'Insert at Cursor',
+			attr: { 'aria-label': i18n?.t('messageActions.insertAtCursor') || 'Insert at Cursor' }
+		});
+		insertBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<polyline points="9 10 4 15 9 20"></polyline>
+			<path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
+		</svg>`;
+		insertBtn.onclick = () => this.insertAtCursor(message);
+
+		// Regenerate button - regenerate the response
+		const regenerateBtn = actionsEl.createEl('button', {
+			cls: 'llmsider-action-btn',
+			title: i18n?.t('messageActions.regenerate') || 'Regenerate',
+			attr: { 'aria-label': i18n?.t('messageActions.regenerate') || 'Regenerate' }
+		});
+		regenerateBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<polyline points="23 4 23 10 17 10"></polyline>
+			<polyline points="1 20 1 14 7 14"></polyline>
+			<path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+		</svg>`;
+		regenerateBtn.onclick = () => this.regenerateResponse(message);
 
 		// Add "Compare with other models" button in top-right corner
 		// Only show if there are no provider tabs yet (if tabs exist, they have their own "+" button)
@@ -1167,7 +1293,8 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 		const i18n = this.plugin.getI18nManager();
 		const addProviderBtn = messageEl.createEl('button', {
 			cls: 'llmsider-add-provider-btn',
-			title: i18n?.t('ui.addModelForComparison') || 'Compare with another model'
+			title: i18n?.t('ui.addModelForComparison') || 'Compare with another model',
+			attr: { 'aria-label': i18n?.t('ui.addModelForComparison') || 'Compare with another model' }
 		});
 		
 		// Icon showing git-branch style (representing comparison/branching)
@@ -1358,39 +1485,108 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 	 * Update streaming content with typewriter effect and XML buffering
 	 */
 	updateStreamingContent(contentEl: HTMLElement, content: string): void {
-		try {
-			// Process content through XML buffering logic
-			const processedContent = this.processStreamingContentWithXmlBuffer(content);
+		// Get or create throttle state for this element
+		let throttleState = this.streamingThrottleMap.get(contentEl);
+		if (!throttleState) {
+			throttleState = {
+				lastUpdate: 0,
+				pendingContent: null,
+				timeoutId: null
+			};
+			this.streamingThrottleMap.set(contentEl, throttleState);
+		}
+		
+		// Store the latest content
+		throttleState.pendingContent = content;
+		
+		const now = Date.now();
+		const timeSinceLastUpdate = now - throttleState.lastUpdate;
+		
+		// If enough time has passed, update immediately
+		if (timeSinceLastUpdate >= this.STREAMING_THROTTLE_MS) {
+			this.performStreamingUpdate(contentEl, content);
+			throttleState.lastUpdate = now;
+			throttleState.pendingContent = null;
+			
+			// Clear any pending timeout
+			if (throttleState.timeoutId !== null) {
+				window.clearTimeout(throttleState.timeoutId);
+				throttleState.timeoutId = null;
+			}
+		} else {
+			// Schedule an update if one isn't already scheduled
+			if (throttleState.timeoutId === null) {
+				const delay = this.STREAMING_THROTTLE_MS - timeSinceLastUpdate;
+				throttleState.timeoutId = window.setTimeout(() => {
+					const state = this.streamingThrottleMap.get(contentEl);
+					if (state && state.pendingContent !== null) {
+						this.performStreamingUpdate(contentEl, state.pendingContent);
+						state.lastUpdate = Date.now();
+						state.pendingContent = null;
+						state.timeoutId = null;
+					}
+				}, delay);
+			}
+		}
+	}
+	
+	/**
+	 * Force final update for streaming content (call when streaming completes)
+	 */
+	flushStreamingContent(contentEl: HTMLElement): void {
+		const throttleState = this.streamingThrottleMap.get(contentEl);
+		if (throttleState) {
+			// Clear any pending timeout
+			if (throttleState.timeoutId !== null) {
+				window.clearTimeout(throttleState.timeoutId);
+				throttleState.timeoutId = null;
+			}
+			
+			// Perform final update if there's pending content
+			if (throttleState.pendingContent !== null) {
+				this.performStreamingUpdate(contentEl, throttleState.pendingContent);
+				throttleState.pendingContent = null;
+			}
+			
+			// Clean up throttle state
+			this.streamingThrottleMap.delete(contentEl);
+		}
+	}
+	
+	/**
+	 * Actually perform the streaming content update
+	 */
+	private performStreamingUpdate(contentEl: HTMLElement, content: string): void {
+		// Use requestAnimationFrame to batch DOM updates with browser's repaint cycle
+		requestAnimationFrame(() => {
+			try {
+				// Process content through XML buffering logic
+				const processedContent = this.processStreamingContentWithXmlBuffer(content);
 
-			// IMPORTANT: Don't use empty() - it removes tabs!
-			// Instead, remove all children EXCEPT the tabs container
-			const tabsContainer = contentEl.querySelector('.llmsider-message-provider-tabs');
-			const children = Array.from(contentEl.children);
-			children.forEach(child => {
-				if (child !== tabsContainer) {
-					child.remove();
-				}
-			});
+				// IMPORTANT: Don't use empty() - it removes tabs!
+				// Instead, remove all children EXCEPT the tabs container
+				const tabsContainer = contentEl.querySelector('.llmsider-message-provider-tabs');
+				const children = Array.from(contentEl.children);
+				children.forEach(child => {
+					if (child !== tabsContainer) {
+						child.remove();
+					}
+				});
 
-			// Only render if there's content to display
-			if (processedContent.trim()) {
-				// Check if content contains Plan-Execute XML tags
-				if (this.containsPlanExecuteXML(processedContent)) {
-					// Render as Plan-Execute mode with streaming support
-					this.renderPlanExecuteContent(contentEl, processedContent, true);
-				} else {
+				// Only render if there's content to display
+				if (processedContent.trim()) {
 					// Regular markdown rendering
 					this.renderMarkdownContent(contentEl, processedContent);
 				}
+			} catch (error) {
+				Logger.error(`Streaming render error:`, error);
+				// Fallback: process through XML filter and render as plain text
+				const filteredContent = this.removeToolCallXML(content);
+				if (filteredContent.trim()) {
+					contentEl.textContent = filteredContent;
+				}
 			}
-		} catch (error) {
-			Logger.error(`Streaming render error:`, error);
-			// Fallback: process through XML filter and render as plain text
-			const filteredContent = this.removeToolCallXML(content);
-			if (filteredContent.trim()) {
-				contentEl.textContent = filteredContent;
-			}
-		}
+		});
 	}
 
 	/**
@@ -1468,165 +1664,95 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 	}
 
 	/**
+	 * Get content from active provider tab if multi-provider mode, otherwise use message.content
+	 */
+	private getActiveProviderContent(message: ChatMessage): string | MessageContent[] {
+		// If message has provider responses, use the active provider's content
+		if (message.providerResponses && Object.keys(message.providerResponses).length > 0) {
+			const activeProvider = message.activeProvider || Object.keys(message.providerResponses)[0];
+			const activeResponse = message.providerResponses[activeProvider];
+			if (activeResponse && activeResponse.content) {
+				return activeResponse.content;
+			}
+		}
+		// Fall back to message.content
+		return message.content;
+	}
+
+	/**
 	 * Copy message content as Markdown
 	 */
 	private async copyAsMarkdown(message: ChatMessage): Promise<void> {
-		const i18n = this.plugin.getI18nManager();
-		try {
-			const textContent = this.extractTextContent(message.content);
-			await navigator.clipboard.writeText(textContent);
-			new Notice(i18n?.t('common.copiedToClipboard') || 'Copied to clipboard');
-			Logger.debug('Copied message to clipboard:', textContent.length + ' characters');
-		} catch (error) {
-			Logger.error('Failed to copy to clipboard:', error);
-			new Notice(i18n?.t('common.failedToCopy') || 'Failed to copy');
+		const activeContent = this.getActiveProviderContent(message);
+		const textContent = this.extractTextContent(activeContent);
+		await this.messageActions.copyToClipboard(textContent);
+	}
+
+	private async copyAsPlainText(message: ChatMessage): Promise<void> {
+		const activeContent = this.getActiveProviderContent(message);
+		const textContent = this.extractTextContent(activeContent);
+		await this.messageActions.copyAsPlainText(textContent);
+	}
+
+	/**
+	 * Insert message content at cursor position in active editor
+	 */
+	private async insertAtCursor(message: ChatMessage): Promise<void> {
+		const activeContent = this.getActiveProviderContent(message);
+		const textContent = this.extractTextContent(activeContent);
+		await this.messageActions.insertAtCursor(textContent);
+	}
+
+	/**
+	 * Edit user message - remove this message and all subsequent messages, put content back in input
+	 */
+	private editMessage(message: ChatMessage): void {
+		if (message.role !== 'user') {
+			const i18n = this.plugin.getI18nManager();
+			new Notice(i18n?.t('ui.onlyUserMessagesCanBeEdited') || 'Only user messages can be edited');
+			return;
 		}
+
+		// Dispatch custom event to trigger edit in chat-view
+		const event = new CustomEvent('llmsider-edit-message', {
+			detail: { messageId: message.id, message }
+		});
+		window.dispatchEvent(event);
+	}
+
+	/**
+	 * Regenerate assistant response - resend the previous user prompt
+	 */
+	private regenerateResponse(message: ChatMessage): void {
+		if (message.role !== 'assistant') {
+			const i18n = this.plugin.getI18nManager();
+			new Notice(i18n?.t('ui.canOnlyRegenerateAssistantMessages') || 'Can only regenerate assistant messages');
+			return;
+		}
+
+		// Dispatch custom event to trigger regeneration in chat-view
+		const event = new CustomEvent('llmsider-regenerate-response', {
+			detail: { messageId: message.id, message }
+		});
+		window.dispatchEvent(event);
 	}
 
 	/**
 	 * Generate new Note from message content
 	 */
 	private async generateNewNote(message: ChatMessage): Promise<void> {
-		let notice: Notice | null = null;
-		try {
-			const textContent = this.extractTextContent(message.content);
-			Logger.debug('Generating new note from message...', {
-				messageId: message.id,
-				contentLength: textContent.length,
-				isWorking: message.metadata?.isWorking,
-				content: textContent.substring(0, 100)
-			});
-
-			// Validate message content
-			if (!textContent || textContent.trim().length < 10) {
-				new Notice('Content too short to generate note');
-				return;
-			}
-
-			if (message.metadata?.isWorking || textContent === 'working') {
-				new Notice('Cannot generate note from working indicator');
-				return;
-			}
-			
-			const provider = this.plugin.getActiveProvider();
-			if (!provider) {
-				new Notice('No AI provider available');
-				return;
-			}
-
-			// Show loading notice
-			notice = new Notice('Generating note title...', 0); // 0 means it won't auto-dismiss
-
-		// Generate title using AI with better prompt
-		const titlePrompt = `Based on the following content, generate a concise, descriptive title in Chinese that captures the main topic or key insight. The title should be:
-- Maximum 10 Chinese characters OR 30 English letters/numbers
-- Clear and informative
-- Suitable as a file name
-- Return ONLY the title, no quotes or additional text
-
-Content:
-${textContent.substring(0, 800)}`;
+		const activeContent = this.getActiveProviderContent(message);
+		const textContent = this.extractTextContent(activeContent);
 		
-		// Get title from AI
-		let generatedTitle = 'AI生成的笔记';
-		try {
-			const titleMessages = [{
-				id: 'title-gen-' + Date.now(),
-				role: 'user' as const,
-				content: titlePrompt,
-				timestamp: Date.now()
-			}];
-
-			let titleContent = '';
-			await provider.sendStreamingMessage(titleMessages, (chunk) => {
-				if (chunk.delta) {
-					titleContent += chunk.delta;
-				}
-			});
-
-			if (titleContent.trim()) {
-				generatedTitle = titleContent.trim()
-					.replace(/[<>:"/\\|?*]/g, '') // Remove invalid filename characters
-					.replace(/^["']|["']$/g, ''); // Remove quotes
-				
-				// Apply smart length limit: 10 Chinese chars OR 30 English/numbers
-				let chineseCount = 0;
-				let englishCount = 0;
-				let result = '';
-				
-				for (const char of generatedTitle) {
-					if (/[\u4e00-\u9fa5]/.test(char)) {
-						if (chineseCount + englishCount >= 10 && chineseCount > 0) break;
-						chineseCount++;
-					} else if (/[a-zA-Z0-9]/.test(char)) {
-						if (englishCount >= 30 || (chineseCount > 0 && chineseCount + englishCount >= 10)) break;
-						englishCount++;
-					}
-					result += char;
-				}
-				
-				generatedTitle = result || generatedTitle.substring(0, 30);
-				Logger.debug('Generated title:', generatedTitle);
-			}
-		} catch (error) {
-			Logger.warn('Failed to generate title, using default:', error);
-		}			// Get i18n manager for translations
-			const i18n = this.plugin.getI18nManager();
-			
-			// Update notice to show creating note
-			if (notice) {
-				const message = i18n?.t('ui.creatingNote') || 'Creating note...';
-				notice.setMessage(message);
-			}
-
-			// Create filename with timestamp to avoid conflicts
-			const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-			const filename = `${generatedTitle}.md`;
-			
-			// Check if file already exists, if so add timestamp
-			let finalFilename = filename;
-			if (await this.app.vault.adapter.exists(filename)) {
-				finalFilename = `${generatedTitle} ${timestamp}.md`;
-			}
-			
-			// Create the note content
-			const generatedFromText = i18n?.t('ui.generatedFrom', { date: new Date().toLocaleString() }) || `Generated from LLMSider on ${new Date().toLocaleString()}`;
-			const noteContent = `# ${generatedTitle}\n\n${message.content}\n\n---\n*${generatedFromText}*`;
-
-			// Create the file in vault root
-			const file = await this.app.vault.create(finalFilename, noteContent);
-			
-			Logger.debug('Created new note:', {
-				originalFilename: filename,
-				finalFilename: finalFilename,
-				path: file.path,
-				contentLength: noteContent.length,
-				generatedTitle: generatedTitle
-			});
-
-			// Hide loading notice and show success message
-			if (notice) {
-				notice.hide();
-			}
-			const successMessage = i18n?.t('ui.createdNote', { title: generatedTitle }) || `Created note: ${generatedTitle}`;
-			new Notice(successMessage);
-
-			// Optional: Open the newly created note
-			const leaf = this.app.workspace.getUnpinnedLeaf();
-			await leaf.openFile(file);
-			
-		} catch (error) {
-			Logger.error('Failed to generate new note:', error);
-			
-			// Hide loading notice and show error message
-			if (notice) {
-				notice.hide();
-			}
-			const i18n = this.plugin.getI18nManager();
-			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-			const errorMessage = i18n?.t('ui.failedToGenerateNote', { error: errorMsg }) || `Failed to generate new note: ${errorMsg}`;
-			new Notice(errorMessage);
+		// Validate message content
+		const i18n = this.plugin.getI18nManager();
+		if (message.metadata?.isWorking || textContent === 'working') {
+			new Notice(i18n?.t('notifications.messageRenderer.cannotGenerateFromWorkingIndicator') || 'Cannot generate note from working indicator');
+			return;
 		}
+		
+		// Use MessageActions with AI title generation enabled for full messages
+		await this.messageActions.generateNote(textContent, true);
 	}
 
 	/**
@@ -1634,23 +1760,27 @@ ${textContent.substring(0, 800)}`;
 	 */
 	private async applyChanges(message: ChatMessage): Promise<void> {
 		try {
-			const textContent = this.extractTextContent(message.content);
+			const activeContent = this.getActiveProviderContent(message);
+			const textContent = this.extractTextContent(activeContent);
 			
 			// Get the active file
 			const activeFile = this.app.workspace.getActiveFile();
 			if (!activeFile) {
-				new Notice('No active note found to apply changes to (没有找到活动笔记来应用更改)');
+				const i18n = this.plugin.getI18nManager();
+				new Notice(i18n?.t('notifications.messageRenderer.noActiveNoteToApply') || 'No active note found to apply changes to');
 				return;
 			}
 
 			// Validate message content
 			if (!textContent || textContent.trim().length < 1) {
-				new Notice('No content to apply (没有内容可应用)');
+				const i18n = this.plugin.getI18nManager();
+				new Notice(i18n?.t('notifications.messageRenderer.noContentToApply') || 'No content to apply');
 				return;
 			}
 
 			if (message.metadata?.isWorking || textContent === 'working') {
-				new Notice('Cannot apply working indicator (无法应用工作指示器)');
+				const i18n = this.plugin.getI18nManager();
+				new Notice(i18n?.t('notifications.messageRenderer.cannotApplyWorkingIndicator') || 'Cannot apply working indicator');
 				return;
 			}
 
@@ -1697,7 +1827,8 @@ ${textContent.substring(0, 800)}`;
 					
 					// Fallback to full file replacement
 					await this.app.vault.modify(activeFile, modifiedText);
-					new Notice(`Applied changes to entire file "${activeFile.name}" (已将更改应用到整个文件)`);
+					const i18n = this.plugin.getI18nManager();
+					new Notice(i18n?.t('notifications.messageRenderer.appliedToEntireFile', { file: activeFile.name }) || `Applied changes to entire file "${activeFile.name}"`);
 				} else {
 					// Replace only the selected portion
 					const newFileContent = 
@@ -1706,7 +1837,8 @@ ${textContent.substring(0, 800)}`;
 						currentFileContent.substring(selectedTextIndex + selectedText.length);
 					
 					await this.app.vault.modify(activeFile, newFileContent);
-					new Notice(`Applied changes to selected text in "${activeFile.name}" (已将更改应用到选中文本)`);
+					const i18n = this.plugin.getI18nManager();
+					new Notice(i18n?.t('notifications.messageRenderer.appliedToSelectedText', { file: activeFile.name }) || `Applied changes to selected text in "${activeFile.name}"`);
 				}
 				
 			} else {
@@ -1734,12 +1866,14 @@ ${textContent.substring(0, 800)}`;
 				// Apply the content to the active file
 				await this.app.vault.modify(activeFile, textContent);
 				
-				new Notice(`Applied changes to ${activeFile.name} (已将更改应用到 ${activeFile.name})`);
+				const i18n = this.plugin.getI18nManager();
+				new Notice(i18n?.t('notifications.messageRenderer.appliedChanges', { file: activeFile.name }) || `Applied changes to ${activeFile.name}`);
 			}
 			
 		} catch (error) {
 			Logger.error('Failed to apply changes:', error);
-			new Notice('Failed to apply changes: ' + (error instanceof Error ? error.message : 'Unknown error'));
+			const i18n = this.plugin.getI18nManager();
+			new Notice(i18n?.t('notifications.messageRenderer.failedToApply', { error: error instanceof Error ? error.message : 'Unknown error' }) || 'Failed to apply changes: ' + (error instanceof Error ? error.message : 'Unknown error'));
 		}
 	}
 
@@ -1751,469 +1885,35 @@ ${textContent.substring(0, 800)}`;
 	}
 
 	/**
-	 * Check if content contains tool call XML
+	 * Check if content contains tool call XML or JSON
 	 */
-	private containsToolCallXML(content: string): boolean {
-		return content.includes('<use_mcp_tool>') ||
+	public containsToolCallXML(content: string): boolean {
+		// Check for XML formats
+		if (content.includes('<use_mcp_tool>') ||
 			   content.includes('<mcp>') ||
 			   content.includes('<tool_name>') ||
 			   content.includes('<arguments>') ||
 			   content.includes('<function_calls>') ||
 			   content.includes('<invoke>') ||
-			   content.includes('<parameter>');
+			   content.includes('<parameter>')) {
+			return true;
+		}
+
+		// Check for JSON format (FreeQwen style)
+		return this.extractJsonToolCall(content) !== null;
 	}
 
 	/**
-	 * Check if content contains Plan-Execute XML tags
-	 */
-	private containsPlanExecuteXML(content: string): boolean {
-		const planExecuteTags = ['question', 'plan', 'thought', 'action', 'observation', 'final_answer'];
-		return planExecuteTags.some(tag =>
-			content.includes(`<${tag}>`) || content.includes(`</${tag}>`)
-		);
-	}
-
-	/**
-	 * Parse Plan-Execute XML tags from content
-	 */
-	public parsePlanExecuteTags(content: string): {
-		question?: string;
-		plan?: string;
-		thoughts: Array<{ content: string; index: number }>;
-		actions: Array<{ content: string; index: number; parsed?: any }>;
-		observations: Array<{ content: string; index: number }>;
-		finalAnswer?: string;
-	} {
-		const result: {
-			question?: string;
-			plan?: string;
-			thoughts: Array<{ content: string; index: number }>;
-			actions: Array<{ content: string; index: number; parsed?: any }>;
-			observations: Array<{ content: string; index: number }>;
-			finalAnswer?: string;
-		} = {
-			thoughts: [],
-			actions: [],
-			observations: []
-		};
-
-		const planExecuteTags = ['question', 'plan', 'thought', 'action', 'observation', 'final_answer'];
-
-		planExecuteTags.forEach(tag => {
-			const regex = new RegExp(`<${tag}>(.*?)</${tag}>`, 'gim');
-			let match;
-			let index = 0;
-
-			while ((match = regex.exec(content)) !== null) {
-				const tagContent = match[1].trim();
-
-				switch (tag) {
-					case 'question':
-						result.question = tagContent;
-						break;
-					case 'plan':
-						result.plan = tagContent;
-						break;
-					case 'thought':
-						result.thoughts.push({ content: tagContent, index: index++ });
-						break;
-					case 'action':
-						try {
-							// Parse MCP tool call format
-							const mcpMatch = tagContent.match(/<use_mcp_tool>\s*<tool_name>(.*?)<\/tool_name>\s*<arguments>(.*?)<\/arguments>\s*<\/use_mcp_tool>/);
-							if (mcpMatch) {
-								const toolName = mcpMatch[1].trim();
-								const toolArgs = JSON.parse(mcpMatch[2]);
-								const parsed = { tool: toolName, args: toolArgs };
-								result.actions.push({ content: tagContent, index: index++, parsed });
-							} else {
-								result.actions.push({ content: tagContent, index: index++ });
-							}
-						} catch {
-							result.actions.push({ content: tagContent, index: index++ });
-						}
-						break;
-					case 'observation':
-						result.observations.push({ content: tagContent, index: index++ });
-						break;
-					case 'final_answer':
-						result.finalAnswer = tagContent;
-						break;
-				}
-			}
-		});
-
-		return result;
-	}
-
-	/**
-	 * Render Plan-Execute content with structured phases using modern tracker
-	 */
-	public renderPlanExecuteContent(contentEl: HTMLElement, content: string, isStreaming: boolean = false, savedTasks?: any[]): void {
-		const parsed = this.parsePlanExecuteTags(content);
-		contentEl.empty();
-
-		Logger.debug('Parsed plan-execute data:', {
-			hasQuestion: !!parsed.question,
-			hasPlan: !!parsed.plan,
-			thoughtsCount: parsed.thoughts.length,
-			actionsCount: parsed.actions.length,
-			observationsCount: parsed.observations.length,
-			hasFinalAnswer: !!parsed.finalAnswer,
-			hasSavedTasks: !!savedTasks && savedTasks.length > 0
-		});
-
-		// Prefer saved tasks from metadata (for reload), fallback to parsing content
-		let tasks: Task[];
-		if (savedTasks && savedTasks.length > 0) {
-			Logger.debug('Using saved tasks from metadata (reload scenario)');
-			tasks = savedTasks as Task[];
-		} else {
-			// Convert parsed data to tasks for the tracker
-			tasks = this.convertParsedToTasks(parsed, isStreaming);
-		}
-		
-		Logger.debug('Converted to tasks:', {
-			taskCount: tasks.length,
-			tasks: tasks.map(t => ({ id: t.id, title: t.title, status: t.status, toolCallsCount: t.toolCalls?.length || 0 }))
-		});
-		
-		if (tasks.length > 0) {
-			Logger.debug('Using NEW PlanExecuteTracker');
-			// Use the new plan-execute tracker
-			const tracker = new PlanExecuteTracker(contentEl, {
-				tasks,
-				isExecuting: isStreaming,
-				expandable: true,
-				onTaskRetry: (taskId: string) => {
-					Logger.debug('Retry task:', taskId);
-					// TODO: Implement retry logic
-				},
-				onTaskSkip: (taskId: string) => {
-					Logger.debug('Skip task:', taskId);
-					// TODO: Implement skip logic
-				},
-				onTaskRegenerateAndRetry: (taskId: string) => {
-					Logger.debug('Regenerate and retry task:', taskId);
-					// TODO: Implement regenerate logic
-				},
-				i18n: this.plugin.getI18nManager()!
-			});
-		} else {
-			Logger.debug('Using FALLBACK rendering');
-			// Fallback to original rendering if no tasks
-			this.renderPlanExecuteFallback(contentEl, parsed, isStreaming);
-		}
-	}
-
-	/**
-	 * Convert parsed plan-execute data to tasks for the tracker
-	 */
-	private convertParsedToTasks(
-		parsed: {
-			question?: string;
-			plan?: string;
-			thoughts: Array<{ content: string; index: number }>;
-			actions: Array<{ content: string; index: number; parsed?: any }>;
-			observations: Array<{ content: string; index: number }>;
-			finalAnswer?: string;
-		},
-		isStreaming: boolean
-	): Task[] {
-		const tasks: Task[] = [];
-		let taskId = 0;
-
-		// Add question as initial context if present
-		if (parsed.question) {
-			tasks.push({
-				id: `task-${taskId++}`,
-				title: 'Question',
-				description: parsed.question,
-				status: 'completed',
-				timestamp: new Date().toLocaleString()
-			});
-		}
-
-		// Add plan as a task
-		if (parsed.plan) {
-			tasks.push({
-				id: `task-${taskId++}`,
-				title: 'Planning',
-				description: 'Generated execution plan',
-				status: 'completed',
-				result: parsed.plan,
-				timestamp: new Date().toLocaleString()
-			});
-		}
-
-		// Build execution sequence and group by thought-action-observation cycles
-		const sequence = this.buildExecutionSequence(parsed.thoughts, parsed.actions, parsed.observations);
-		
-		let currentTask: Task | null = null;
-		let stepNumber = 1;
-
-		sequence.forEach((item, idx) => {
-			switch (item.type) {
-				case 'thought':
-					// Start a new task for each thought
-					if (currentTask) {
-						tasks.push(currentTask);
-					}
-					currentTask = {
-						id: `task-${taskId++}`,
-						title: `Analyze and Plan Step ${stepNumber}`,
-						description: item.content,
-						status: isStreaming && idx === sequence.length - 1 ? 'in-progress' : 'completed',
-						toolCalls: []
-					};
-					stepNumber++;
-					break;
-					
-				case 'action':
-					// Add action as tool call to current task
-					if (currentTask) {
-						const toolCall: ToolCall = {
-							id: `tool-${taskId++}`,
-							toolName: item.parsed?.tool || 'Unknown Tool',
-							toolType: 'mcp',
-							parameters: item.parsed?.args || {},
-							timestamp: new Date().toLocaleString()
-						};
-						currentTask.toolCalls = currentTask.toolCalls || [];
-						currentTask.toolCalls.push(toolCall);
-						
-						// If action is last item and streaming, mark as in-progress
-						if (isStreaming && idx === sequence.length - 1) {
-							currentTask.status = 'in-progress';
-						}
-					} else {
-						// Create a task for orphan action
-						const toolCall: ToolCall = {
-							id: `tool-${taskId++}`,
-							toolName: item.parsed?.tool || 'Unknown Tool',
-							toolType: 'mcp',
-							parameters: item.parsed?.args || {},
-							timestamp: new Date().toLocaleString()
-						};
-						currentTask = {
-							id: `task-${taskId++}`,
-							title: `Execute Tool`,
-							status: isStreaming && idx === sequence.length - 1 ? 'in-progress' : 'completed',
-							toolCalls: [toolCall]
-						};
-					}
-					break;
-					
-				case 'observation':
-					// Add observation as tool response to last tool call
-					Logger.debug(`Processing observation: "${item.content.substring(0, 100)}..."`);
-					if (currentTask && currentTask.toolCalls && currentTask.toolCalls.length > 0) {
-						const lastToolCall = currentTask.toolCalls[currentTask.toolCalls.length - 1];
-						const observation = item.content;
-						
-						// Check if observation indicates an error
-						const isError = observation.toLowerCase().includes('error') || 
-						               observation.toLowerCase().includes('failed') ||
-						               observation.toLowerCase().includes('refused') ||
-						               observation.toLowerCase().includes('exception');
-						
-						Logger.debug(`Error detected: ${isError}`);
-						Logger.debug(`Current task status before: ${currentTask.status}`);
-						
-						if (isError) {
-							// Set as error in tool call
-							lastToolCall.error = observation;
-							// Mark task as error
-							currentTask.status = 'error';
-							Logger.debug(`✅ Set task status to 'error'`);
-							Logger.debug(`toolCall.error = "${observation.substring(0, 100)}..."`);
-						} else {
-							// Normal response
-							lastToolCall.response = observation;
-							// Mark task as completed if not streaming
-							if (currentTask.status !== 'in-progress') {
-								currentTask.status = 'completed';
-							}
-							Logger.debug(`Set as normal response, status: ${currentTask.status}`);
-						}
-						
-						lastToolCall.duration = Math.floor(Math.random() * 1000) + 100; // Mock duration
-					} else if (currentTask) {
-						// Add observation as result if no tool calls
-						const observation = item.content;
-						const isError = observation.toLowerCase().includes('error') || 
-						               observation.toLowerCase().includes('failed') ||
-						               observation.toLowerCase().includes('refused') ||
-						               observation.toLowerCase().includes('exception');
-						
-						if (isError) {
-							currentTask.error = observation;
-							currentTask.status = 'error';
-						} else {
-							currentTask.result = observation;
-							if (currentTask.status !== 'in-progress') {
-								currentTask.status = 'completed';
-							}
-						}
-					}
-					break;
-			}
-		});
-
-		// Push the last task if exists
-		if (currentTask) {
-			tasks.push(currentTask);
-		}
-
-		// Add final answer as last task
-		if (parsed.finalAnswer) {
-			tasks.push({
-				id: `task-${taskId++}`,
-				title: 'Final Answer',
-				description: 'Completed execution',
-				status: 'completed',
-				result: parsed.finalAnswer,
-				timestamp: new Date().toLocaleString()
-			});
-		}
-
-		return tasks;
-	}
-
-	/**
-	 * Fallback rendering for plan-execute content (original method)
-	 */
-	private renderPlanExecuteFallback(
-		contentEl: HTMLElement,
-		parsed: {
-			question?: string;
-			plan?: string;
-			thoughts: Array<{ content: string; index: number }>;
-			actions: Array<{ content: string; index: number; parsed?: any }>;
-			observations: Array<{ content: string; index: number }>;
-			finalAnswer?: string;
-		},
-		isStreaming: boolean
-	): void {
-		// Render Question if present
-		if (parsed.question) {
-			this.renderPlanExecuteSection(contentEl, 'question', '❓', 'Question', parsed.question);
-		}
-
-		// Render Plan if present
-		if (parsed.plan) {
-			this.renderPlanExecuteSection(contentEl, 'plan', '📋', 'Plan', parsed.plan);
-		}
-
-		// Render execution sequence (thoughts, actions, observations)
-		const sequence = this.buildExecutionSequence(parsed.thoughts, parsed.actions, parsed.observations);
-		sequence.forEach(item => this.renderSequenceItem(contentEl, item, isStreaming));
-
-		// Render Final Answer if present
-		if (parsed.finalAnswer) {
-			this.renderPlanExecuteSection(contentEl, 'final_answer', '✅', 'Final Answer', parsed.finalAnswer);
-		}
-	}
-
-	/**
-	 * Render a Plan-Execute section with icon and content
-	 */
-	private renderPlanExecuteSection(
-		container: HTMLElement,
-		type: string,
-		icon: string,
-		title: string,
-		content: string
-	): void {
-		const section = container.createDiv({ cls: `llmsider-plan-execute-section llmsider-${type}` });
-
-		const header = section.createDiv({ cls: 'llmsider-plan-execute-header' });
-		header.createEl('span', { cls: 'llmsider-plan-execute-icon', text: icon });
-		header.createEl('span', { cls: 'llmsider-plan-execute-title', text: title });
-
-		const contentDiv = section.createDiv({ cls: 'llmsider-plan-execute-content' });
-		this.renderMarkdownContent(contentDiv, content);
-	}
-
-	/**
-	 * Build execution sequence from thoughts, actions, and observations
-	 */
-	private buildExecutionSequence(
-		thoughts: Array<{ content: string; index: number }>,
-		actions: Array<{ content: string; index: number; parsed?: any }>,
-		observations: Array<{ content: string; index: number }>
-	): Array<{ type: string; content: string; index: number; parsed?: any }> {
-		const sequence = [];
-
-		// Combine and sort by index to maintain proper order
-		const allItems = [
-			...thoughts.map(t => ({ ...t, type: 'thought' })),
-			...actions.map(a => ({ ...a, type: 'action' })),
-			...observations.map(o => ({ ...o, type: 'observation' }))
-		].sort((a, b) => {
-			// Sort by original appearance in content
-			return a.index - b.index;
-		});
-
-		return allItems;
-	}
-
-	/**
-	 * Render a sequence item (thought, action, or observation)
-	 */
-	private renderSequenceItem(
-		container: HTMLElement,
-		item: { type: string; content: string; index: number; parsed?: any },
-		isStreaming: boolean
-	): void {
-		switch (item.type) {
-			case 'thought':
-				this.renderPlanExecuteSection(container, 'thought', '💭', 'Thinking', item.content);
-				break;
-			case 'action':
-				if (item.parsed) {
-					// Render action with tool information
-					this.renderActionSection(container, item.parsed.tool, item.parsed.args, item.content);
-				} else {
-					this.renderPlanExecuteSection(container, 'action', '🎯', 'Action', item.content);
-				}
-				break;
-			case 'observation':
-				this.renderPlanExecuteSection(container, 'observation', '👁️', 'Observation', item.content);
-				break;
-		}
-	}
-
-	/**
-	 * Render action section with tool details
-	 */
-	private renderActionSection(
-		container: HTMLElement,
-		toolName: string,
-		toolArgs: any,
-		fullContent: string
-	): void {
-		const section = container.createDiv({ cls: 'llmsider-plan-execute-section llmsider-action' });
-
-		const header = section.createDiv({ cls: 'llmsider-plan-execute-header' });
-		header.createEl('span', { cls: 'llmsider-plan-execute-icon', text: '🎯' });
-		header.createEl('span', { cls: 'llmsider-plan-execute-title', text: 'Action' });
-
-		const contentDiv = section.createDiv({ cls: 'llmsider-plan-execute-content' });
-
-		// Show tool details
-		const toolInfo = contentDiv.createDiv({ cls: 'llmsider-tool-intent' });
-		toolInfo.innerHTML = `
-			<div class="tool-name"><strong>Tool:</strong> ${toolName}</div>
-			<div class="tool-args"><strong>Arguments:</strong></div>
-			<pre class="tool-args-code">${JSON.stringify(toolArgs, null, 2)}</pre>
-		`;
-	}
-
-	/**
-	 * Remove tool call XML from content
+	 * Remove tool call XML/JSON from content
 	 */
 	private removeToolCallXML(content: string): string {
+		// Check for JSON format first (FreeQwen style)
+		const jsonCall = this.extractJsonToolCall(content);
+		if (jsonCall) {
+			// Remove the JSON block
+			return content.replace(jsonCall.fullMatch, '').trim();
+		}
+
 		return content
 			// Remove various XML tool call formats
 			.replace(/<use_mcp_tool[\s\S]*?<\/use_mcp_tool>/g, '')
@@ -2291,7 +1991,8 @@ ${textContent.substring(0, 800)}`;
 				this.renderMarkdownContentPublic(mcpContent, message.content);
 			}
 		} else {
-			mcpContent.createEl('p', { text: 'MCP tool result (multimodal content not supported in display)' });
+			const i18n = this.plugin.getI18nManager();
+			mcpContent.createEl('p', { text: i18n?.t('ui.mcpToolResultMultimodal') || 'MCP tool result (multimodal content not supported in display)' });
 		}
 		
 		// Add visual separator
@@ -2313,7 +2014,8 @@ ${textContent.substring(0, 800)}`;
 		if (message.metadata?.mcpResourceUri) {
 			const addResourceBtn = actionsContainer.createEl('button', {
 				cls: 'llmsider-message-action',
-				title: 'Add MCP resource to context'
+				title: 'Add MCP resource to context',
+				attr: { 'aria-label': 'Add MCP resource to context' }
 			});
 			addResourceBtn.innerHTML = '🔗';
 			addResourceBtn.onclick = async () => {
@@ -2336,7 +2038,8 @@ ${textContent.substring(0, 800)}`;
 					}
 				} catch (error) {
 					Logger.error('Failed to add MCP resource to context:', error);
-					new Notice('Failed to add MCP resource to context');
+					const i18n = this.plugin.getI18nManager();
+					new Notice(i18n?.t('notifications.messageRenderer.failedToAddMCPResource') || 'Failed to add MCP resource to context');
 				}
 			};
 		}
@@ -2353,7 +2056,8 @@ ${textContent.substring(0, 800)}`;
 		// Copy button
 		const copyBtn = container.createEl('button', {
 			cls: 'llmsider-message-action',
-			title: i18n?.t('messageActions.copyMessage') || 'Copy message'
+			title: i18n?.t('messageActions.copyMessage') || 'Copy message',
+			attr: { 'aria-label': i18n?.t('messageActions.copyMessage') || 'Copy message' }
 		});
 		copyBtn.innerHTML = '📋';
 		copyBtn.onclick = () => {
@@ -2368,7 +2072,8 @@ ${textContent.substring(0, 800)}`;
 		if (message.role === 'user') {
 			const editBtn = container.createEl('button', {
 				cls: 'llmsider-message-action',
-				title: i18n?.t('messageActions.editAndResend') || 'Edit and resend'
+				title: i18n?.t('messageActions.editAndResend') || 'Edit and resend',
+				attr: { 'aria-label': i18n?.t('messageActions.editAndResend') || 'Edit and resend' }
 			});
 			editBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -2403,26 +2108,9 @@ ${textContent.substring(0, 800)}`;
 		// Update the content
 		contentEl.empty();
 		
-		// Check if this is a Plan-Execute mode message
-		const isPlanExecuteMode = message && (message.metadata as any)?.isPlanExecuteMode === true;
-		const hasXMLTags = this.containsPlanExecuteXML(newContent);
-		const savedTasks = message ? (message.metadata as any)?.planTasks : undefined;
-		
-		if (isPlanExecuteMode || hasXMLTags) {
-			Logger.debug('Updating Plan-Execute streaming content:', {
-				messageId,
-				hasFlag: isPlanExecuteMode,
-				hasXML: hasXMLTags,
-				phase: message ? (message.metadata as any)?.phase : 'unknown',
-				hasSavedTasks: !!savedTasks && Array.isArray(savedTasks)
-			});
-			// Render as Plan-Execute mode with streaming support and saved tasks
-			this.renderPlanExecuteContent(contentEl, newContent, true, savedTasks);
-		} else {
-			// Always enable mermaid placeholder handling - it will automatically detect
-			// complete vs incomplete mermaid blocks and render accordingly
-			this.renderMarkdownContentPublic(contentEl, newContent, true);
-		}
+		// Always enable mermaid placeholder handling - it will automatically detect
+		// complete vs incomplete mermaid blocks and render accordingly
+		this.renderMarkdownContentPublic(contentEl, newContent, true);
 
 		return true;
 	}
@@ -2473,11 +2161,18 @@ ${textContent.substring(0, 800)}`;
 	}
 
 	/**
-	 * Parse XML tool calls from content (reusing existing logic)
+	 * Parse XML or JSON tool calls from content
 	 */
-	private parseXMLToolCalls(content: string): Array<{tool: string, parameters: any}> {
-		const toolCalls: Array<{tool: string, parameters: any}> = [];
+	private parseXMLToolCalls(content: string): Array<{tool: string, parameters: unknown}> {
+		const toolCalls: Array<{tool: string, parameters: unknown}> = [];
 
+		// 1. Try parsing as JSON (FreeQwen style)
+		const jsonCall = this.extractJsonToolCall(content);
+		if (jsonCall) {
+			toolCalls.push({ tool: jsonCall.tool, parameters: jsonCall.parameters });
+		}
+
+		// 2. Parse XML formats
 		// Parse MCP wrapper format
 		const xmlToolRegex = /<use_mcp_tool>([\s\S]*?)<\/use_mcp_tool>/g;
 		let xmlMatch;
@@ -2488,7 +2183,7 @@ ${textContent.substring(0, 800)}`;
 
 			if (toolNameMatch) {
 				const toolName = toolNameMatch[1].trim();
-				let parameters: any = {};
+				let parameters: unknown = {};
 
 				const argumentsMatch = toolContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
 				if (argumentsMatch) {
@@ -2504,5 +2199,331 @@ ${textContent.substring(0, 800)}`;
 		}
 
 		return toolCalls;
+	}
+
+	/**
+	 * Restore Plan DAG visualization from saved plan message (after plugin reload)
+	 */
+	private restorePlanTracker(contentEl: HTMLElement, message: ChatMessage): void {
+		try {
+			const executionMode = (message.metadata?.executionMode as 'dag' | 'sequential') || 'dag';
+			
+			Logger.debug('[MessageRenderer] Restoring plan with DAG visualization:', {
+				messageId: message.id,
+				executionMode,
+				hasPlanTasks: !!message.metadata?.planTasks
+			});
+
+			// Parse plan data from message content
+			const planData: RestoredPlan = JSON.parse(message.content as string);
+
+			Logger.debug('[MessageRenderer] Parsed plan data:', {
+				stepsCount: planData.steps?.length,
+				executionMode
+			});
+
+			// Create DAG container (same as live execution)
+			const planElement = contentEl.createDiv({ cls: 'llmsider-plan-dag-container' });
+			if (executionMode === 'sequential') {
+				planElement.addClass('sequential-mode');
+			}
+
+			// Transform plan for sequential mode if needed
+			if (executionMode === 'sequential' && planData.steps) {
+				transformSequentialToLinear(planData);
+			}
+
+			// Render using DAG visualization
+			renderRestoredDAGPlan(planData, planElement, this.plugin.getI18nManager());
+
+			Logger.debug('[MessageRenderer] Plan DAG visualization restored successfully');
+
+		} catch (error) {
+			Logger.error('[MessageRenderer] Failed to restore plan DAG:', error);
+			// Fallback: show the raw JSON if restoration fails
+			this.renderMarkdownContent(contentEl, '```json\n' + message.content + '\n```');
+		}
+	}
+
+	/**
+	 * Extract JSON tool call from content using brace balancing
+	 */
+	private extractJsonToolCall(content: string): {tool: string, parameters: unknown, fullMatch: string} | null {
+		const marker = '"tool":';
+		const startIdx = content.indexOf(marker);
+		if (startIdx === -1) return null;
+		
+		// Find the opening brace before "tool":
+		let openBraceIdx = content.lastIndexOf('{', startIdx);
+		if (openBraceIdx === -1) return null;
+		
+		// Now try to find the matching closing brace
+		let balance = 0;
+		let inString = false;
+		let escape = false;
+		
+		for (let i = openBraceIdx; i < content.length; i++) {
+			const char = content[i];
+			
+			if (escape) {
+				escape = false;
+				continue;
+			}
+			
+			if (char === '\\') {
+				escape = true;
+				continue;
+			}
+			
+			if (char === '"') {
+				inString = !inString;
+				continue;
+			}
+			
+			if (!inString) {
+				if (char === '{') balance++;
+				else if (char === '}') {
+					balance--;
+					if (balance === 0) {
+						// Found the end
+						const jsonStr = content.substring(openBraceIdx, i + 1);
+						try {
+							const json = JSON.parse(jsonStr);
+							if (json.tool && json.parameters) {
+								return { 
+									tool: json.tool, 
+									parameters: json.parameters,
+									fullMatch: jsonStr
+								};
+							}
+						} catch {
+							return null;
+						}
+						return null;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Render generated images from image generation models
+	 */
+	private renderGeneratedImages(container: HTMLElement, images: Array<{type: string, image_url: {url: string}}>): void {
+		const imagesContainer = container.createDiv({ cls: 'llmsider-generated-images' });
+
+		images.forEach((image, index) => {
+			if (image.type === 'image_url' && image.image_url?.url) {
+				const imageWrapper = imagesContainer.createDiv({ cls: 'llmsider-generated-image-wrapper' });
+
+				const img = imageWrapper.createEl('img', { cls: 'llmsider-generated-image' });
+				img.src = image.image_url.url;
+				img.alt = `Generated image ${index + 1}`;
+
+				// Add click to view full size
+				img.addEventListener('click', () => {
+					const modal = new ImagePreviewModal(this.app, image.image_url.url);
+					modal.open();
+				});
+
+				// Add download button (let CSS handle all styling including hover)
+				const downloadBtn = imageWrapper.createEl('button', { 
+					cls: 'llmsider-action-btn llmsider-image-download-btn',
+					title: 'Download Image',
+					attr: { 'aria-label': 'Download Image' }
+				});
+				setIcon(downloadBtn, 'download');
+
+				downloadBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this.downloadImage(image.image_url.url, `generated-image-${Date.now()}.png`);
+				});
+			}
+		});
+	}
+
+	/**
+	 * Download image to vault root
+	 */
+	private async downloadImage(dataUrl: string, filename: string): Promise<void> {
+		try {
+			let arrayBuffer: ArrayBuffer;
+
+			if (dataUrl.startsWith('data:')) {
+				// Handle base64 data URL
+				const base64Data = dataUrl.split(',')[1];
+				const binaryString = window.atob(base64Data);
+				const len = binaryString.length;
+				const bytes = new Uint8Array(len);
+				for (let i = 0; i < len; i++) {
+					bytes[i] = binaryString.charCodeAt(i);
+				}
+				arrayBuffer = bytes.buffer;
+			} else {
+				// Handle regular URL (fetch it)
+				const response = await fetch(dataUrl);
+				if (!response.ok) throw new Error('Failed to fetch image');
+				arrayBuffer = await response.arrayBuffer();
+			}
+
+			// Save to vault root
+			let finalPath = filename;
+			
+			// Check if file already exists, if so, append timestamp to avoid conflict
+			if (await this.app.vault.adapter.exists(finalPath)) {
+				const extension = filename.split('.').pop();
+				const nameWithoutExt = filename.substring(0, filename.lastIndexOf('.'));
+				finalPath = `${nameWithoutExt}-${Date.now()}.${extension}`;
+			}
+
+			await this.app.vault.createBinary(finalPath, arrayBuffer);
+			new Notice(`Image saved to vault: ${finalPath}`);
+		} catch (error) {
+			Logger.error('Failed to save image to vault:', error);
+			new Notice('Failed to save image to vault');
+		}
+	}
+}
+
+/**
+ * Modal for previewing generated images
+ */
+class ImagePreviewModal extends Modal {
+	private imageUrl: string;
+	private scale = 1;
+	private translateX = 0;
+	private translateY = 0;
+	private isDragging = false;
+	private startX = 0;
+	private startY = 0;
+	private imgEl: HTMLImageElement;
+	private onMouseMoveHandler: (e: MouseEvent) => void;
+	private onMouseUpHandler: () => void;
+
+	constructor(app: App, imageUrl: string) {
+		super(app);
+		this.imageUrl = imageUrl;
+	}
+
+	onOpen() {
+		const { contentEl, modalEl } = this;
+		
+		modalEl.addClass('llmsider-image-preview-modal');
+		
+		contentEl.empty();
+		contentEl.style.display = 'flex';
+		contentEl.style.justifyContent = 'center';
+		contentEl.style.alignItems = 'center';
+		contentEl.style.padding = '0';
+		contentEl.style.position = 'relative';
+		contentEl.style.width = '100%';
+		contentEl.style.height = '100%';
+		contentEl.style.overflow = 'hidden';
+		contentEl.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+
+		const container = contentEl.createDiv({ cls: 'llmsider-image-preview-container' });
+		container.style.width = '100%';
+		container.style.height = '100%';
+		container.style.display = 'flex';
+		container.style.justifyContent = 'center';
+		container.style.alignItems = 'center';
+		container.style.cursor = 'grab';
+
+		this.imgEl = container.createEl('img');
+		this.imgEl.src = this.imageUrl;
+		this.imgEl.style.maxWidth = '100%';
+		this.imgEl.style.maxHeight = '100%';
+		this.imgEl.style.objectFit = 'contain';
+		this.imgEl.style.transition = 'transform 0.1s ease-out';
+		this.imgEl.style.userSelect = 'none';
+		this.imgEl.draggable = false;
+
+		// Zoom with wheel / trackpad pinch
+		container.addEventListener('wheel', (e) => {
+			e.preventDefault();
+			const delta = -e.deltaY;
+			const factor = delta > 0 ? 1.1 : 0.9;
+			this.zoom(factor);
+		}, { passive: false });
+
+		// Pan with mouse
+		container.addEventListener('mousedown', (e) => {
+			if (e.button !== 0) return;
+			this.isDragging = true;
+			this.startX = e.clientX - this.translateX;
+			this.startY = e.clientY - this.translateY;
+			container.style.cursor = 'grabbing';
+		});
+
+		this.onMouseMoveHandler = (e: MouseEvent) => {
+			if (!this.isDragging) return;
+			this.translateX = e.clientX - this.startX;
+			this.translateY = e.clientY - this.startY;
+			this.updateTransform();
+		};
+
+		this.onMouseUpHandler = () => {
+			this.isDragging = false;
+			container.style.cursor = 'grab';
+		};
+
+		window.addEventListener('mousemove', this.onMouseMoveHandler);
+		window.addEventListener('mouseup', this.onMouseUpHandler);
+
+		// Controls
+		const controls = contentEl.createDiv({ cls: 'llmsider-image-preview-controls' });
+		
+		const zoomInBtn = controls.createEl('button', { cls: 'llmsider-preview-control-btn', title: 'Zoom In', attr: { 'aria-label': 'Zoom In' } });
+		setIcon(zoomInBtn, 'zoom-in');
+		zoomInBtn.onclick = () => this.zoom(1.2);
+
+		const zoomOutBtn = controls.createEl('button', { cls: 'llmsider-preview-control-btn', title: 'Zoom Out', attr: { 'aria-label': 'Zoom Out' } });
+		setIcon(zoomOutBtn, 'zoom-out');
+		zoomOutBtn.onclick = () => this.zoom(0.8);
+
+		const resetBtn = controls.createEl('button', { cls: 'llmsider-preview-control-btn', title: 'Reset', attr: { 'aria-label': 'Reset' } });
+		setIcon(resetBtn, 'maximize');
+		resetBtn.onclick = () => {
+			this.scale = 1;
+			this.translateX = 0;
+			this.translateY = 0;
+			this.updateTransform();
+		};
+
+		// Close button in top right
+		const closeBtn = contentEl.createEl('div', { 
+			cls: 'llmsider-image-modal-close',
+			title: 'Close (Esc)'
+		});
+		setIcon(closeBtn, 'x');
+		closeBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.close();
+		});
+
+		// Click background to close (if not dragging)
+		container.addEventListener('click', (e) => {
+			if (e.target === container) {
+				this.close();
+			}
+		});
+	}
+
+	private zoom(factor: number) {
+		this.scale *= factor;
+		this.scale = Math.min(Math.max(this.scale, 0.5), 10);
+		this.updateTransform();
+	}
+
+	private updateTransform() {
+		this.imgEl.style.transform = `translate(${this.translateX}px, ${this.translateY}px) scale(${this.scale})`;
+	}
+
+	onClose() {
+		window.removeEventListener('mousemove', this.onMouseMoveHandler);
+		window.removeEventListener('mouseup', this.onMouseUpHandler);
+		const { contentEl } = this;
+		contentEl.empty();
 	}
 }

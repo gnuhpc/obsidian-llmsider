@@ -398,7 +398,7 @@ await server.connect(transport);
 - [TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
 
 ### 社区
-- [MCP Discord](https://discord.gg/mcp)
+
 - [GitHub 讨论](https://github.com/modelcontextprotocol/discussions)
 - [示例服务器](https://github.com/modelcontextprotocol/examples)
 
@@ -433,4 +433,4 @@ Cmd+Option+I → 控制台标签
 
 ---
 
-**有疑问?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [MCP Discord](https://discord.gg/mcp)
+**有疑问?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)

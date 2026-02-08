@@ -14,6 +14,7 @@ import {
   zhToolCallPrompter, 
   zhAutocomplete, 
   zhQuickChat,
+  zhAutoSummarize,
   zhSelectionPopup,
   zhCommands,
   zhQuickChatUI,
@@ -32,6 +33,9 @@ export const zh = {
 
   // 设置页面
   settingsPage: zhSettings.settingsPage,
+
+  // ChatView
+  chatView: zhUI.chatView,
 
   // Plan-Execute 框架
   planExecute: zhPlanexecute.planExecute,
@@ -66,6 +70,9 @@ export const zh = {
 
   // Quick Chat
   quickChat: zhQuickChat,
+
+  // 自动总结
+  autoSummarize: zhAutoSummarize,
 
   // 选择弹窗
   selectionPopup: zhSelectionPopup,

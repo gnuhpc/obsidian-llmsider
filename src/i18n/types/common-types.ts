@@ -2,6 +2,34 @@
  * Common UI elements translation types
  */
 
+export interface ContextPromptTranslation {
+  // Context headers
+  contextLabel: string;
+  selectedText: string;
+  selectedTextMultiple: string; // e.g., "Selected Text {index}"
+  
+  // File type labels
+  markdown: string;
+  pdf: string;
+  document: string;
+  spreadsheet: string;
+  presentation: string;
+  image: string;
+  other: string;
+  
+  // File metadata
+  fileInfo: string;
+  fileType: string;
+  originalLength: string;
+  truncated: string;
+  contentTruncated: string;
+  
+  // Image context
+  imagesInMarkdown: string;
+  imagesIncludedForAnalysis: string;
+  imageListPrefix: string; // e.g., "Images: {list}"
+}
+
 export interface CommonTranslation {
   // Common actions
   yes: string;

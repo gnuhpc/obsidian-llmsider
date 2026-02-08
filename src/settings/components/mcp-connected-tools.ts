@@ -16,8 +16,8 @@ export class MCPConnectedTools {
 	 */
 	render(
 		container: HTMLElement,
-		connectedServers: any[],
-		mcpManager: any,
+		connectedServers: unknown[],
+		mcpManager: unknown,
 		onServerDetailsClick: (serverId: string) => void
 	): void {
 		const mcpTools = [];
@@ -56,11 +56,11 @@ export class MCPConnectedTools {
 			}
 			acc[tool.serverId].push(tool);
 			return acc;
-		}, {} as Record<string, any[]>);
+		}, {} as Record<string, unknown[]>);
 
 		// Render tools grouped by server
 		Object.entries(toolsByServer).forEach(([serverId, serverTools]) => {
-			const tools = serverTools as any[];
+			const tools = serverTools as unknown[];
 			const serverSection = container.createDiv({ cls: 'llmsider-mcp-server-section' });
 			
 			const serverHeader = serverSection.createDiv({ cls: 'llmsider-mcp-server-header' });
@@ -89,7 +89,7 @@ export class MCPConnectedTools {
 			});
 			
 			// Render tools
-			tools.forEach((tool: any) => {
+			tools.forEach((tool: unknown) => {
 				const toolItem = toolsList.createDiv({ cls: 'llmsider-mcp-tool-item' });
 				toolItem.style.cssText = 'padding: 12px; margin-bottom: 8px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 4px;';
 				

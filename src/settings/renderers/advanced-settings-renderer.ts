@@ -31,11 +31,10 @@ export class AdvancedSettingsRenderer {
 	 */
 	render(containerEl: HTMLElement): void {
 		// Advanced Settings Header
-		const advancedHeader = containerEl.createEl('h2', { text: this.i18n.t('settingsPage.advancedSettings') });
-		advancedHeader.style.marginTop = '20px';
-		advancedHeader.style.marginBottom = '12px';
-		advancedHeader.style.fontSize = '16px';
-		advancedHeader.style.fontWeight = '600';
+		const advancedHeader = containerEl.createEl('h2', { 
+			text: this.i18n.t('settingsPage.advancedSettings'),
+			cls: 'llmsider-section-header'
+		});
 
 		// Render Google Search settings section (delegated)
 		this.connectionModelRenderer.renderGoogleSearchSettings(containerEl);
@@ -59,13 +58,16 @@ export class AdvancedSettingsRenderer {
 		
 		// Section Header
 		const quickChatHeader = quickChatContainer.createEl('h3', { 
-			text: this.i18n.t('settingsPage.quickChat')
+			text: this.i18n.t('settingsPage.quickChat'),
+			cls: 'llmsider-subsection-header'
 		});
-		quickChatHeader.style.marginTop = '0px';
-		quickChatHeader.style.marginBottom = '12px';
-		quickChatHeader.style.fontSize = '14px';
-		quickChatHeader.style.fontWeight = '600';
-		quickChatHeader.style.color = 'var(--text-normal)';
+
+		let showOnSelectionSetting: Setting;
+		let enableDiffPreviewSetting: Setting;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let showOnSelectionToggle: any;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let enableDiffPreviewToggle: any;
 
 		// Global enable/disable toggle for quick chat
 		new Setting(quickChatContainer)
@@ -77,6 +79,14 @@ export class AdvancedSettingsRenderer {
 					this.plugin.settings.inlineQuickChat.enabled = value;
 					await this.plugin.saveSettings();
 					
+					// Update disabled state of other settings
+					if (showOnSelectionSetting) showOnSelectionSetting.setDisabled(!value);
+					if (enableDiffPreviewSetting) enableDiffPreviewSetting.setDisabled(!value);
+					
+					// Explicitly disable toggles to ensure visual feedback
+					if (showOnSelectionToggle) showOnSelectionToggle.setDisabled(!value);
+					if (enableDiffPreviewToggle) enableDiffPreviewToggle.setDisabled(!value);
+
 					if (value) {
 						const message = this.i18n.t('quickChat.enabledNotice').replace('{key}', this.plugin.settings.inlineQuickChat.triggerKey);
 						new Notice(message);
@@ -86,12 +96,15 @@ export class AdvancedSettingsRenderer {
 				});
 			});
 
-		// Show on selection toggle
-		new Setting(quickChatContainer)
+		// Show on selection toggle (also controls Quick Chat button visibility)
+		showOnSelectionSetting = new Setting(quickChatContainer)
 			.setName(this.i18n.t('quickChat.showOnSelection'))
 			.setDesc(this.i18n.t('quickChat.showOnSelectionDesc'))
+			.setDisabled(!this.plugin.settings.inlineQuickChat.enabled)
 			.addToggle(toggle => {
+				showOnSelectionToggle = toggle;
 				toggle.setValue(this.plugin.settings.inlineQuickChat.showOnSelection);
+				toggle.setDisabled(!this.plugin.settings.inlineQuickChat.enabled);
 				toggle.onChange(async (value) => {
 					this.plugin.settings.inlineQuickChat.showOnSelection = value;
 					await this.plugin.saveSettings();
@@ -99,25 +112,16 @@ export class AdvancedSettingsRenderer {
 			});
 
 		// Enable diff preview toggle
-		new Setting(quickChatContainer)
+		enableDiffPreviewSetting = new Setting(quickChatContainer)
 			.setName(this.i18n.t('quickChat.enableDiffPreview'))
 			.setDesc(this.i18n.t('quickChat.enableDiffPreviewDesc'))
+			.setDisabled(!this.plugin.settings.inlineQuickChat.enabled)
 			.addToggle(toggle => {
+				enableDiffPreviewToggle = toggle;
 				toggle.setValue(this.plugin.settings.inlineQuickChat.enableDiffPreview);
+				toggle.setDisabled(!this.plugin.settings.inlineQuickChat.enabled);
 				toggle.onChange(async (value) => {
 					this.plugin.settings.inlineQuickChat.enableDiffPreview = value;
-					await this.plugin.saveSettings();
-				});
-			});
-
-		// Show Quick Chat button toggle
-		new Setting(quickChatContainer)
-			.setName(this.i18n.t('quickChat.showQuickChatButton'))
-			.setDesc(this.i18n.t('quickChat.showQuickChatButtonDesc'))
-			.addToggle(toggle => {
-				toggle.setValue(this.plugin.settings.inlineQuickChat.showQuickChatButton);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.inlineQuickChat.showQuickChatButton = value;
 					await this.plugin.saveSettings();
 				});
 			});
@@ -132,13 +136,9 @@ export class AdvancedSettingsRenderer {
 		
 		// Section Header
 		const otherHeader = otherContainer.createEl('h3', { 
-			text: this.i18n.t('settingsPage.otherSettings')
+			text: this.i18n.t('settingsPage.otherSettings'),
+			cls: 'llmsider-subsection-header'
 		});
-		otherHeader.style.marginTop = '0px';
-		otherHeader.style.marginBottom = '12px';
-		otherHeader.style.fontSize = '14px';
-		otherHeader.style.fontWeight = '600';
-		otherHeader.style.color = 'var(--text-normal)';
 
 		new Setting(otherContainer)
 			.setName(this.i18n.t('settingsPage.language'))
@@ -156,34 +156,22 @@ export class AdvancedSettingsRenderer {
 					const i18nManager = this.plugin.getI18nManager();
 					if (i18nManager) {
 						i18nManager.setLanguage(value as 'en' | 'zh');
-					}
+						
+					// Update built-in prompts with new language translations
+					this.plugin.configDb.updateBuiltInPromptsTranslations();
+				}
 
-					new Notice(`Language changed to ${dropdown.selectEl.selectedOptions[0].text}`);
+				const i18n = this.plugin.getI18nManager();
+				new Notice(i18n?.t('notifications.settingsHandlers.languageChanged', { language: dropdown.selectEl.selectedOptions[0].text }) || `Language changed to ${dropdown.selectEl.selectedOptions[0].text}`);
 
-					// Refresh the settings page to show updated language
-					// Use requestAnimationFrame to ensure proper re-rendering
-					requestAnimationFrame(() => {
-						// Call display on the settings tab
-						// Note: This requires the display callback to be available
-						// The parent settings tab will handle the refresh
-					});
-				});
-			});
-
-		// Max Chat History
-		new Setting(otherContainer)
-			.setName(this.i18n.t('settingsPage.maxChatHistory'))
-			.setDesc(this.i18n.t('settingsPage.maxChatHistoryDesc'))
-			.addSlider(slider => {
-				slider.setLimits(10, 200, 10);
-				slider.setValue(this.plugin.settings.maxChatHistory);
-				slider.setDynamicTooltip();
-				slider.onChange(async (value) => {
-					this.plugin.settings.maxChatHistory = value;
-					await this.plugin.saveSettings();
-				});
-			});
-
+				// Refresh the settings page to show updated language
+				// Get the settings tab and call display to refresh
+				const settingsTab = (this.plugin.app as any).setting?.activeTab;
+				if (settingsTab && typeof settingsTab.display === 'function') {
+					await settingsTab.display();
+			}
+		});
+	})
 		// Show "Add to Context" button when text is selected
 		new Setting(otherContainer)
 			.setName(this.i18n.t('selectionPopup.showAddToContextButton'))
@@ -214,16 +202,60 @@ export class AdvancedSettingsRenderer {
 				});
 			});
 
-		// Tool Confirmation Setting (Unified for both MCP and Built-in tools)
+		// Max Built-in Tools Selection
 		new Setting(otherContainer)
-			.setName(this.i18n.t('settingsPage.requireConfirmationForTools'))
-			.setDesc(this.i18n.t('settingsPage.requireConfirmationForToolsDesc'))
-			.addToggle(toggle => {
-				toggle.setValue(this.plugin.settings.requireConfirmationForTools);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.requireConfirmationForTools = value;
+			.setName(this.i18n.t('settingsPage.maxBuiltInToolsSelection'))
+			.setDesc(this.i18n.t('settingsPage.maxBuiltInToolsSelectionDesc'))
+			.addText(text => {
+				text.setPlaceholder('64')
+					.setValue(String(this.plugin.settings.maxBuiltInToolsSelection))
+					.onChange(async (value) => {
+						const num = parseInt(value);
+						if (!isNaN(num) && num > 0) {
+							this.plugin.settings.maxBuiltInToolsSelection = num;
+							await this.plugin.saveSettings();
+						}
+					});
+				text.inputEl.type = 'number';
+				text.inputEl.min = '1';
+			});
+
+		// Max MCP Tools Selection
+		new Setting(otherContainer)
+			.setName(this.i18n.t('settingsPage.maxMCPToolsSelection'))
+			.setDesc(this.i18n.t('settingsPage.maxMCPToolsSelectionDesc'))
+			.addText(text => {
+				text.setPlaceholder('64')
+					.setValue(String(this.plugin.settings.maxMCPToolsSelection))
+					.onChange(async (value) => {
+						const num = parseInt(value);
+						if (!isNaN(num) && num > 0) {
+							this.plugin.settings.maxMCPToolsSelection = num;
+							await this.plugin.saveSettings();
+						}
+					});
+				text.inputEl.type = 'number';
+				text.inputEl.min = '1';
+			});
+
+		// Plan Execution Mode
+		new Setting(otherContainer)
+			.setName(this.i18n.t('settingsPage.planExecutionMode'))
+			.setDesc(this.i18n.t('settingsPage.planExecutionModeDesc'))
+			.addDropdown(dropdown => {
+				dropdown.addOption('sequential', this.i18n.t('settingsPage.planExecutionModeSequential'));
+				dropdown.addOption('dag', this.i18n.t('settingsPage.planExecutionModeDAG'));
+
+				dropdown.setValue(this.plugin.settings.planExecutionMode);
+				dropdown.onChange(async (value) => {
+					const mode = value as 'sequential' | 'dag';
+					this.plugin.settings.planExecutionMode = mode;
 					await this.plugin.saveSettings();
+					// Persist to database
+					await this.plugin.configDb.setPlanExecutionMode(mode);
+					new Notice(this.i18n.t('settingsPage.planExecutionModeChanged', { mode: dropdown.selectEl.selectedOptions[0].text }));
 				});
 			});
+
 	}
 }

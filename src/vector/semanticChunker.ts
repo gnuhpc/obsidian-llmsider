@@ -44,8 +44,8 @@ export class SemanticChunker {
         for (let i = 0; i < matches.length; i++) {
           const match = matches[i];
           const nextMatch = matches[i + 1];
-          const startPos = match.index!;
-          const endPos = nextMatch ? nextMatch.index! : normalizedContent.length;
+          const startPos = match.index;
+          const endPos = nextMatch ? nextMatch.index : normalizedContent.length;
           
           const chunkContent = normalizedContent.substring(startPos, endPos).trim();
           
@@ -68,8 +68,8 @@ export class SemanticChunker {
         }
         
         // Handle content before first heading if it exists
-        if (matches[0].index! > 0) {
-          const preamble = normalizedContent.substring(0, matches[0].index!).trim();
+        if (matches[0].index > 0) {
+          const preamble = normalizedContent.substring(0, matches[0].index).trim();
           if (preamble.length > 0) {
             const contentHash = createHash('md5')
               .update(preamble)

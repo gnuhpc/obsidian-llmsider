@@ -1,0 +1,349 @@
+/* Dynamic Step Confirmation Modal Styles */
+
+.llmsider-dynamic-step-modal {
+    padding: 0;
+    max-width: 600px;
+}
+
+.llmsider-step-modal-header {
+    padding: 24px 24px 20px;
+    background: linear-gradient(135deg, var(--interactive-accent) 0%, var(--interactive-accent-hover) 100%);
+    border-bottom: 2px solid var(--background-modifier-border);
+}
+
+.llmsider-step-modal-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-on-accent);
+}
+
+.llmsider-step-modal-icon {
+    color: var(--text-on-accent);
+    opacity: 0.9;
+}
+
+.llmsider-step-modal-summary {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 20px 24px;
+    padding: 14px 16px;
+    background: var(--background-secondary);
+    border-radius: 10px;
+    border: 1px solid var(--background-modifier-border);
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-normal);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.llmsider-step-modal-summary-icon {
+    color: var(--interactive-accent);
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.llmsider-step-modal-summary-text {
+    flex: 1;
+}
+
+.llmsider-step-modal-count-badge {
+    display: inline-block;
+    margin: 0 24px 16px;
+    padding: 6px 12px;
+    background: var(--background-primary-alt);
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-step-modal-info {
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: var(--background-primary-alt);
+    border-radius: 8px;
+    border-left: 3px solid var(--interactive-accent);
+}
+
+.llmsider-step-modal-info strong {
+    font-size: 16px;
+    color: var(--text-normal);
+}
+
+.llmsider-step-modal-count {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.llmsider-step-modal-steps-container {
+    max-height: 450px;
+    overflow-y: auto;
+    padding: 8px 24px 16px;
+}
+
+.llmsider-step-modal-item {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 14px;
+    padding: 16px;
+    background: var(--background-primary);
+    border-radius: 10px;
+    border: 1px solid var(--background-modifier-border);
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.llmsider-step-modal-item:hover {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.llmsider-step-modal-step-number {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, var(--interactive-accent) 0%, var(--interactive-accent-hover) 100%);
+    color: var(--text-on-accent);
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.llmsider-step-modal-step-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.llmsider-step-modal-item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    color: var(--text-normal);
+}
+
+.llmsider-step-modal-item-icon {
+    color: var(--interactive-accent);
+}
+
+.llmsider-step-modal-tool-name {
+    font-size: 15px;
+}
+
+.llmsider-step-modal-description {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+
+.llmsider-step-modal-params-details {
+    margin-top: 10px;
+}
+
+.llmsider-step-modal-params-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-step-modal-params-summary:hover {
+    background: var(--background-secondary-alt);
+    color: var(--text-normal);
+}
+
+.llmsider-step-modal-params-icon {
+    color: inherit;
+}
+
+.llmsider-step-modal-node-args {
+    margin-top: 8px;
+    padding: 10px;
+    background: var(--background-primary);
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-step-modal-node-args pre {
+    margin: 0;
+    font-size: 11px;
+    font-family: var(--font-monospace);
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.llmsider-step-modal-nodes {
+    max-height: 400px;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    padding: 8px 0;
+}
+
+.llmsider-step-modal-node-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    transition: all 0.2s ease;
+}
+
+.llmsider-step-modal-node-item:hover {
+    background: var(--background-secondary-alt);
+    border-color: var(--interactive-accent);
+}
+
+.llmsider-step-modal-node-number {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 50%;
+}
+
+.llmsider-step-modal-node-info {
+    flex: 1;
+}
+
+.llmsider-step-modal-node-info strong {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: var(--text-normal);
+}
+
+.llmsider-step-modal-node-args {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-family: var(--font-monospace);
+    overflow-wrap: break-word;
+}
+
+.llmsider-step-modal-node-deps {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 4px 8px;
+    background: var(--background-primary);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.llmsider-step-modal-deps-icon {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.llmsider-step-modal-deps-list {
+    font-weight: 600;
+    color: var(--text-accent);
+}
+
+.llmsider-step-modal-parallel-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    background: var(--background-primary-alt);
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-normal);
+    border-left: 3px solid var(--color-green);
+}
+
+.llmsider-step-modal-notice-icon {
+    color: var(--color-green);
+}
+
+.llmsider-step-modal-progress {
+    margin-bottom: 20px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.llmsider-step-modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 20px 24px;
+    background: var(--background-secondary);
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-step-modal-buttons button {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.llmsider-step-modal-buttons button.mod-warning {
+    background: var(--background-primary);
+    color: var(--text-normal);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-step-modal-buttons button.mod-warning:hover {
+    background: var(--background-primary-alt);
+    border-color: var(--text-muted);
+}
+
+.llmsider-step-modal-buttons button.mod-cta {
+    background: linear-gradient(135deg, var(--interactive-accent) 0%, var(--interactive-accent-hover) 100%);
+    color: var(--text-on-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.llmsider-step-modal-buttons button.mod-cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.llmsider-step-modal-buttons button:not(.mod-cta):not(.mod-warning) {
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-step-modal-buttons button:not(.mod-cta):not(.mod-warning):hover {
+    background: var(--background-secondary-alt);
+    border-color: var(--interactive-accent);
+}

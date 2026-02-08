@@ -3,32 +3,115 @@ import { Logger } from './../utils/logger';
 import { EditorView, Decoration, DecorationSet, WidgetType } from '@codemirror/view';
 import { StateField, StateEffect, RangeSetBuilder } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
+import * as Diff from 'diff';
 import type LLMSiderPlugin from '../main';
-import { getBuiltInPrompts } from '../data/built-in-prompts';
 import type { I18nManager } from '../i18n/i18n-manager';
+import type { PromptTemplate } from '../types';
 
 /**
  * Quick Chat Widget - Similar to Notion AI
  * Provides a floating input box for AI interactions with inline diff preview
  */
 
+// Polyfill for requestIdleCallback
+const requestIdleCallback = window.requestIdleCallback || ((cb: IdleRequestCallback) => {
+	const start = Date.now();
+	return setTimeout(() => {
+		cb({
+			didTimeout: false,
+			timeRemaining: () => Math.max(0, 50 - (Date.now() - start))
+		});
+	}, 1);
+});
+
 /**
  * Widget to display the suggested replacement text inline
  */
 class InlineDiffWidget extends WidgetType {
-	constructor(private text: string) {
+	constructor(private text: string, private className: string = 'llmsider-inline-diff-suggestion') {
 		super();
 	}
 
 	toDOM() {
 		const span = document.createElement('span');
-		span.className = 'llmsider-inline-diff-suggestion';
+		span.className = this.className;
 		span.textContent = this.text;
 		return span;
 	}
 
 	ignoreEvent() {
 		return false;
+	}
+}
+
+/**
+ * Widget to display fine-grained diff
+ */
+class FineGrainedDiffWidget extends WidgetType {
+	constructor(private original: string, private modified: string) {
+		super();
+	}
+
+	toDOM() {
+		const container = document.createElement('div');
+		container.className = 'llmsider-fine-grained-diff-block';
+		
+		// Calculate diff
+		// Use diffChars for CJK text to get better granularity, diffWords for others
+		const hasCJK = /[\u4e00-\u9fa5]/.test(this.original) || /[\u4e00-\u9fa5]/.test(this.modified);
+		const diff = hasCJK ? Diff.diffChars(this.original, this.modified) : Diff.diffWords(this.original, this.modified);
+		
+		diff.forEach(part => {
+			const partSpan = document.createElement('span');
+			if (part.added) {
+				partSpan.className = 'llmsider-diff-added-inline';
+				partSpan.textContent = part.value;
+			} else if (part.removed) {
+				partSpan.className = 'llmsider-diff-removed-inline';
+				partSpan.textContent = part.value;
+			} else {
+				partSpan.className = 'llmsider-diff-context-inline';
+				partSpan.textContent = part.value;
+			}
+			container.appendChild(partSpan);
+		});
+		
+		return container;
+	}
+
+	ignoreEvent() {
+		return false;
+	}
+}
+
+/**
+ * Widget to display preview text with action buttons (no diff)
+ */
+class PreviewTextWidget extends WidgetType {
+	constructor(private text: string) {
+		super();
+	}
+
+	toDOM() {
+		const container = document.createElement('div');
+		container.className = 'llmsider-fine-grained-diff-block llmsider-preview-text-block';
+		
+		// Get i18n instance
+		const i18n = InlineQuickChatHandler.getI18n();
+		
+		// Content
+		const contentSpan = document.createElement('span');
+		contentSpan.className = 'llmsider-preview-text-content';
+		contentSpan.textContent = this.text;
+		container.appendChild(contentSpan);
+		
+		// Action buttons removed as requested - now integrated into the bottom Quick Chat widget
+		
+		return container;
+	}
+
+	ignoreEvent() {
+		return false; // Allow DOM events to propagate
 	}
 }
 
@@ -47,6 +130,7 @@ class QuickChatBlockWidget extends WidgetType {
 		private onSubmit: (prompt: string) => void,
 		private onClose: () => void,
 		private i18n: I18nManager,
+		private plugin: LLMSiderPlugin,
 		private onAccept?: () => void,
 		private onReject?: () => void
 	) {
@@ -141,6 +225,16 @@ class QuickChatBlockWidget extends WidgetType {
 		// Track selected item for keyboard navigation
 		let selectedPromptIndex = -1;
 		
+		// Track history navigation state
+		let historyPrompts: string[] = [];
+		let historyIndex = -1; // -1 means not navigating history
+		let currentInputBeforeHistory = ''; // Store current input before starting history navigation
+		
+		// Load history prompts
+		this.plugin.configDb.getPromptHistory(50).then(history => {
+			historyPrompts = history;
+		});
+		
 		// Handle Enter key to submit, ESC to close, and arrow keys for navigation
 		input.onkeydown = (e) => {
 			// Stop event propagation FIRST to prevent Vim/CodeMirror from handling it
@@ -155,9 +249,28 @@ class QuickChatBlockWidget extends WidgetType {
 			// Handle arrow keys for prompt navigation in the list below
 			const promptItems = Array.from(container.querySelectorAll('.llmsider-quick-prompt-item'));
 			
+			// Check if we should use history navigation or list navigation
+			// Use history navigation when:
+			// 1. The prompt list is hidden or empty
+			// 2. No item is selected in the list
+			const useHistoryNavigation = (quickPromptsSection.style.display === 'none' || 
+				promptItems.length === 0 || 
+				selectedPromptIndex === -1) && historyPrompts.length > 0;
+			
 			if (e.key === 'ArrowDown') {
 				e.preventDefault();
-				if (promptItems.length > 0) {
+				
+				if (useHistoryNavigation) {
+					// Navigate history backward (newer)
+					if (historyIndex > 0) {
+						historyIndex--;
+						input.value = historyPrompts[historyIndex];
+					} else if (historyIndex === 0) {
+						// Restore original input
+						historyIndex = -1;
+						input.value = currentInputBeforeHistory;
+					}
+				} else if (promptItems.length > 0) {
 					selectedPromptIndex = (selectedPromptIndex + 1) % promptItems.length;
 					promptItems.forEach((item, index) => {
 						item.toggleClass('selected', index === selectedPromptIndex);
@@ -172,7 +285,21 @@ class QuickChatBlockWidget extends WidgetType {
 			
 			if (e.key === 'ArrowUp') {
 				e.preventDefault();
-				if (promptItems.length > 0) {
+				
+				if (useHistoryNavigation) {
+					// Navigate history forward (older)
+					if (historyIndex === -1) {
+						// Start history navigation
+						currentInputBeforeHistory = input.value;
+						historyIndex = 0;
+						if (historyPrompts.length > 0) {
+							input.value = historyPrompts[0];
+						}
+					} else if (historyIndex < historyPrompts.length - 1) {
+						historyIndex++;
+						input.value = historyPrompts[historyIndex];
+					}
+				} else if (promptItems.length > 0) {
 					selectedPromptIndex = selectedPromptIndex <= 0 ? promptItems.length - 1 : selectedPromptIndex - 1;
 					promptItems.forEach((item, index) => {
 						item.toggleClass('selected', index === selectedPromptIndex);
@@ -220,10 +347,10 @@ class QuickChatBlockWidget extends WidgetType {
 			e.stopImmediatePropagation();
 		};
 		
-		input.onkeypress = (e) => {
+		input.addEventListener('keydown', (e) => {
 			e.stopPropagation();
 			e.stopImmediatePropagation();
-		};
+		});
 		
 		// Capture paste events to prevent them from being handled by the editor
 		input.onpaste = (e) => {
@@ -252,17 +379,32 @@ class QuickChatBlockWidget extends WidgetType {
 			e.stopImmediatePropagation();
 		});
 		
-		// Get built-in prompts with i18n support
-		const builtInPrompts = getBuiltInPrompts();
+		// Get built-in prompts from database (async)
+		let builtInPrompts: PromptTemplate[] = [];
+		let recentHistoryPrompts: string[] = []; // Store recent 3 history prompts
 		
 		// Add quick prompts section with autocomplete dropdown
 		const quickPromptsSection = container.createDiv({ cls: 'llmsider-quick-prompts-section' });
 		const quickPromptsTitle = quickPromptsSection.createDiv({ 
 			cls: 'llmsider-quick-prompts-title', 
-			text: this.i18n.t('quickChatUI.quickActionsAvailable', { count: builtInPrompts.length.toString() })
+			text: this.i18n.t('quickChatUI.loadingPrompts')
 		});
 		
 		const quickPromptsList = quickPromptsSection.createDiv({ cls: 'llmsider-quick-prompts-list' });
+		
+		// Load prompts and history asynchronously
+		Promise.all([
+			this.plugin.configDb.getBuiltInPrompts(),
+			this.plugin.configDb.getPromptHistory(3) // Get recent 3 history
+		]).then(([prompts, history]) => {
+			builtInPrompts = prompts;
+			recentHistoryPrompts = history;
+			// Initial render with all prompts
+			renderPrompts();
+		}).catch(error => {
+			Logger.error('Failed to load prompts:', error);
+			quickPromptsTitle.textContent = this.i18n.t('quickChatUI.failedToLoadPrompts');
+		});
 		
 		// Function to get prompt icon based on title
 		const getPromptIcon = (title: string): string => {
@@ -341,11 +483,16 @@ class QuickChatBlockWidget extends WidgetType {
 			return iconMap[title] || '📝';
 		};
 		
-		// Render all built-in prompts
+		// Render all prompts (history + built-in)
 		const renderPrompts = (filter: string = '') => {
 			quickPromptsList.empty();
 			const lowerFilter = filter.toLowerCase();
 			
+			// Filter history prompts (only show when no filter or filter matches)
+			const filteredHistory = filter === '' ? recentHistoryPrompts : 
+				recentHistoryPrompts.filter(p => p.toLowerCase().includes(lowerFilter));
+			
+			// Filter built-in prompts
 			const filteredPrompts = builtInPrompts.filter(prompt => {
 				if (filter === '') return true;
 				
@@ -360,8 +507,93 @@ class QuickChatBlockWidget extends WidgetType {
 				return titleMatch || descMatch || keywordMatch;
 			});
 			
+			// Render recent history prompts (if any and no filter, or filter matches)
+			if (filteredHistory.length > 0) {
+				const historyTitle = quickPromptsList.createDiv({ 
+					cls: 'llmsider-quick-prompts-section-title',
+					text: this.i18n.t('quickChatUI.recentPrompts') || 'Recent'
+				});
+				
+				filteredHistory.forEach(historyPrompt => {
+					const promptItem = quickPromptsList.createDiv({ cls: 'llmsider-quick-prompt-item llmsider-history-prompt-item' });
+					promptItem.createSpan({ cls: 'llmsider-quick-prompt-icon', text: '🕐' }); // History icon
+					promptItem.createSpan({ cls: 'llmsider-quick-prompt-text', text: historyPrompt });
+					
+					// Check if this history prompt is already in built-in
+					this.plugin.configDb.isPromptInBuiltIn(historyPrompt).then(isInBuiltIn => {
+						if (!isInBuiltIn) {
+							// Add "Add to Built-in" button
+							const addBtn = promptItem.createSpan({ 
+								cls: 'llmsider-quick-prompt-add-btn',
+								attr: { 'title': this.i18n.t('quickChatUI.addToBuiltIn') || 'Add to built-in' }
+							});
+							addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+							
+							addBtn.onmousedown = (e) => {
+								e.preventDefault();
+								e.stopPropagation();
+							};
+							
+							addBtn.onclick = async (e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								
+								// Add to built-in prompts
+								const newPromptId = `custom-${Date.now()}`;
+								await this.plugin.configDb.addPrompt({
+									id: newPromptId,
+									title: historyPrompt,
+									content: historyPrompt,
+									description: '',
+									isBuiltIn: false,
+									orderIndex: 999,
+									lastUsed: Date.now(),
+									createdAt: Date.now(),
+									updatedAt: Date.now()
+								});
+								
+								// Reload and re-render
+								const [prompts, history] = await Promise.all([
+									this.plugin.configDb.getBuiltInPrompts(),
+									this.plugin.configDb.getPromptHistory(3)
+								]);
+								builtInPrompts = prompts;
+								recentHistoryPrompts = history;
+								renderPrompts(input.value.trim());
+							};
+						}
+					});
+					
+					promptItem.onmousedown = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+					};
+					
+					promptItem.onclick = (e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						selectedPromptIndex = -1;
+						quickPromptsSection.style.display = 'none';
+						this.onSubmit(historyPrompt);
+					};
+				});
+			}
+			
+			// Add separator if both history and built-in prompts exist
+			if (filteredHistory.length > 0 && filteredPrompts.length > 0) {
+				quickPromptsList.createDiv({ cls: 'llmsider-quick-prompts-separator' });
+			}
+			
+			// Render built-in prompts section
+			if (filteredPrompts.length > 0 || filter === '') {
+				const builtInTitle = quickPromptsList.createDiv({ 
+					cls: 'llmsider-quick-prompts-section-title',
+					text: this.i18n.t('quickChatUI.builtInPrompts') || 'Built-in Actions'
+				});
+			}
+			
 			// Show message if no results found
-			if (filteredPrompts.length === 0 && filter !== '') {
+			if (filteredPrompts.length === 0 && filteredHistory.length === 0 && filter !== '') {
 				const noResults = quickPromptsList.createDiv({ cls: 'llmsider-no-results' });
 				noResults.textContent = this.i18n.t('quickChatUI.noMatchingPrompts');
 			}
@@ -371,6 +603,39 @@ class QuickChatBlockWidget extends WidgetType {
 				promptItem.createSpan({ cls: 'llmsider-quick-prompt-icon', text: getPromptIcon(prompt.title) });
 				promptItem.createSpan({ cls: 'llmsider-quick-prompt-text', text: prompt.title });
 				
+				// Add Pin/Unpin button
+				const pinBtn = promptItem.createSpan({ 
+					cls: `llmsider-quick-prompt-pin ${prompt.pinned ? 'pinned' : ''}`,
+					attr: { 'title': prompt.pinned ? this.i18n.t('ui.unpin') : this.i18n.t('ui.pin') }
+				});
+				// Use a simple pin icon
+				pinBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>';
+				
+				if (prompt.pinned) {
+					pinBtn.addClass('is-pinned');
+					// Fill the icon if pinned
+					pinBtn.querySelector('svg')?.setAttribute('fill', 'currentColor');
+				}
+
+				pinBtn.onmousedown = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+				};
+
+				pinBtn.onclick = async (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					
+					// Toggle pin state
+					await this.plugin.configDb.togglePromptPin(prompt.id);
+					
+					// Reload prompts and re-render
+					this.plugin.configDb.getBuiltInPrompts().then(prompts => {
+						builtInPrompts = prompts;
+						renderPrompts(input.value.trim());
+					});
+				};
+
 				promptItem.onmousedown = (e) => {
 					e.preventDefault();
 					e.stopPropagation();
@@ -386,6 +651,9 @@ class QuickChatBlockWidget extends WidgetType {
 					
 					// For built-in prompts, execute directly instead of filling input
 					if (prompt.isBuiltIn) {
+						// Increment usage count
+						this.plugin.configDb.incrementPromptUsage(prompt.id);
+
 						// Use the prompt title as the action to submit
 						const action = prompt.title;
 						this.onSubmit(action);
@@ -403,9 +671,10 @@ class QuickChatBlockWidget extends WidgetType {
 			});
 			
 			// Update title with count
+			const totalCount = filteredHistory.length + filteredPrompts.length;
 			quickPromptsTitle.textContent = filter 
-				? this.i18n.t('quickChatUI.quickActionsMatching', { count: filteredPrompts.length.toString() })
-				: this.i18n.t('quickChatUI.quickActionsAvailable', { count: builtInPrompts.length.toString() });
+				? this.i18n.t('quickChatUI.quickActionsMatching', { count: totalCount.toString() })
+				: this.i18n.t('quickChatUI.quickActionsAvailable', { count: (recentHistoryPrompts.length + builtInPrompts.length).toString() });
 		};
 		
 		// Initial render with all prompts
@@ -421,6 +690,7 @@ class QuickChatBlockWidget extends WidgetType {
 			
 			const value = input.value.trim();
 			selectedPromptIndex = -1; // Reset selection when filtering
+			historyIndex = -1; // Reset history navigation when user types
 			
 			if (value) {
 				// Filter and show matching prompts
@@ -461,10 +731,12 @@ class QuickChatBlockWidget extends WidgetType {
 	
 	/**
 	 * Show loading state (only in placeholder)
+	 * Keep input enabled so user can type while waiting
 	 */
 	showLoading() {
 		if (this.inputElement) {
-			this.inputElement.disabled = true;
+			// Keep input enabled - users should be able to type during loading
+			// this.inputElement.disabled = true;
 			this.inputElement.value = '';
 			this.inputElement.placeholder = this.i18n.t('quickChatUI.loadingPlaceholder');
 		}
@@ -490,7 +762,7 @@ class QuickChatBlockWidget extends WidgetType {
 	/**
 	 * Show accept/reject buttons (inline with input, on the right side)
 	 */
-	showAcceptReject() {
+	showAcceptReject(textToCopy?: string) {
 		if (!this.actionsElement || !this.inputElement) return;
 		
 		// Keep input enabled and clear it for new input
@@ -508,18 +780,7 @@ class QuickChatBlockWidget extends WidgetType {
 		this.actionsElement.empty();
 		this.actionsElement.style.display = 'flex';
 		
-		// Create reject button (✕)
-		const rejectBtn = this.actionsElement.createEl('button', {
-			cls: 'llmsider-quick-chat-btn-icon',
-			attr: { 'aria-label': 'Reject changes', 'title': 'Reject' }
-		});
-		rejectBtn.innerHTML = '✕';
-		rejectBtn.onclick = () => {
-			if (this.onReject) this.onReject();
-			this.hideAcceptReject();
-		};
-		
-		// Create accept button (✓)
+		// Create accept button (✓) - Apply
 		const acceptBtn = this.actionsElement.createEl('button', {
 			cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-accept',
 			attr: { 'aria-label': 'Accept changes', 'title': 'Accept' }
@@ -527,6 +788,89 @@ class QuickChatBlockWidget extends WidgetType {
 		acceptBtn.innerHTML = '✓';
 		acceptBtn.onclick = () => {
 			if (this.onAccept) this.onAccept();
+			this.hideAcceptReject();
+		};
+
+		// Create insert before button (↱) - Insert Before
+		const insertBeforeBtn = this.actionsElement.createEl('button', {
+			cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-insert-before',
+			attr: { 'aria-label': this.i18n.t('quickChatUI.insertBefore'), 'title': this.i18n.t('quickChatUI.insertBefore') }
+		});
+		// Corner up right arrow icon
+		insertBeforeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>';
+		
+		insertBeforeBtn.onclick = () => {
+			const handler = InlineQuickChatHandler.getInstance();
+			if (handler && handler.currentView) {
+				handler.insertBeforeInlineDiff(handler.currentView);
+				this.hideAcceptReject();
+			}
+		};
+
+		// Create insert after button (↳) - Insert After
+		const insertAfterBtn = this.actionsElement.createEl('button', {
+			cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-insert-after',
+			attr: { 'aria-label': this.i18n.t('quickChatUI.insertAfter'), 'title': this.i18n.t('quickChatUI.insertAfter') }
+		});
+		// Corner down right arrow icon
+		insertAfterBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 10 20 15 15 20"></polyline><path d="M4 4v7a4 4 0 0 0 4 4h12"></path></svg>';
+		
+		insertAfterBtn.onclick = () => {
+			const handler = InlineQuickChatHandler.getInstance();
+			if (handler && handler.currentView) {
+				handler.insertAfterInlineDiff(handler.currentView);
+				this.hideAcceptReject();
+			}
+		};
+
+		// Create copy button (📋) - Copy
+		if (textToCopy) {
+			const copyBtn = this.actionsElement.createEl('button', {
+				cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-copy',
+				attr: { 'aria-label': 'Copy to clipboard', 'title': 'Copy' }
+			});
+			// Use SVG for copy icon
+			copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+			
+			copyBtn.onclick = async (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				
+				try {
+					await navigator.clipboard.writeText(textToCopy);
+					const originalIcon = copyBtn.innerHTML;
+					// Show checkmark temporarily
+					copyBtn.innerHTML = '✓';
+					setTimeout(() => {
+						copyBtn.innerHTML = originalIcon;
+					}, 1500);
+				} catch (err) {
+					Logger.error('Failed to copy:', err);
+					// Fallback
+					const textarea = document.createElement('textarea');
+					textarea.value = textToCopy;
+					document.body.appendChild(textarea);
+					textarea.select();
+					document.execCommand('copy');
+					document.body.removeChild(textarea);
+					
+					const originalIcon = copyBtn.innerHTML;
+					copyBtn.innerHTML = '✓';
+					setTimeout(() => {
+						copyBtn.innerHTML = originalIcon;
+					}, 1500);
+				}
+			};
+		}
+		
+		// Create reject button (✕) - Cancel
+		const rejectBtn = this.actionsElement.createEl('button', {
+			cls: 'llmsider-quick-chat-btn-icon',
+			attr: { 'aria-label': 'Reject changes', 'title': 'Reject' }
+		});
+		rejectBtn.innerHTML = '✕';
+		rejectBtn.onclick = () => {
+			if (this.onReject) this.onReject();
 			this.hideAcceptReject();
 		};
 	}
@@ -537,27 +881,26 @@ class QuickChatBlockWidget extends WidgetType {
 	hideAcceptReject() {
 		if (!this.actionsElement || !this.inputElement) return;
 		
-		// Hide actions
-		this.actionsElement.style.display = 'none';
-		this.actionsElement.empty();
-		
-		// Restore input
-		this.inputElement.disabled = false;
-		this.inputElement.value = '';
-		this.inputElement.placeholder = this.i18n.t('quickChatUI.inputPlaceholder');
-		
-		// Show quick prompts again
-		const quickPromptsSection = this.containerElement?.querySelector('.llmsider-quick-prompts-section') as HTMLElement;
-		if (quickPromptsSection) {
-			quickPromptsSection.style.display = 'block';
-		}
-		
-		// Restore focus
-		setTimeout(() => {
-			if (this.inputElement) {
-				this.inputElement.focus();
+		// Batch DOM updates for better performance
+		requestAnimationFrame(() => {
+			// Hide actions
+			this.actionsElement!.style.display = 'none';
+			this.actionsElement!.empty();
+			
+			// Restore input
+			this.inputElement!.disabled = false;
+			this.inputElement!.value = '';
+			this.inputElement!.placeholder = this.i18n.t('quickChatUI.inputPlaceholder');
+			
+			// Show quick prompts again
+			const quickPromptsSection = this.containerElement?.querySelector('.llmsider-quick-prompts-section') as HTMLElement;
+			if (quickPromptsSection) {
+				quickPromptsSection.style.display = 'block';
 			}
-		}, 50);
+			
+			// Restore focus immediately (no delay needed)
+			this.inputElement!.focus();
+		});
 	}
 }
 
@@ -579,6 +922,8 @@ interface DiffPreviewState {
 	from: number;
 	to: number;
 	accepted: boolean;
+	streaming: boolean;
+	disableDiffRendering: boolean;
 }
 
 // State effects for managing the quick chat widget
@@ -595,6 +940,8 @@ const showDiffPreviewEffect = StateEffect.define<{
 	modified: string;
 	from: number;
 	to: number;
+	streaming?: boolean;
+	disableDiffRendering?: boolean;
 }>();
 const acceptDiffEffect = StateEffect.define<void>();
 const rejectDiffEffect = StateEffect.define<void>();
@@ -666,6 +1013,10 @@ export const quickChatState = StateField.define<QuickChatState>({
 		
 		// Add block widget at the selection end (after the selected text)
 		const pos = state.selectionTo;
+		const handler = InlineQuickChatHandler.getInstance();
+		const plugin = InlineQuickChatHandler.getPlugin();
+		if (!handler || !plugin) return builder.finish();
+		
 		builder.add(pos, pos, Decoration.widget({
 			widget: new QuickChatBlockWidget(
 				state.selectedText,
@@ -686,6 +1037,7 @@ export const quickChatState = StateField.define<QuickChatState>({
 				},
 				// Get i18n from handler instance
 				InlineQuickChatHandler.getI18n()!,
+				plugin,
 				() => {
 					// Accept callback
 					const handler = InlineQuickChatHandler.getInstance();
@@ -701,7 +1053,7 @@ export const quickChatState = StateField.define<QuickChatState>({
 					}
 				}
 			),
-			side: 1,  // Place after the position
+			side: 10,  // Place after the position (higher value = lower down)
 			block: true  // Make it a block-level widget (creates a new line)
 		}));
 		
@@ -717,7 +1069,9 @@ export const diffPreviewState = StateField.define<DiffPreviewState>({
 		modifiedText: '',
 		from: 0,
 		to: 0,
-		accepted: false
+		accepted: false,
+		streaming: false,
+		disableDiffRendering: false
 	}),
 	update: (state, tr) => {
 		// Check if document changed - if so, we need to adjust positions or clear
@@ -738,7 +1092,9 @@ export const diffPreviewState = StateField.define<DiffPreviewState>({
 					modifiedText: '',
 					from: 0,
 					to: 0,
-					accepted: false
+					accepted: false,
+					streaming: false,
+					disableDiffRendering: false
 				};
 			}
 		}
@@ -751,7 +1107,9 @@ export const diffPreviewState = StateField.define<DiffPreviewState>({
 					modifiedText: effect.value.modified,
 					from: effect.value.from,
 					to: effect.value.to,
-					accepted: false
+					accepted: false,
+					streaming: effect.value.streaming || false,
+					disableDiffRendering: effect.value.disableDiffRendering || false
 				};
 			}
 			if (effect.is(acceptDiffEffect)) {
@@ -764,7 +1122,9 @@ export const diffPreviewState = StateField.define<DiffPreviewState>({
 					modifiedText: '',
 					from: 0,
 					to: 0,
-					accepted: false
+					accepted: false,
+					streaming: false,
+					disableDiffRendering: false
 				};
 			}
 		}
@@ -775,25 +1135,59 @@ export const diffPreviewState = StateField.define<DiffPreviewState>({
 		
 		const builder = new RangeSetBuilder<Decoration>();
 		
-		// Add strikethrough decoration to original text (to be replaced)
-		builder.add(
-			state.from,
-			state.to,
-			Decoration.mark({
-				class: 'llmsider-inline-diff-original',
-				attributes: { 'data-original': 'true' }
-			})
-		);
-		
-		// Add the new text as a widget at the end position
-		builder.add(
-			state.to,
-			state.to,
-			Decoration.widget({
-				widget: new InlineDiffWidget(state.modifiedText),
-				side: 1
-			})
-		);
+		if (state.streaming) {
+			// Streaming mode: Unified typewriter effect (same for both diff enabled/disabled)
+			// Just show the streaming text below the original text
+			
+			// Add the new text as a widget at the end position (typewriter effect)
+			builder.add(
+				state.to,
+				state.to,
+				Decoration.widget({
+					widget: new InlineDiffWidget(state.modifiedText, 'llmsider-inline-streaming-text'),
+					side: 1,
+					block: true
+				})
+			);
+		} else {
+			// Completed mode: Different rendering based on diff setting
+			
+			if (state.disableDiffRendering) {
+				// No diff: Show preview block with action buttons
+				builder.add(
+					state.to,
+					state.to,
+					Decoration.widget({
+						widget: new PreviewTextWidget(state.modifiedText),
+						side: 1,
+						block: true 
+					})
+				);
+			} else {
+				// With diff: Show fine-grained diff highlighting
+				
+				// Dim original text (keep visible for context)
+				builder.add(
+					state.from,
+					state.to,
+					Decoration.mark({
+						class: 'llmsider-inline-diff-original-streaming',
+						attributes: { 'data-original': 'true' }
+					})
+				);
+				
+				// Add the fine-grained diff widget as a block
+				builder.add(
+					state.to,
+					state.to,
+					Decoration.widget({
+						widget: new FineGrainedDiffWidget(state.originalText, state.modifiedText),
+						side: 1,
+						block: true
+					})
+				);
+			}
+		}
 		
 		return builder.finish();
 	})
@@ -880,6 +1274,13 @@ export class InlineQuickChatHandler {
 	}
 
 	/**
+	 * Get plugin instance (for widget access)
+	 */
+	static getPlugin(): LLMSiderPlugin | null {
+		return InlineQuickChatHandler.currentInstance?.plugin || null;
+	}
+
+	/**
 	 * Get i18n instance (for widget access)
 	 */
 	static getI18n(): I18nManager | null {
@@ -891,6 +1292,11 @@ export class InlineQuickChatHandler {
 	 */
 	public async handlePromptFromWidget(prompt: string, selectedText: string, mode: 'insert' | 'replace') {
 		if (!this.currentView) return;
+		
+		// Save to prompt history
+		this.plugin.configDb.addPromptHistory(prompt).catch(error => {
+			Logger.error('Failed to save prompt history:', error);
+		});
 		
 		// Find the widget instance
 		const widget = this.getWidgetInstance();
@@ -967,11 +1373,25 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 
 			// Call LLM
 			let response = '';
+			// const enableDiff = this.plugin.settings.inlineQuickChat.enableDiffPreview;
+			const originalText = mode === 'insert' ? '' : selectedText;
+
 			await provider.sendStreamingMessage(
 				messages,
 				(chunk) => {
 					if (chunk.delta) {
 						response += chunk.delta;
+						
+						// Update diff preview in real-time
+						// Even if diff preview is disabled, we show the streaming text (without diff colors)
+						if (this.currentView) {
+							// We don't clean response during streaming to avoid jumping content
+							// as quotes might not be closed yet. 
+							// Also we throttle updates slightly to avoid overwhelming the editor
+							// but for now direct update should be fine as CodeMirror is efficient
+							// Pass streaming=true to use coarse diff (block replace) during streaming
+							this.showDiffPreview(this.currentView, originalText, response, true);
+						}
 					}
 				}
 			);
@@ -986,32 +1406,51 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 			widget.hideLoading();
 
 			// Show diff preview for both insert and replace modes
-			const enableDiff = this.plugin.settings.inlineQuickChat.enableDiffPreview;
+			// enableDiff and originalText are already defined above
 			
-			if (enableDiff) {
-				// For insert mode, use empty string as original text
-				const originalText = mode === 'insert' ? '' : selectedText;
-				// Show diff preview
-				this.showDiffPreview(this.currentView, originalText, response);
-				
-				// Show accept/reject buttons in widget
-				widget.showAcceptReject();
-			} else {
-				// Direct insertion/replacement (only when diff preview is disabled)
-				this.applyChange(this.currentView, response, mode);
-				// Add to history after successful application
-				this.conversationHistory.push({
-					prompt: prompt,
-					response: response,
-					selectedText: selectedText,
-					mode: mode
-				});
-			}
+			// Always show preview (diff or no-diff based on setting) and wait for confirmation
+			// Pass streaming=false to use fine-grained diff after completion (if diff enabled)
+			this.showDiffPreview(this.currentView, originalText, response, false);
+			
+			// Show accept/reject buttons in widget
+			widget.showAcceptReject(response);
 
 		} catch (error) {
-			Logger.error('Error:', error);
+			Logger.error('Error in handlePromptFromWidget:', error);
 			widget.hideLoading();
-			this.showError(error instanceof Error ? error.message : 'Unknown error');
+			
+			// Show error message in the widget
+			if (this.currentView) {
+				const widgetEl = this.currentView.dom.querySelector('.llmsider-quick-chat-widget-block');
+				if (widgetEl) {
+					// Remove any existing error message
+					const existingError = widgetEl.querySelector('.llmsider-quick-chat-error-inline');
+					if (existingError) {
+						existingError.remove();
+					}
+					
+					// Create error message element
+					const errorDiv = widgetEl.createDiv({ cls: 'llmsider-quick-chat-error-inline' });
+					
+					// Parse error message for better display
+					let errorMessage = 'Unknown error';
+					if (error instanceof Error) {
+						errorMessage = error.message;
+						
+						// Check for specific error types and provide helpful messages
+						if (errorMessage.includes('Payload Too Large') || errorMessage.includes('Request too large')) {
+							errorMessage = '❌ Request too large - Please try:\n• Using a shorter prompt\n• Selecting less text\n• Starting a new conversation (closes history)';
+						} else if (errorMessage.includes('TPM') || errorMessage.includes('tokens per minute')) {
+							errorMessage = '❌ Token limit exceeded - The conversation history + your request is too large.\n\nSuggestions:\n• Close and reopen this widget to clear history\n• Use a shorter prompt\n• Select less text';
+						}
+					}
+					
+					errorDiv.textContent = errorMessage;
+					
+					// Auto-remove error after 10 seconds
+					setTimeout(() => errorDiv.remove(), 10000);
+				}
+			}
 		}
 	}
 	
@@ -1040,7 +1479,8 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 				showLoading: () => {
 					const input = widgetEl.querySelector('.llmsider-quick-chat-input-compact') as HTMLInputElement;
 					if (input) {
-						input.disabled = true;
+						// Keep input enabled - users should be able to type during loading
+						// input.disabled = true;
 						input.value = '';
 						input.placeholder = i18n.t('quickChatUI.loadingPlaceholder');
 					}
@@ -1055,7 +1495,7 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 						setTimeout(() => input.focus(), 50);
 					}
 				},
-				showAcceptReject: () => {
+				showAcceptReject: (textToCopy?: string) => {
 					const input = widgetEl.querySelector('.llmsider-quick-chat-input-compact') as HTMLInputElement;
 					const quickPrompts = widgetEl.querySelector('.llmsider-quick-prompts-section') as HTMLElement;
 					const actions = widgetEl.querySelector('.llmsider-quick-chat-actions-inline') as HTMLElement;
@@ -1072,7 +1512,127 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 						actions.innerHTML = '';
 						actions.style.display = 'flex';
 						
-						// Create reject button
+						// Create accept button (✓) - Apply
+						const acceptBtn = actions.createEl('button', {
+							cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-accept',
+							attr: { 'aria-label': 'Accept changes', 'title': 'Accept' }
+						});
+						acceptBtn.innerHTML = '✓';
+						acceptBtn.onclick = () => {
+							const handler = InlineQuickChatHandler.getInstance();
+							if (handler && handler.currentView) {
+								// Apply changes first
+								handler.acceptInlineDiff(handler.currentView);
+								
+								// Batch UI updates in next frame for better performance
+								requestAnimationFrame(() => {
+									if (actions) actions.style.display = 'none';
+									if (input) {
+										input.disabled = false;
+										input.value = '';
+										input.placeholder = i18n.t('quickChatUI.inputPlaceholder');
+										input.focus();
+									}
+									if (quickPrompts) quickPrompts.style.display = 'block';
+								});
+							}
+						};
+
+						// Create insert before button (↱) - Insert Before
+						const insertBeforeBtn = actions.createEl('button', {
+							cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-insert-before',
+							attr: { 'aria-label': i18n.t('quickChatUI.insertBefore'), 'title': i18n.t('quickChatUI.insertBefore') }
+						});
+						// Corner up right arrow icon
+						insertBeforeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"></polyline><path d="M4 20v-7a4 4 0 0 1 4-4h12"></path></svg>';
+						
+						insertBeforeBtn.onclick = () => {
+							const handler = InlineQuickChatHandler.getInstance();
+							if (handler && handler.currentView) {
+								// Insert before selection
+								handler.insertBeforeInlineDiff(handler.currentView);
+								
+								// Batch UI updates in next frame for better performance
+								requestAnimationFrame(() => {
+									if (actions) actions.style.display = 'none';
+									if (input) {
+										input.disabled = false;
+										input.value = '';
+										input.placeholder = i18n.t('quickChatUI.inputPlaceholder');
+										input.focus();
+									}
+									if (quickPrompts) quickPrompts.style.display = 'block';
+								});
+							}
+						};
+
+						// Create insert after button (↳) - Insert After
+						const insertAfterBtn = actions.createEl('button', {
+							cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-insert-after',
+							attr: { 'aria-label': i18n.t('quickChatUI.insertAfter'), 'title': i18n.t('quickChatUI.insertAfter') }
+						});
+						// Corner down right arrow icon
+						insertAfterBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 10 20 15 15 20"></polyline><path d="M4 4v7a4 4 0 0 0 4 4h12"></path></svg>';
+						
+						insertAfterBtn.onclick = () => {
+							const handler = InlineQuickChatHandler.getInstance();
+							if (handler && handler.currentView) {
+								// Insert after selection
+								handler.insertAfterInlineDiff(handler.currentView);
+								
+								// Batch UI updates in next frame for better performance
+								requestAnimationFrame(() => {
+									if (actions) actions.style.display = 'none';
+									if (input) {
+										input.disabled = false;
+										input.value = '';
+										input.placeholder = i18n.t('quickChatUI.inputPlaceholder');
+										input.focus();
+									}
+									if (quickPrompts) quickPrompts.style.display = 'block';
+								});
+							}
+						};
+
+						// Create copy button (📋) - Copy
+						if (textToCopy) {
+							const copyBtn = actions.createEl('button', {
+								cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-copy',
+								attr: { 'aria-label': 'Copy to clipboard', 'title': 'Copy' }
+							});
+							copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+							
+							copyBtn.onclick = async (e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								
+								try {
+									await navigator.clipboard.writeText(textToCopy);
+									const originalIcon = copyBtn.innerHTML;
+									copyBtn.innerHTML = '✓';
+									setTimeout(() => {
+										copyBtn.innerHTML = originalIcon;
+									}, 1500);
+								} catch (err) {
+									Logger.error('Failed to copy:', err);
+									// Fallback
+									const textarea = document.createElement('textarea');
+									textarea.value = textToCopy;
+									document.body.appendChild(textarea);
+									textarea.select();
+									document.execCommand('copy');
+									document.body.removeChild(textarea);
+									
+									const originalIcon = copyBtn.innerHTML;
+									copyBtn.innerHTML = '✓';
+									setTimeout(() => {
+										copyBtn.innerHTML = originalIcon;
+									}, 1500);
+								}
+							};
+						}
+						
+						// Create reject button (✕) - Cancel
 						const rejectBtn = actions.createEl('button', {
 							cls: 'llmsider-quick-chat-btn-icon',
 							attr: { 'aria-label': 'Reject changes', 'title': 'Reject' }
@@ -1093,34 +1653,12 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 								if (quickPrompts) quickPrompts.style.display = 'block';
 							}
 						};
-						
-						// Create accept button
-						const acceptBtn = actions.createEl('button', {
-							cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-accept',
-							attr: { 'aria-label': 'Accept changes', 'title': 'Accept' }
-						});
-						acceptBtn.innerHTML = '✓';
-						acceptBtn.onclick = () => {
-							const handler = InlineQuickChatHandler.getInstance();
-							if (handler && handler.currentView) {
-								handler.acceptInlineDiff(handler.currentView);
-								// Restore UI
-								if (actions) actions.style.display = 'none';
-								if (input) {
-									input.disabled = false;
-									input.value = '';
-									input.placeholder = i18n.t('quickChatUI.inputPlaceholder');
-									setTimeout(() => input.focus(), 50);
-								}
-								if (quickPrompts) quickPrompts.style.display = 'block';
-							}
-						};
 					}
 				},
 				hideAcceptReject: () => {
 					// Handled inline in button click handlers
 				}
-			} as any;
+			} as unknown as QuickChatBlockWidget;
 		}
 		
 		return null;
@@ -1197,12 +1735,17 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 	 */
 	hide(view: EditorView) {
 		// Check if there's an active diff preview and reject it
-		const diffState = view.state.field(diffPreviewState);
-		if (diffState.show) {
-			// Reject the diff without applying changes
-			view.dispatch({
-				effects: rejectDiffEffect.of()
-			});
+		try {
+			// Pass false to avoid throwing if field is not present
+			const diffState = view.state.field(diffPreviewState, false);
+			if (diffState && diffState.show) {
+				// Reject the diff without applying changes
+				view.dispatch({
+					effects: rejectDiffEffect.of()
+				});
+			}
+		} catch (e) {
+			// Ignore error if field is not present or state is invalid
 		}
 		
 		if (this.widgetElement) {
@@ -1281,29 +1824,16 @@ Please provide ONLY the generated text as output, without any explanations or ad
 			this.hideLoadingState();
 
 			// Show diff preview for both insert and replace modes
-			const enableDiff = this.plugin.settings.inlineQuickChat.enableDiffPreview;
-			Logger.debug('enableDiffPreview:', enableDiff, 'mode:', mode);
+			// Even if diff preview is disabled, we use showDiffPreview to handle the preview (without diff colors)
+			// and wait for user confirmation (Accept/Reject)
 			
-			if (enableDiff) {
-				Logger.debug('Showing diff preview...');
-				// For insert mode, use empty string as original text
-				const originalText = mode === 'insert' ? '' : selectedText;
-				this.showDiffPreview(view, originalText, response.trim());
-				
-				// Replace buttons with Accept/Reject if actionsContainer is provided
-				if (actionsContainer && inputElement) {
-					this.replaceButtonsWithAcceptReject(view, actionsContainer, inputElement, response.trim(), mode);
-				}
-			} else {
-				Logger.debug('Direct apply, no diff preview');
-				// Direct insertion/replacement (only when diff preview is disabled)
-				this.applyChange(view, response.trim(), mode);
-				
-				// Clear input and reset buttons for next interaction
-				if (inputElement) {
-					inputElement.value = '';
-					inputElement.style.height = 'auto';
-				}
+			// For insert mode, use empty string as original text
+			const originalText = mode === 'insert' ? '' : selectedText;
+			this.showDiffPreview(view, originalText, response.trim());
+			
+			// Replace buttons with Accept/Reject if actionsContainer is provided
+			if (actionsContainer && inputElement) {
+				this.replaceButtonsWithAcceptReject(view, actionsContainer, inputElement, response.trim(), mode);
 			}
 
 		} catch (error) {
@@ -1408,7 +1938,7 @@ Please provide ONLY the generated text as output, without any explanations or ad
 			const submitBtn = this.widgetElement.querySelector('.llmsider-quick-chat-btn-submit') as HTMLButtonElement;
 			if (submitBtn) {
 				submitBtn.disabled = true;
-				submitBtn.textContent = 'Generating...';
+				submitBtn.textContent = this.plugin.i18n.t('ui.inlineChat.generating');
 			}
 		}
 	}
@@ -1421,7 +1951,7 @@ Please provide ONLY the generated text as output, without any explanations or ad
 			const submitBtn = this.widgetElement.querySelector('.llmsider-quick-chat-btn-submit') as HTMLButtonElement;
 			if (submitBtn) {
 				submitBtn.disabled = false;
-				submitBtn.textContent = 'Generate';
+				submitBtn.textContent = this.plugin.i18n.t('ui.inlineChat.generate');
 			}
 		}
 	}
@@ -1475,9 +2005,7 @@ Please provide ONLY the generated text as output, without any explanations or ad
 	/**
 	 * Show inline diff preview using decorations (like GitHub Copilot)
 	 */
-	private showDiffPreview(view: EditorView, original: string, modified: string) {
-		Logger.debug('showDiffPreview called', { original, modified });
-		
+	private showDiffPreview(view: EditorView, original: string, modified: string, streaming: boolean = false) {
 		// Hide the input widget
 		if (this.widgetElement) {
 			this.widgetElement.remove();
@@ -1486,7 +2014,9 @@ Please provide ONLY the generated text as output, without any explanations or ad
 
 		// Get the chat state to find the selection position
 		const chatState = view.state.field(quickChatState);
-		Logger.debug('chatState for diff:', chatState);
+		
+		// Check if diff rendering is disabled
+		const disableDiffRendering = !this.plugin.settings.inlineQuickChat.enableDiffPreview;
 		
 		// Dispatch effect to show inline diff decorations
 		view.dispatch({
@@ -1494,45 +2024,172 @@ Please provide ONLY the generated text as output, without any explanations or ad
 				original: original,
 				modified: modified,
 				from: chatState.selectionFrom,
-				to: chatState.selectionTo
+				to: chatState.selectionTo,
+				streaming: streaming,
+				disableDiffRendering: disableDiffRendering
 			})
 		});
-		
-		Logger.debug('Inline diff decorations applied');
 	}
 
 	/**
 	 * Accept inline diff (called by Tab key)
 	 */
 	public acceptInlineDiff(view: EditorView) {
-		Logger.debug('acceptInlineDiff called');
-		
 		const diffState = view.state.field(diffPreviewState);
 		if (!diffState.show) return;
 		
 		const chatState = view.state.field(quickChatState);
 		
-		// Apply the change AND clear the diff state in the same transaction
+		// Calculate the new selection range after applying the modified text
+		const newFrom = diffState.from;
+		const newTo = diffState.from + diffState.modifiedText.length;
+		
+		// Apply the change, clear the diff state, and select the newly applied text
 		view.dispatch({
 			changes: {
 				from: diffState.from,
 				to: diffState.to,
 				insert: diffState.modifiedText
 			},
-			effects: acceptDiffEffect.of()
+			selection: { anchor: newFrom, head: newTo },
+			effects: [
+				acceptDiffEffect.of(),
+				// Update quick chat state to match new selection
+				showQuickChatEffect.of({
+					pos: chatState.position || { line: 0, ch: 0 },
+					selectedText: diffState.modifiedText,
+					mode: 'replace',
+					from: newFrom,
+					to: newTo
+				})
+			]
 		});
 		
-		// Add to conversation history
-		if (this.currentPrompt && this.currentResponse) {
-			this.conversationHistory.push({
-				prompt: this.currentPrompt,
-				response: this.currentResponse,
-				selectedText: chatState.selectedText,
-				mode: chatState.mode
-			});
-		}
+		// Add to conversation history asynchronously to not block UI
+		requestIdleCallback(() => {
+			if (this.currentPrompt && this.currentResponse) {
+				this.conversationHistory.push({
+					prompt: this.currentPrompt,
+					response: this.currentResponse,
+					selectedText: chatState.selectedText,
+					mode: chatState.mode
+				});
+			}
+			Logger.debug('Inline diff accepted and applied, conversation history updated');
+		});
+	}
+
+	/**
+	 * Insert inline diff before selection
+	 */
+	public insertBeforeInlineDiff(view: EditorView) {
+		const diffState = view.state.field(diffPreviewState);
+		if (!diffState.show) return;
 		
-		Logger.debug('Inline diff accepted and applied, conversation history updated');
+		const chatState = view.state.field(quickChatState);
+		
+		// Determine if we should add a newline
+		const separator = '\n';
+		const textToInsert = diffState.modifiedText + separator;
+		
+		// Calculate the new selection range (selecting BOTH inserted text and original)
+		const newFrom = diffState.from;
+		const newTo = diffState.to + textToInsert.length;
+		
+		// The combined text for the new selection state
+		const combinedText = textToInsert + chatState.selectedText;
+		
+		// Apply the change (insert at start of selection), clear the diff state, and select the newly applied text
+		view.dispatch({
+			changes: {
+				from: diffState.from,
+				to: diffState.from,
+				insert: textToInsert
+			},
+			selection: { anchor: newFrom, head: newTo },
+			effects: [
+				acceptDiffEffect.of(),
+				// Update quick chat state to match new selection
+				showQuickChatEffect.of({
+					pos: chatState.position || { line: 0, ch: 0 },
+					selectedText: combinedText,
+					mode: 'replace',
+					from: newFrom,
+					to: newTo
+				})
+			]
+		});
+		
+		// Add to conversation history asynchronously
+		requestIdleCallback(() => {
+			if (this.currentPrompt && this.currentResponse) {
+				this.conversationHistory.push({
+					prompt: this.currentPrompt,
+					response: this.currentResponse,
+					selectedText: chatState.selectedText,
+					mode: chatState.mode
+				});
+			}
+			Logger.debug('Inline diff inserted before and applied, conversation history updated');
+		});
+	}
+
+	/**
+	 * Insert inline diff after selection
+	 */
+	public insertAfterInlineDiff(view: EditorView) {
+		const diffState = view.state.field(diffPreviewState);
+		if (!diffState.show) return;
+		
+		const chatState = view.state.field(quickChatState);
+		
+		// Determine if we should add a newline
+		// If the original text ends with a newline, or the modified text starts with one, we might not need to add one.
+		// But generally, "Insert After" implies a new block or separation.
+		// Let's add a newline for safety to separate from original text.
+		const separator = '\n';
+		const textToInsert = separator + diffState.modifiedText;
+		
+		// Calculate the new selection range (selecting BOTH original and inserted text)
+		const newFrom = diffState.from;
+		const newTo = diffState.to + textToInsert.length;
+		
+		// The combined text for the new selection state
+		const combinedText = chatState.selectedText + textToInsert;
+		
+		// Apply the change (insert at end of selection), clear the diff state, and select the newly applied text
+		view.dispatch({
+			changes: {
+				from: diffState.to,
+				to: diffState.to,
+				insert: textToInsert
+			},
+			selection: { anchor: newFrom, head: newTo },
+			effects: [
+				acceptDiffEffect.of(),
+				// Update quick chat state to match new selection
+				showQuickChatEffect.of({
+					pos: chatState.position || { line: 0, ch: 0 }, // Position might need update but this keeps widget near
+					selectedText: combinedText,
+					mode: 'replace',
+					from: newFrom,
+					to: newTo
+				})
+			]
+		});
+		
+		// Add to conversation history asynchronously
+		requestIdleCallback(() => {
+			if (this.currentPrompt && this.currentResponse) {
+				this.conversationHistory.push({
+					prompt: this.currentPrompt,
+					response: this.currentResponse,
+					selectedText: chatState.selectedText,
+					mode: chatState.mode
+				});
+			}
+			Logger.debug('Inline diff inserted after and applied, conversation history updated');
+		});
 	}
 
 	/**

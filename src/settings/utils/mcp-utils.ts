@@ -6,7 +6,7 @@
 /**
  * Get icon SVG for MCP server based on configuration
  */
-export function getMCPServerIcon(serverConfig: any): string {
+export function getMCPServerIcon(serverConfig: unknown): string {
 	// Check if it's a URL-based server first
 	if (serverConfig.url) {
 		try {
@@ -88,7 +88,7 @@ export function getMCPServerIcon(serverConfig: any): string {
 /**
  * Get display command string for MCP server
  */
-export function getMCPServerCommand(serverConfig: any): string {
+export function getMCPServerCommand(serverConfig: unknown): string {
 	// Check if it's a URL-based server first
 	if (serverConfig.url) {
 		try {

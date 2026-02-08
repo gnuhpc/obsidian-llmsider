@@ -20,6 +20,12 @@ export const zhUI = {
   clearChat: '清空当前聊天',
   openSettings: '打开设置',
   attachFile: '附加文件或上下文',
+  optimizePrompt: '优化提示词',
+  optimizePromptTooltip: '增强您的提示词以获得更好的结果',
+  optimizingPrompt: '正在优化提示词...',
+  promptOptimized: '提示词已优化',
+  promptOptimizationFailed: '优化提示词失败',
+  noPromptToOptimize: '请先输入提示词',
   agentModeEnabled: '智能代理模式（已启用）',
   agentModeDisabled: '智能代理模式（已禁用）',
   selectProvider: '选择模型',
@@ -30,6 +36,82 @@ export const zhUI = {
   localContextSearchDisabled: '本地上下文搜索已禁用',
   vectorDBNotInitialized: '向量数据库未初始化',
   noVectorDataAvailable: '没有可用的向量数据。请先同步或重建索引。',
+  speedReading: '速读',
+  speedReadingCopyMarkdown: '复制为Markdown',
+  speedReadingCopyMarkdownTooltip: '复制报告为Markdown格式',
+  speedReadingExportNote: '导出到笔记',
+  speedReadingExportNoteTooltip: '将速读报告保存为笔记',
+  speedReadingCopyMindMap: '复制思维导图',
+  speedReadingCopyMindMapTooltip: '导出思维导图为不同格式',
+  speedReadingCopyAs: '复制为 {format}',
+  speedReadingAIGenerated: '本报告由 AI 智能分析生成',
+  speedReadingSmartAnalysis: '智能分析',
+  speedReadingMindMapTitle: '速读报告思维导图',
+  speedReadingKnowledgeStructure: '知识结构',
+  speedReadingFullscreenMindMap: '全屏查看思维导图',
+  speedReadingClickToViewFullscreen: '点击查看全屏思维导图',
+  speedReadingGeneratingMindMap: '⏳ 正在生成思维导图...',
+  speedReadingExecutiveSummary: '执行摘要',
+  speedReadingCorePoints: '核心要点',
+  speedReadingExtendedReading: '延伸阅读',
+  speedReadingGuessYouCareAbout: '猜你关注',
+  speedReadingMindMapRenderFailed: '思维导图渲染失败',
+  speedReadingMindMapNotFound: '未找到思维导图',
+  speedReadingMindMapExported: '思维导图已导出',
+  speedReadingExportFailed: '导出失败，请查看控制台',
+  speedReadingFullscreenTitle: '知识结构图 - 全屏视图',
+  speedReadingZoomOut: '缩小',
+  speedReadingZoomIn: '放大',
+  speedReadingExportMindMap: '导出思维导图',
+  speedReadingSmartReport: '智能速读报告',
+  speedReadingOriginalDoc: '原文档',
+  speedReadingGeneratedTime: '生成时间',
+  speedReadingSVGExportFailed: 'SVG导出失败',
+  speedReadingPNGExportFailed: 'PNG导出失败',
+  speedReadingSendMessageFailed: '发送消息失败',
+  speedReadingRegenerate: '重新生成',
+  speedReadingRegenerateTooltip: '重新生成速读报告',
+  speedReadingNotInitialized: '速读功能未初始化',
+  speedReadingClose: '关闭',
+  speedReadingCloseDrawer: '关闭速读抽屉',
+  speedReadingMouseWheelZoom: '鼠标滚轮缩放 | 拖拽查看',
+  speedReadingExportAsImage: '导出为图片',
+  speedReadingOriginalNoteNotFound: '找不到原始笔记文件',
+  speedReadingCopyFailed: '复制失败',
+  speedReadingCanvasContextFailed: '无法创建画布上下文',
+  speedReadingNoteFileNotFound: '找不到笔记文件',
+  speedReadingPleaseOpenNoteFirst: '请先打开一个笔记文件',
+  speedReadingAnalyzingDocument: '正在分析文档...',
+  speedReadingAnalyzingPlaceholder: '⏳ 正在分析...',
+  speedReadingAnalyzingDocumentContent: '⏳ 正在分析文档内容...',
+  speedReadingProcessFailed: '速读处理失败',
+  speedReadingComplete: '速读完成！',
+  speedReadingNoModelAvailable: '没有可用的模型。请先配置并启用一个模型。',
+  speedReadingEmptyResponse: 'LLM 返回空响应',
+  speedReadingDrawerInitFailed: '速读界面初始化失败',
+  speedReadingSaveFailed: '保存速读结果失败',
+  speedReadingReportExported: '报告已导出: {fileName}',
+  speedReadingCopiedAs: '已复制为 {formatName}',
+  speedReadingSVGOnlyInJsMind: 'SVG导出仅在jsMind渲染时可用',
+  speedReadingPNGConversionFailed: 'PNG转换失败',
+  speedReadingPNGExportSuccess: 'PNG导出成功',
+  speedReadingSVGLoadFailed: 'SVG加载失败',
+  speedReadingReportSuffix: '速读报告',
+  speedReadingMindMapSuffix: '思维导图',
+  memoryInitFailed: '⚠️ LLMSider: 内存不足，无法初始化数据库。请尝试：\n1. 重启Obsidian\n2. 禁用其他插件后重试\n3. 关闭不必要的标签页',
+  fileCreated: 'Created file: {fileName}',
+  fileOverrode: 'Overrode file: {fileName}',
+  noteMoved: '已移动 "{fileName}" 到 "{targetDesc}"',
+  notesMoved: '已移动 {count} 个笔记到 "{targetDesc}"',
+  noteRenamed: '已重命名为 "{newFileName}"',
+  folderDeletedPermanently: '已永久删除文件夹 "{name}"',
+  folderMovedToTrash: '已将文件夹 "{name}" 移至回收站',
+  noteDeletedPermanently: '已永久删除 "{name}"',
+  noteMovedToTrash: '已将 "{name}" 移至回收站',
+  notesMergedWithDelete: '已将 "{sourceName}" 合并到 "{targetName}" 并删除源文件',
+  notesMerged: '已将 "{sourceName}" 合并到 "{targetName}"',
+  noteCopied: '已复制到 "{fileName}"',
+  noteDuplicated: '已创建副本: "{duplicateName}"',
   builtInToolsHeader: '内置工具',
   allBuiltInTools: '所有内置工具',
   noBuiltInToolsAvailable: '没有可用的内置工具',
@@ -37,6 +119,10 @@ export const zhUI = {
   noMatchingTools: '未找到匹配的工具',
   toolEnabled: '已启用',
   toolDisabled: '已禁用',
+  cannotChangeProviderDuringExecution: '执行期间无法切换提供商',
+  cannotModifyToolsDuringExecution: '执行期间无法修改工具',
+  cannotChangeModeDuringExecution: '执行期间无法切换模式',
+  cannotAddContextDuringExecution: '执行期间无法添加上下文',
   mcpServersHeader: 'MCP 服务器',
   allMCPServers: '所有 MCP 服务器',
   noMCPServersConfiguredInDropdown: '未配置 MCP 服务器',
@@ -61,6 +147,11 @@ export const zhUI = {
   webpageContentFetchFailed: '获取网页内容失败',
   webpageUrlAdded: '已添加网页 URL 到上下文',
   noWebpageFound: '未找到打开的网页。请先打开一个网页。',
+  includeEpubPageContent: '当前 Epub 页面',
+  includeEpubPageContentDesc: '获取当前 epub 书籍页面内容',
+  fetchingEpubPageContent: '正在获取 epub 页面内容...',
+  epubPageContentFetched: 'Epub 页面内容已添加到上下文',
+  epubPageContentFetchFailed: '获取 epub 页面内容失败',
   characters: '字符',
   
   // Smart search modal
@@ -70,6 +161,7 @@ export const zhUI = {
   addToContext: '添加到对话',
   cancel: '取消',
   save: '保存',
+  saving: '保存中...',
   pleaseEnterSearchQuery: '请输入搜索关键词',
   searchError: '搜索失败，请重试',
   noSearchResults: '未找到相关笔记',
@@ -86,6 +178,13 @@ export const zhUI = {
   toolExecuted: '工具已执行',
   toolExecutionFailed: '工具执行失败',
   continueWithoutTools: '不使用工具继续',
+  regenerateToolPrompt: '工具 "{toolName}" 执行失败，错误信息：{error}。请分析错误原因，调整参数后重新调用工具。',
+  retryToolSameParamsPrompt: '请使用完全相同的参数重试工具 "{toolName}"：{parameters}',
+  fetchingWebContent: '正在获取网页内容...',
+  usingTools: '我将使用 {tools} 工具来协助你。',
+  toolSkippedPrompt: '工具 "{toolName}" 因错误已跳过：{error}。请采用替代方案继续。',
+  retrying: '重试中...',
+  skipped: '已跳过',
   
   // Tool result and continuation
   toolResultTitle: '工具执行结果',
@@ -102,6 +201,13 @@ export const zhUI = {
   
   // Tool execution
   toolExecutedSuccessfully: '工具执行成功',
+  executingToolProgress: '正在执行工具 {current}/{total}: {name}',
+  completedToolsProgress: '已完成 {total} 个工具',
+  toolExecutionFailedProgress: '工具执行失败 {current}/{total}: {name}',
+  viewDetails: '查看详细记录',
+  hideDetails: '隐藏详细记录',
+  noReturnContent: '无返回内容',
+  parameters: '参数:',
   
   // Context warnings
   contextAddedWithHistory: '提示：如需对此文本单独操作，建议开始新对话以获得更好效果',
@@ -112,12 +218,65 @@ export const zhUI = {
   welcomeSubtitle: '随时提问，智能操作，释放笔记的无限可能。',
   noProvidersWarning: '⚠️ 未配置 AI 提供商。请在设置中配置提供商。',
   
-  // Hugging Face 本地模型
-  huggingFaceLocalModelsTitle: '✨ Hugging Face 本地模型',
-  huggingFaceLocalModelsDesc: '此连接类型使用 Transformers.js 在本地运行 embedding 模型。无需 API 密钥！',
-  huggingFaceLocalModelsBrowserRun: '• 模型完全在浏览器中运行',
-  huggingFaceLocalModelsWebGPU: '• 支持 WebGPU 加速',
-  huggingFaceLocalModelsEmbeddingOnly: '• 仅支持 embedding 模型',
+
+  
+  // Free Qwen
+  freeQwenTitle: 'Free Qwen Provider - 免费通义千问',
+  freeQwenDesc: '此提供商允许你通过浏览器认证票据免费使用通义千问模型。',
+  freeQwenHowToGetToken: '如何获取认证票据：',
+  freeQwenStep1: '1. 访问 https://www.qianwen.com 并登录',
+  freeQwenStep2: '2. 打开浏览器开发者工具（F12）',
+  freeQwenStep3: '3. 切换到 Application（应用）或 Storage（存储）选项卡',
+  freeQwenStep4: '4. 在左侧菜单找到 Cookies > https://www.qianwen.com',
+  freeQwenStep5: '5. 找到 tongyi_sso_ticket 或 login_aliyunid_ticket',
+  freeQwenStep6: '6. 复制该 cookie 的 Value 值',
+  freeQwenNote: '提示：票据会过期，如果遇到认证错误，请重新获取。',
+  freeQwenApiKeyLabel: '认证票据 (tongyi_sso_ticket 或 login_aliyunid_ticket)',
+  freeQwenApiKeyPlaceholder: '粘贴你的 tongyi_sso_ticket 或 login_aliyunid_ticket',
+  
+  // Free Gemini
+  freeGeminiTitle: 'Free Gemini Provider - 免费 Gemini',
+  freeGeminiDesc: '此提供商允许你通过浏览器认证 cookies 免费使用 Google Gemini。',
+  freeGeminiHowToGetCookies: '如何获取认证 cookies：',
+  freeGeminiStep1: '1. 访问 https://gemini.google.com 并使用 Google 账号登录',
+  freeGeminiStep2: '2. 打开浏览器开发者工具（F12）',
+  freeGeminiStep3: '3. 切换到 Application（应用）或 Storage（存储）选项卡',
+  freeGeminiStep4: '4. 在左侧菜单找到 Cookies > https://gemini.google.com',
+  freeGeminiStep5: '5. 找到 __Secure-1PSID 和 __Secure-1PSIDTS',
+  freeGeminiStep6: '6. 复制两个 cookie 的值，用 |（竖线）连接',
+  freeGeminiNote: '提示：Cookies 会过期，如果遇到认证错误，请重新获取。',
+  freeGeminiApiKeyLabel: '认证 Cookies (__Secure-1PSID|__Secure-1PSIDTS)',
+  freeGeminiApiKeyPlaceholder: '粘贴用 | 分隔的 cookies（例如：cookie1|cookie2）',
+  freeGeminiPSIDPlaceholder: '粘贴 __Secure-1PSID cookie 值',
+  freeGeminiPSIDTSPlaceholder: '粘贴 __Secure-1PSIDTS cookie 值',
+  
+  // Free DeepSeek
+  freeDeepSeekTitle: 'Free DeepSeek Provider - 免费深度求索',
+  freeDeepSeekDesc: '此提供商允许你通过浏览器认证令牌免费使用 DeepSeek 模型。',
+  freeDeepSeekHowToGetToken: '如何获取认证令牌：',
+  freeDeepSeekStep1: '1. 访问 https://chat.deepseek.com 并登录',
+  freeDeepSeekStep2: '2. 打开浏览器开发者工具（F12）',
+  freeDeepSeekStep3: '3. 切换到 Console（控制台）选项卡',
+  freeDeepSeekStep4: '4. 输入命令：localStorage.getItem("userToken")',
+  freeDeepSeekStep5: '5. 回车后会显示一串令牌（包含引号）',
+  freeDeepSeekStep6: '6. 复制引号内的令牌内容',
+  freeDeepSeekNote: '提示：令牌会过期，如果遇到认证错误，请重新获取。',
+  freeDeepSeekApiKeyLabel: '认证令牌 (userToken from localStorage)',
+  freeDeepSeekApiKeyPlaceholder: '粘贴你的 DeepSeek userToken',
+  
+  // Hugging Chat
+  huggingChatTitle: 'Hugging Chat - 直接 API 调用',
+  huggingChatDesc: '此提供商直接调用 HuggingChat API（逆向工程）。支持 huggingface.co/chat 的所有模型，带流式响应。',
+  huggingChatHowToGetCookie: '如何获取完整 Cookie 字符串（必需）：',
+  huggingChatStep1: '1. 访问 https://huggingface.co/chat 并登录',
+  huggingChatStep2: '2. 打开浏览器开发者工具（F12）> Network（网络）选项卡',
+  huggingChatStep3: '3. 在聊天中发送一条测试消息',
+  huggingChatStep4: '4. 找到请求 /chat/conversation/{id} 或 /chat/api/v2/',
+  huggingChatStep5: '5. 在请求头（Request Headers）中，找到 Cookie:',
+  huggingChatStep6: '6. 复制整个 Cookie 值（包含多个用分号分隔的 cookie）',
+  huggingChatNote: '重要：必须包含 token、hf-chat 和 aws-waf-token 这三个 cookie。格式："token=...; hf-chat=...; aws-waf-token=..."',
+  huggingChatApiKeyLabel: '完整 Cookie 字符串 (from Network tab)',
+  huggingChatApiKeyPlaceholder: '粘贴完整的 Cookie 字符串',
   
   // 连接模态框
   editConnection: '编辑连接',
@@ -140,6 +299,11 @@ export const zhUI = {
   ollamaServerUrl: 'Ollama 服务器地址：',
   ollamaServerUrlPlaceholder: 'http://localhost:11434/v1',
   ollamaServerUrlNote: '默认：http://localhost:11434/v1',
+  opencodeServerUrl: 'OpenCode 服务器地址：',
+		opencodeServerUrlPlaceholder: 'http://localhost:4097',
+		opencodeServerUrlNote: '默认：http://localhost:4097',
+  opencodeTitle: 'OpenCode 连接',
+  opencodeDesc: 'OpenCode 是一个无界面 HTTP 服务器，提供免费 AI 模型访问。连接前请确保 OpenCode 服务器正在运行。',
   regionOptional: '区域（可选）：',
   regionPlaceholder: 'us-central1',
   regionNote: '例如：us-central1',
@@ -155,6 +319,16 @@ export const zhUI = {
   baseUrlRequired: '{type} 连接需要基础 URL',
   connectionSaved: '连接 "{name}" 保存成功',
   failedToSaveConnection: '保存连接失败',
+  
+  // 代理设置
+  advancedProxySettings: '高级选项：代理设置',
+  enableProxy: '启用代理',
+  proxyType: '代理类型',
+  proxyHost: '代理主机',
+  proxyPort: '代理端口',
+  proxyRequiresAuth: '代理需要认证',
+  proxyUsername: '用户名',
+  proxyPassword: '密码',
   
   // 模型卡片显示
   model: '模型',
@@ -175,6 +349,7 @@ export const zhUI = {
   fileTypeFile: '文件',
   
   // 笔记创建
+  generatingNoteTitle: '正在生成笔记标题...',
   creatingNote: '正在创建笔记...',
   createdNote: '已创建笔记：{title}',
   failedToGenerateNote: '生成新笔记失败：{error}',
@@ -193,10 +368,135 @@ export const zhUI = {
     openNote: '打开笔记',
     openInNewPane: '在新面板中打开',
     copyUrl: '复制 Obsidian 链接',
-    similarity: '相似度'
+    generateBidirectionalLink: '生成双向链接',
+    linkAlreadyExists: '双向链接已存在',
+    linkAdded: '已添加双向链接到 {noteName}',
+    linkAddError: '添加双向链接失败',
+    similarity: '相似度',
+    refresh: '刷新相似笔记'
   },
   
   // 调试设置
   enableDebugLogging: '开启调试日志',
-  enableDebugLoggingDesc: '在控制台启用详细的调试日志输出，用于故障排查。对开发和调试问题很有帮助。'
+  enableDebugLoggingDesc: '在控制台启用详细的调试日志输出，用于故障排查。对开发和调试问题很有帮助。',
+  
+  // 流式生成指示器
+  thinking: '思考中',
+  contextCompacting: '上下文压缩中',
+  generating: '生成中',
+  processing: '处理中',
+  analyzingTools: '正在分析工具需求...',
+  analyzingToolsWithTime: '正在分析工具需求... (已思考 {time}s)',
+  
+  // 工具执行进度
+  preparingTools: '正在准备执行工具...',
+  creatingFile: '正在创建文件...',
+  editingFile: '正在编辑文件...',
+  readingFile: '正在读取文件...',
+  searchingContent: '正在搜索内容...',
+  listingFiles: '正在列出文件...',
+  movingFile: '正在移动文件...',
+  deletingFile: '正在删除文件...',  waitingForAIResponse: '等待AI响应...',  
+  // Plan-Execute 模式
+  planExecuteThinking: '思考',
+  planExecuteQuestion: '问题',
+  planExecutePlan: '计划',
+  planExecuteAction: '行动',
+  planExecuteObservation: '观察',
+  planExecuteFinalAnswer: '最终答案',
+  
+  // MCP 操作
+  toggleAllServers: '所有服务器',
+  
+  // Provider 限制警告
+  freeQwenToolCallWarning: '⚠️ Free Qwen 不支持自动工具调用。在引导模式/智能代理模式下,AI 只能用文本描述工具,无法直接执行。建议使用付费的 Qwen (DashScope) 或切换到普通模式。',
+
+  // 聊天视图相关
+  chatView: {
+    failedToAddFile: '添加文件失败：{message}',
+    failedToAddFileReference: '添加文件引用失败',
+    noActiveSession: '没有活动会话',
+    messageNotFoundOrNotAssistant: '未找到消息或不是助手消息',
+    noUserMessageBefore: '在此助手消息之前未找到用户消息',
+    failedToGetProvider: '获取提供者实例失败',
+    providerError: '错误：{message}',
+    failedToGetResponse: '从提供者获取响应失败',
+    providerAlreadyHasResponse: '此提供者已经有此消息的响应',
+    parameters: '参数'
+  },
+
+  // 会话管理
+  conversationDeleted: '会话已删除',
+  failedToLoadConversation: '加载会话失败',
+  messageNotFound: '未找到消息',
+  canOnlyRegenerateAssistant: '只能重新生成助手消息',
+  noUserMessageBeforeAssistant: '在此助手消息之前未找到用户消息',
+
+  // 输入处理器
+  connectionNotFound: '未找到连接。请检查您的设置。',
+  modelNotFound: '未找到模型。请检查您的设置。',
+  connectionOrModelDisabled: '此连接或模型已禁用。请在设置中启用。',
+  invalidProviderFormat: '无效的提供者格式。请选择有效的提供者。',
+  onlyUserMessagesCanBeEdited: '只能编辑用户消息',
+  canOnlyRegenerateAssistantMessages: '只能重新生成助手消息',
+  noProvidersConfigured: '未配置提供者',
+  selectDirectory: '选择目录',
+  chooseDirectoryPrompt: '选择一个目录以将其所有文件包含在上下文中：',
+  noDirectoriesFound: '在知识库中未找到目录。',
+  cancelButton: '取消',
+
+  // UI 协调器
+  contentCopied: '内容已复制到剪贴板',
+  copyFailed: '复制失败',
+
+  // 选择弹窗
+  detectedYouTubeVideo: '检测到 YouTube 视频，正在获取视频信息和字幕...',
+  readingViewHandlerNotInit: 'Reading View Quick Chat 处理器未初始化',
+
+  // 连接模态框
+  bothCookiesRequired: '__Secure-1PSID 和 __Secure-1PSIDTS 两个 Cookie 都是必需的',
+  connectionTypeRequired: '连接类型是必需的',
+
+  // UI 构建器
+  speedReadingNotInit: '速读功能未初始化',
+
+  // 选择工具栏
+  invalidTitle: '无效的标题',
+
+  // 模型模态框
+  failedToFetchFreeModels: '获取免费模型列表失败',
+
+  // 设置
+  failedToDeleteConnection: '删除连接失败',
+
+  // 差异处理器
+  errorInvalidDiffData: '错误：无效的差异数据',
+
+  // MCP 相关
+  mcpToolResultMultimodal: 'MCP 工具结果（显示不支持多模态内容）',
+  serverLabel: '服务器：',
+
+  // 向量数据库
+  vectorDatabaseStatus: '向量数据库状态',
+  closeButton: '关闭',
+
+  // 内联快速聊天
+  inlineChat: {
+    apply: '应用',
+    copy: '复制',
+    copied: '已复制！',
+    failed: '失败',
+    cancel: '取消',
+    generating: '生成中...',
+    generate: '生成'
+  },
+
+  // 工具执行
+  toolExecution: {
+    requestParams: '请求参数',
+    responseResult: '响应结果',
+    description: '描述',
+    inputParameters: '输入参数',
+    response: '响应'
+  }
 };

@@ -43,5 +43,11 @@ export const enErrors = {
   aiServiceRateLimitExceeded: 'Rate limit exceeded',
   aiServiceRateLimitExceededDetail: 'Too many requests. Please wait a moment and try again.',
   aiServiceTimeout: 'Request timeout',
-  aiServiceTimeoutDetail: 'AI service response time too long. Please retry.'
+  aiServiceTimeoutDetail: 'AI service response time too long. Please retry.',
+  imageAnalysisNotSupported: 'Image analysis not supported',
+  imageAnalysisNotSupportedDetail: 'Current provider does not support image analysis. Please use models that support vision capabilities, such as:\n\n• GPT-4 Vision / GPT-4o / GPT-4 Turbo (OpenAI)\n• Claude 3/4 Opus / Sonnet / Haiku (Anthropic)\n• Gemini Pro Vision / Gemini 1.5/2.0 (Google)\n\nPlease switch to a compatible model in settings or enable "Supports Vision" option for your current model.',
+  aiServiceError: 'AI Service Error',
+  planGenerationFailed: 'Plan Generation Failed',
+  planGenerationFailedDetail: 'Failed to parse execution plan from LLM response. Please try again.',
+  planValidationFailed: 'Plan Validation Failed'
 } as const;

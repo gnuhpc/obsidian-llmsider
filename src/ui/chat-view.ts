@@ -1,25 +1,64 @@
-import { ItemView, WorkspaceLeaf, Notice, TFile, setIcon } from 'obsidian';
-import { Logger } from './../utils/logger';
-import { CHAT_VIEW_TYPE, ChatMessage, ChatMode, ChatSession, LLMConnection, LLMModel } from '../types';
-import { UnifiedTool } from '../tools/unified-tool-manager';
-import { TokenManager } from '../utils/token-manager';
-import LLMSiderPlugin from '../main';
-import { MessageRenderer } from './message-renderer';
-import { DiffProcessor } from '../utils/diff-processor';
-import { ContextManager } from '../core/context-manager';
-import { InputHandler } from './input-handler';
-import { PlanExecuteProcessor } from '../plan-execute/plan-execute-processor';
-import { GuidedModeProcessor } from '../processors/guided-mode-processor';
-import { ToolExecutionManager } from '../tools/tool-execution-manager';
-import { UIBuilder } from './ui-builder';
-import { MessageManager } from './message-manager';
-import { SessionManager } from '../core/session-manager';
-import { StreamManager } from '../core/stream-manager';
-import { I18nManager } from '../i18n/i18n-manager';
-import { ToolResultCard, ToolResultData } from './tool-result-card';
-import { conversationLogger } from '../utils/conversation-logger';
-import { ProviderTabsManager } from './provider-tabs';
-import { SuggestedFilesManager, SuggestedFile } from './suggested-files-manager';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { ItemView, WorkspaceLeaf, Notice, TFile, setIcon } from "obsidian";
+import { Logger } from "./../utils/logger";
+import {
+	CHAT_VIEW_TYPE,
+	ChatMessage,
+	ChatMode,
+	ChatSession,
+	LLMConnection,
+	LLMModel,
+} from "../types";
+import { UnifiedTool } from "../tools/unified-tool-manager";
+import { TokenManager } from "../utils/token-manager";
+import LLMSiderPlugin from "../main";
+import { MessageRenderer } from "./message-renderer";
+import { DiffProcessor } from "../utils/diff-processor";
+import { ContextManager } from "../core/context-manager";
+import { InputHandler } from "./input-handler";
+import { MastraPlanExecuteProcessor } from "../core/agent/mastra-plan-execute-processor";
+import { ToolExecutionManager } from "../tools/tool-execution-manager";
+import { NormalModeAgent } from "../core/agent/normal-mode-agent";
+import { GuidedModeAgent } from "../core/agent/guided-mode-agent";
+import { AgentFactory } from "../core/agent/agent-factory";
+import { MemoryManager } from "../core/agent/memory-manager";
+import { UIBuilder } from "./ui-builder";
+import { MessageManager } from "./message-manager";
+import { SessionManager } from "../core/session-manager";
+import { StreamManager } from "../core/stream-manager";
+import { I18nManager } from "../i18n/i18n-manager";
+import { ToolResultCard, ToolResultData } from "./tool-result-card";
+import { conversationLogger } from "../utils/conversation-logger";
+import { ProviderTabsManager } from "./provider-tabs";
+import {
+	SuggestedFilesManager,
+	SuggestedFile,
+} from "./suggested-files-manager";
+import { SuggestionsCoordinator } from "./suggestions/suggestions-coordinator";
+import { UICoordinator } from "./ui-coordinator";
+import { ChatViewEventManager } from "./events/chat-view-event-manager";
+import { SessionHandler } from "./session/session-handler";
+import { ProviderCoordinator } from "./provider/provider-coordinator";
+import { ErrorRenderer } from "./error-renderer";
+import { ToolPermissionHandler } from "../settings/handlers/tool-permission-handler";
+import { ErrorActionPanel } from "./error-action-panel";
+import { NormalModeHandler } from "./handlers/normal-mode-handler";
+import { AgentModeHandler } from "./handlers/agent-mode-handler";
+import { GuidedModeHandler } from "./handlers/guided-mode-handler";
+import { ConversationOrchestrator } from "./orchestrator/conversation-orchestrator";
+import { MemoryCoordinator } from "./memory/memory-coordinator";
+import { ToolCoordinator } from "./tools/tool-coordinator";
+import { MessagePreparationService } from "./messages/message-preparation-service";
+import { GuidedModeUIRenderer } from "./guided/guided-mode-ui-renderer";
+import { GuidedModeOrchestrator } from "./guided/guided-mode-orchestrator";
+import {
+	GuidedModeStreamCallbacks,
+	IStreamState,
+} from "./guided/guided-mode-stream-callbacks";
+import {
+	GuidedModeToolCallbacks,
+	IToolCallbackState,
+} from "./guided/guided-mode-tool-callbacks";
 
 export class ChatView extends ItemView {
 	plugin: LLMSiderPlugin;
@@ -44,21 +83,46 @@ export class ChatView extends ItemView {
 	private sessionManager!: SessionManager;
 	private streamManager!: StreamManager;
 	private inputHandler!: InputHandler;
-	private planExecuteProcessor!: PlanExecuteProcessor;
-	private guidedModeProcessor!: GuidedModeProcessor;
+	private mastraPlanExecuteProcessor!: MastraPlanExecuteProcessor;
 	private toolExecutionManager!: ToolExecutionManager;
 	private providerTabsManager!: ProviderTabsManager;
 	private suggestedFilesManager!: SuggestedFilesManager;
-	
-	// Suggested files tracking
-	private activeSuggestions: Map<string, { timeout: number; element: HTMLElement }> = new Map();
+	private suggestionsCoordinator!: SuggestionsCoordinator;
+	private uiCoordinator!: UICoordinator;
+	private eventManager!: ChatViewEventManager;
+	private normalModeHandler!: NormalModeHandler;
+	private agentModeHandler!: AgentModeHandler;
+	private guidedModeHandler!: GuidedModeHandler;
+	private conversationOrchestrator!: ConversationOrchestrator;
+	private sessionHandler!: SessionHandler;
+	private providerCoordinator!: ProviderCoordinator;
+	private memoryCoordinator!: MemoryCoordinator;
+	private toolCoordinator!: ToolCoordinator;
+	private messagePreparationService!: MessagePreparationService;
+	private guidedModeUIRenderer!: GuidedModeUIRenderer;
+	private guidedModeOrchestrator!: GuidedModeOrchestrator;
 
-	// Event listener cleanup
-	private uiEventListeners: Map<string, (event: any) => void> = new Map();
-	private languageChangeListener?: (language: string) => void;
-	
+	// Mastra Agent components for normal/guided modes
+	private normalModeAgent: NormalModeAgent | null = null;
+	private guidedModeAgent: GuidedModeAgent | null = null;
+	private sharedMemoryManager: MemoryManager | null = null;
+
+	// Track provider/model used by agents to detect changes
+	private agentProvider: string | null = null;
+	private agentModel: string | null = null;
+
 	// Track stopped message IDs to prevent updates after stop
 	private stoppedMessageIds: Set<string> = new Set();
+
+	// Language change listener
+	private languageChangeListener?: (language: string) => void;
+
+	/**
+	 * Check if any execution is in progress (streaming, plan-execute, or guided mode)
+	 */
+	public isExecuting(): boolean {
+		return this.streamManager?.getIsStreaming() || false;
+	}
 
 	constructor(leaf: WorkspaceLeaf, plugin: LLMSiderPlugin) {
 		super(leaf);
@@ -66,10 +130,23 @@ export class ChatView extends ItemView {
 		this.i18n = plugin.getI18nManager()!;
 
 		// Initialize core components
-		this.uiBuilder = new UIBuilder(plugin, this.containerEl);
+		const toolPermissionHandler = new ToolPermissionHandler(
+			plugin,
+			this.i18n,
+			() => { }
+		);
+		this.uiBuilder = new UIBuilder(
+			plugin,
+			this.containerEl,
+			toolPermissionHandler
+		);
 		this.messageRenderer = new MessageRenderer(this.app, plugin);
 		this.diffProcessor = new DiffProcessor(this.app, plugin);
-		this.contextManager = new ContextManager(this.app, plugin.getMCPManager() || undefined, plugin.getI18nManager() || undefined);
+		this.contextManager = new ContextManager(
+			this.app,
+			plugin.getMCPManager() || undefined,
+			plugin.getI18nManager() || undefined
+		);
 	}
 
 	getViewType(): string {
@@ -77,11 +154,11 @@ export class ChatView extends ItemView {
 	}
 
 	getDisplayText() {
-		return this.i18n.t('pluginName') + ' Chat';
+		return this.i18n.t("pluginName") + " Chat";
 	}
 
 	getIcon(): string {
-		return 'message-circle';
+		return "message-circle";
 	}
 
 	async onOpen() {
@@ -89,8 +166,11 @@ export class ChatView extends ItemView {
 
 		// Clear context manager on view open/reload to prevent stale context
 		// This ensures a clean state after plugin reload or view reopen
-		Logger.debug('Clearing context manager on view open');
+		Logger.debug("Clearing context manager on view open");
 		this.contextManager.clearContext();
+
+		// Set execution check callback for UIBuilder
+		this.uiBuilder.setIsExecutingCallback(() => this.isExecuting());
 
 		// Build UI using UIBuilder
 		const uiComponents = this.uiBuilder.buildChatInterface();
@@ -104,13 +184,37 @@ export class ChatView extends ItemView {
 
 		// Initialize provider tabs manager (will be inserted dynamically)
 		const tabsWrapperEl = this.containerEl.createDiv();
-		this.providerTabsManager = new ProviderTabsManager(this.plugin, tabsWrapperEl);
+		this.providerTabsManager = new ProviderTabsManager(
+			this.plugin,
+			tabsWrapperEl
+		);
 
 		// Initialize suggested files manager
 		this.suggestedFilesManager = new SuggestedFilesManager(
 			this.app,
 			this.plugin
 		);
+
+		// Initialize suggestions coordinator
+		this.suggestionsCoordinator = new SuggestionsCoordinator(
+			this.app,
+			this.plugin,
+			this.contextManager,
+			this.suggestedFilesManager
+		);
+
+		// Initialize UI coordinator
+		this.uiCoordinator = new UICoordinator({
+			plugin: this.plugin,
+			messageContainer: this.messageContainer,
+			contextDisplay: this.contextDisplay,
+			inputElement: this.inputElement,
+			sendButton: this.sendButton,
+			stopButton: this.stopButton,
+			contextManager: this.contextManager,
+			suggestionsCoordinator: this.suggestionsCoordinator,
+			i18n: this.i18n,
+		});
 
 		// Initialize managers with actual UI elements
 		this.messageManager = new MessageManager(
@@ -120,7 +224,10 @@ export class ChatView extends ItemView {
 			this.diffProcessor
 		);
 
-		this.sessionManager = new SessionManager(this.plugin, this.messageContainer);
+		this.sessionManager = new SessionManager(
+			this.plugin,
+			this.messageContainer
+		);
 
 		this.streamManager = new StreamManager(
 			this.sendButton,
@@ -129,20 +236,163 @@ export class ChatView extends ItemView {
 		);
 		this.streamManager.setStopHandler(() => this.handleStopStreaming());
 
-		this.toolExecutionManager = new ToolExecutionManager(this.plugin, this.messageContainer);
-		this.planExecuteProcessor = new PlanExecuteProcessor(this.plugin, this.toolExecutionManager, this.messageContainer);
-		this.guidedModeProcessor = new GuidedModeProcessor(this.plugin, this.messageContainer);
+		// Initialize NormalModeHandler
+		this.normalModeHandler = new NormalModeHandler(
+			this.plugin,
+			this.i18n,
+			this.streamManager,
+			this.messageManager,
+			this.messageRenderer,
+			this.contextManager,
+			this.messageContainer
+		);
 
-		// Set up Final Answer callback for streaming display
-		this.planExecuteProcessor.setFinalAnswerCallback((message: ChatMessage) => {
-			this.handleFinalAnswerMessage(message);
-		});
+		// Initialize tool execution manager
+		this.toolExecutionManager = new ToolExecutionManager(
+			this.plugin,
+			this.messageContainer
+		);
 
-		// Set up Plan Created callback for saving plan data
-		this.planExecuteProcessor.setPlanCreatedCallback((planData: any, tasks: any[]) => {
-			this.handlePlanCreated(planData, tasks);
-		});
+		// Initialize plan-execute processor
+		this.mastraPlanExecuteProcessor = new MastraPlanExecuteProcessor(
+			this.plugin,
+			this.toolExecutionManager,
+			this.messageContainer,
+			this.contextManager
+		);
 
+		// Set up callbacks for plan-execute processor
+		this.mastraPlanExecuteProcessor.setPlanCreatedCallback(
+			(planData: unknown, tasks: unknown[]) => {
+				this.handlePlanCreated(planData, tasks);
+			}
+		);
+
+		// Initialize AgentModeHandler
+		this.agentModeHandler = new AgentModeHandler(
+			this.plugin,
+			this.streamManager,
+			this.mastraPlanExecuteProcessor
+		);
+
+		// Initialize GuidedModeHandler
+		this.guidedModeHandler = new GuidedModeHandler(
+			this.plugin,
+			this.handleGuidedMode.bind(this)
+		);
+
+		// Initialize ConversationOrchestrator
+		this.conversationOrchestrator = new ConversationOrchestrator(
+			this.plugin,
+			this.normalModeHandler,
+			this.agentModeHandler,
+			this.guidedModeHandler
+		);
+
+		// Initialize SessionHandler
+		this.sessionHandler = new SessionHandler(
+			this.plugin,
+			this.sessionManager,
+			this.contextManager,
+			this.messageManager,
+			this.streamManager,
+			this.uiBuilder,
+			this.mastraPlanExecuteProcessor,
+			this.messageContainer,
+			() => this.currentSession,
+			(session) => {
+				this.currentSession = session;
+			},
+			() => this.updateContextDisplay(),
+			() => this.clearAllSuggestions(),
+			() => this.refreshUIState(),
+			(userMessage) => this.getAIResponse(userMessage)
+		);
+
+		// Initialize ProviderCoordinator
+		this.providerCoordinator = new ProviderCoordinator(
+			this.plugin,
+			this.messageRenderer,
+			this.messageManager,
+			this.streamManager,
+			this.providerTabsManager,
+			this.messageContainer,
+			() => this.currentSession,
+			() => this.messagePreparationService.getSystemPrompt()
+		);
+
+		// Initialize MemoryCoordinator
+		this.memoryCoordinator = new MemoryCoordinator(
+			this.plugin,
+			this.contextManager,
+			this.toolExecutionManager,
+			{
+				getCurrentSession: () => this.currentSession,
+				getSharedMemoryManager: () => this.sharedMemoryManager,
+				setSharedMemoryManager: (manager) => {
+					this.sharedMemoryManager = manager;
+				},
+				getProvider: () => this.plugin.getActiveProvider(),
+			}
+		);
+
+		// Initialize ToolCoordinator
+		this.toolCoordinator = new ToolCoordinator(
+			this.plugin,
+			this.toolExecutionManager,
+			this.i18n,
+			{
+				getCurrentSession: () => this.currentSession,
+			}
+		);
+
+		// Initialize MessagePreparationService
+		this.messagePreparationService = new MessagePreparationService(
+			this.plugin,
+			this.contextManager,
+			this.toolCoordinator,
+			this.uiBuilder,
+			{
+				getCurrentSession: () => this.currentSession,
+				updateStepIndicator: this.updateStepIndicator.bind(this),
+				displayVectorSearchResults: this.displayVectorSearchResults.bind(this),
+				updateSession: (sessionId, updates) =>
+					this.plugin.updateChatSession(sessionId, updates),
+				updateSessionNameDisplay: (name) =>
+					this.uiBuilder.updateSessionNameDisplay(name),
+			}
+		);
+
+		// Initialize GuidedModeUIRenderer
+		this.guidedModeUIRenderer = new GuidedModeUIRenderer(
+			this.plugin,
+			this.messageRenderer,
+			this.messageManager,
+			this.memoryCoordinator,
+			{
+				getCurrentSession: () => this.currentSession,
+				updateSession: (updates) =>
+					this.plugin.updateChatSession(this.currentSession!.id, updates),
+				handleSendMessage: this.handleSendMessage.bind(this),
+				handleGuidedResponse: this.handleGuidedResponse.bind(this),
+				getStoppedMessageIds: () => this.stoppedMessageIds,
+			}
+		);
+
+		// Initialize GuidedModeOrchestrator
+		this.guidedModeOrchestrator = new GuidedModeOrchestrator(
+			this.messageRenderer,
+			this.i18n,
+			{
+				getCurrentMessages: () => this.currentSession?.messages || [],
+				addMessageToUI: (message) => this.messageManager.addMessageToUI(message),
+				startGuidedConversationWithMastra:
+					this.startGuidedConversationWithMastra.bind(this),
+				handleGuidedResponseWithMastra:
+					this.handleGuidedResponseWithMastra.bind(this),
+				getAIResponse: this.getAIResponse.bind(this),
+			}
+		);
 		this.inputHandler = new InputHandler(
 			this.app,
 			this.plugin,
@@ -151,32 +401,83 @@ export class ChatView extends ItemView {
 			this.sendButton,
 			this.providerSelect,
 			this.contextDisplay,
-			this.inputContainer
+			this.inputContainer,
+			this.containerEl // Pass the main view container
 		);
 
 		// Initialize and set up callbacks
 		await this.inputHandler.initialize();
-		this.inputHandler.setOnSendMessage((content) => this.handleSendMessage(content));
+		this.inputHandler.setChatView(this); // Set reference to ChatView for isExecuting check
+		this.inputHandler.setOnSendMessage((content) =>
+			this.handleSendMessage(content)
+		);
 		this.inputHandler.updateProviderSelect();
 		this.uiBuilder.updateProviderButtonPublic(); // Update provider button display
 
 		// Set up session loading callback
-		this.sessionManager.setOnSessionLoadedCallback((session) => this.handleSessionLoaded(session));
+		this.sessionManager.setOnSessionLoadedCallback((session) =>
+			this.sessionHandler.handleSessionLoaded(session)
+		);
 
 		// Initialize session and render messages
-		await this.initializeSession();
-		
+		await this.sessionHandler.initializeSession();
+
 		this.updateContextDisplay();
-		this.setupUIEventListeners();
+
+		// Initialize event manager with callbacks
+		this.eventManager = new ChatViewEventManager({
+			onNewChat: async () => await this.sessionHandler.handleNewChat(),
+			onShowHistory: () => this.sessionManager.showChatHistory(),
+			onShowContextOptions: () => this.inputHandler?.showContextOptions(),
+			onClearChat: async () =>
+				await this.sessionHandler.handleClearCurrentChat(),
+			onEditMessage: (messageId: string) =>
+				this.messageManager.handleEditMessage(
+					messageId,
+					undefined,
+					this.currentSession,
+					this.inputElement
+				),
+			onRegenerateResponse: async (messageId: string) =>
+				await this.sessionHandler.handleRegenerateResponse(messageId),
+			onDiffReprocess: (messageId: string) =>
+				this.handleDiffReprocess(messageId),
+			onRenderGuidedCard: (messageId: string) =>
+				this.handleRenderGuidedCard(messageId),
+			onAgentModeChanged: (agentMode: boolean) =>
+				this.handleAgentModeChange(agentMode),
+			onModeChanged: (mode: string) => {
+				/* No special handling needed */
+			},
+			onAddProviderForMessage: (
+				messageId: string,
+				triggerButton?: HTMLElement
+			) =>
+				this.providerCoordinator.handleAddProviderForMessage(
+					messageId,
+					triggerButton
+				),
+			onProviderTabSwitched: async (messageId: string, provider: string) =>
+				await this.providerCoordinator.handleProviderTabSwitched(
+					messageId,
+					provider
+				),
+			onProviderTabRemoved: async (messageId: string, provider: string) =>
+				await this.providerCoordinator.handleProviderTabRemoved(
+					messageId,
+					provider
+				),
+		});
+		this.eventManager.setup();
 
 		// Set up language change listener
-		this.languageChangeListener = (language: string) => {
+		const languageChangeListener = (language: string) => {
 			// Refresh the UI when language changes
 			setTimeout(() => {
 				this.onOpen(); // Rebuild the entire UI
 			}, 100);
 		};
-		this.i18n.onLanguageChange(this.languageChangeListener);
+		this.i18n.onLanguageChange(languageChangeListener);
 
 		// Delayed initialization to ensure DOM is ready
 		setTimeout(() => {
@@ -187,7 +488,22 @@ export class ChatView extends ItemView {
 	}
 
 	async onClose() {
-		this.cleanupEventListeners();
+		// Clean up event manager
+		if (this.eventManager) {
+			this.eventManager.cleanup();
+		}
+
+		// Clean up conversation orchestrator
+		if (this.conversationOrchestrator) {
+			this.conversationOrchestrator.cleanup();
+		}
+		
+		// Clean up mastra plan execute processor
+		if (this.mastraPlanExecuteProcessor) {
+			// Stop any ongoing execution and dispose resources
+			this.mastraPlanExecuteProcessor.stop();
+			this.mastraPlanExecuteProcessor.dispose();
+		}
 
 		// Clean up suggestions
 		this.clearAllSuggestions();
@@ -198,7 +514,17 @@ export class ChatView extends ItemView {
 			this.languageChangeListener = undefined;
 		}
 
-		this.inputHandler?.destroy();
+		// Clean up input handler
+		if (this.inputHandler) {
+			this.inputHandler.destroy();
+		}
+		
+		// Clean up memory manager references
+		this.sharedMemoryManager = null;
+		this.normalModeAgent = null;
+		this.guidedModeAgent = null;
+		
+		// Clear the container
 		this.containerEl.empty();
 	}
 
@@ -206,39 +532,28 @@ export class ChatView extends ItemView {
 	 * Clear all active suggestions
 	 */
 	private clearAllSuggestions(): void {
-		this.activeSuggestions.forEach((suggestion) => {
-			clearTimeout(suggestion.timeout);
-		});
-		this.activeSuggestions.clear();
-	}
-
-	/**
-	 * Initialize session using SessionManager
-	 */
-	private async initializeSession() {
-		this.currentSession = await this.sessionManager.initializeSession();
-		this.messageManager.renderMessages(this.currentSession);
-		
-		// Update session name in header
-		this.uiBuilder.updateSessionNameDisplay(this.currentSession.name);
+		this.suggestionsCoordinator.clearAllSuggestions();
 	}
 
 	/**
 	 * Handle sending a new message
 	 */
-	private async handleSendMessage(content: string, metadata?: Record<string, any>) {
+	private async handleSendMessage(
+		content: string,
+		metadata?: Record<string, unknown>
+	) {
 		if (!this.currentSession) return;
 
 		// Create user message
 		const userMessage: ChatMessage = {
 			id: Date.now().toString(),
-			role: 'user',
+			role: "user",
 			content: content,
 			timestamp: Date.now(),
 			metadata: {
 				provider: this.plugin.settings.activeProvider,
-				...metadata
-			}
+				...metadata,
+			},
 		};
 
 		// Add to UI and session
@@ -247,7 +562,7 @@ export class ChatView extends ItemView {
 
 		this.currentSession.messages.push(userMessage);
 		await this.plugin.updateChatSession(this.currentSession.id, {
-			messages: this.currentSession.messages
+			messages: this.currentSession.messages,
 		});
 
 		// Get AI response
@@ -258,16 +573,25 @@ export class ChatView extends ItemView {
 	 * Get AI response using providers and tools
 	 */
 	private async getAIResponse(userMessage: ChatMessage) {
+		Logger.debug("🎬 [ChatView] ========== getAIResponse CALLED ==========");
+		Logger.debug("🎬 [ChatView] userMessage:", userMessage);
 		const provider = this.plugin.getActiveProvider();
 		if (!provider) {
-			await this.messageManager.addMessage({
-				id: Date.now().toString(),
-				role: 'system',
-				content: this.i18n.t('errors.noProvider'),
-				timestamp: Date.now()
-			}, this.currentSession);
+			await this.messageManager.addMessage(
+				{
+					id: Date.now().toString(),
+					role: "system",
+					content: this.i18n.t("errors.noProvider"),
+					timestamp: Date.now(),
+				},
+				this.currentSession
+			);
 			return;
 		}
+
+		// Initialize memory for all conversation modes using MemoryCoordinator
+		const { memoryContext, memoryMessages, memoryEnabled } =
+			await this.memoryCoordinator.initializeMemoryForConversation(userMessage);
 
 		// Declare variables outside try-catch for error handling access
 		let assistantMessage: ChatMessage | null = null;
@@ -275,183 +599,299 @@ export class ChatView extends ItemView {
 		let stepIndicatorsEl: HTMLElement | null = null;
 
 		try {
-			// Check if auto-search is enabled (not just vector DB loaded)
-			const isVectorSearchEnabled = this.plugin.settings.vectorSettings.autoSearchEnabled;
-			
-			// Create step indicators if vector search is enabled
-			if (isVectorSearchEnabled) {
-				stepIndicatorsEl = this.createStepIndicators();
-			}
-			
-			// Prepare messages for LLM (this includes vector search if enabled)
-			const messages = await this.prepareMessages(userMessage, stepIndicatorsEl);
-			
-			// Check conversation mode and route accordingly
-			const conversationMode = this.plugin.settings.conversationMode || 'normal';
-			
-			// Route to Guided Mode
-			if (conversationMode === 'guided') {
-				await this.handleGuidedMode(userMessage, messages);
-				return;
-			}
-
-			// Get available tools using unified tool manager - only in Agent mode
-			// NOTE: This is called on EVERY message send, ensuring the latest enabled/disabled tool list is used
-			let availableTools: UnifiedTool[] = [];
-			if (this.plugin.settings.agentMode || conversationMode === 'agent') {
-				try {
-					const toolManager = this.plugin.getToolManager();
-					if (toolManager) {
-						availableTools = await toolManager.getAllTools();
-						Logger.debug(`⚡ Real-time tool fetch: ${availableTools.length} enabled tools for this request`);
-						Logger.debug('Retrieved tools for Agent mode:', availableTools.map(t => ({ name: t.name, schemaType: t.inputSchema?.type })));
-					}
-				} catch (error) {
-					Logger.warn('Failed to get tools:', error);
-				}
-			} else {
-				Logger.debug('Non-Agent mode: No tools will be provided to the LLM');
-			}
-
-			// Check if we should use plan-execute framework (only if agent mode is enabled)
-			if (this.plugin.settings.agentMode && this.shouldUsePlanExecuteFramework(userMessage.content as string, availableTools)) {
-				// Start streaming mode with stop button for plan-execute
-				const streamController = this.streamManager.startStreaming();
-
-				// Set up stop handler for plan-execute
-				this.streamManager.setStopHandler(() => {
-					Logger.debug('Plan-Execute stopped by user');
-					this.planExecuteProcessor.stop();
-					this.streamManager.resetButtonStates();
-				});
-
-				try {
-					await this.planExecuteProcessor.startPlanExecuteFlow(userMessage.content as string, messages, streamController);
-				} finally {
-					// Always reset button states when plan-execute completes or fails
-					this.streamManager.resetButtonStates();
-				}
-				return;
-			}
-
-			// Start streaming response
+			// Create assistant message and UI element early, before prepareMessages
+			// This ensures we have a UI element to show errors if prepareMessages fails
 			assistantMessage = {
 				id: Date.now().toString(),
-				role: 'assistant',
-				content: '',
+				role: "assistant",
+				content: "",
 				timestamp: Date.now(),
 				metadata: {
 					provider: this.plugin.settings.activeProvider,
 					model: this.plugin.getActiveModelName(),
-					tokens: 0
-				}
+					tokens: 0,
+				},
 			};
 
-			// Add empty message with three dots loading indicator (same as Guided Mode)
-			this.messageManager.addMessageToUI(assistantMessage, this.currentSession);
-			this.messageManager.scrollToBottom();
+			// Check if auto-search is enabled (not just vector DB loaded)
+			const isVectorSearchEnabled =
+				this.plugin.settings.vectorSettings.autoSearchEnabled;
 
-			workingMessageEl = this.messageRenderer.findMessageElement(assistantMessage.id);
-			
-			// Update step indicator to active for AI response
-			this.updateStepIndicator(stepIndicatorsEl, 'ai-response', 'active');
-			
-			// Add three dots loading indicator to the empty message
-			if (workingMessageEl) {
-				const contentEl = workingMessageEl.querySelector('.llmsider-message-content');
-				if (contentEl) {
-					contentEl.classList.add('llmsider-working-indicator');
-					contentEl.empty();
-					
-					const dotsContainer = contentEl.createEl('div', { cls: 'llmsider-typing-dots' });
-					const middleDot = dotsContainer.createEl('span', { cls: 'llmsider-typing-dot' });
-					middleDot.style.cssText = `
-						display: inline-block;
-						width: 8px;
-						height: 8px;
-						border-radius: 50%;
-						background: var(--text-muted);
-						animation: typing 1.4s infinite both;
-						animation-delay: 0.2s;
-					`;
+			// Always create step indicators for Normal Mode to show "等待大模型回复"
+			// Will show vector search step only if enabled
+			stepIndicatorsEl = this.createStepIndicators();
+
+			// Don't add message to UI yet - wait for first streaming chunk
+			// This prevents showing an empty message box before content arrives
+			workingMessageEl = null;
+
+			// Use ConversationOrchestrator to route the conversation
+			const handled = await this.conversationOrchestrator.routeConversation({
+				userMessage,
+				currentSession: this.currentSession,
+				provider,
+				assistantMessage,
+				workingMessageEl,
+				stepIndicatorsEl,
+				memoryContext,
+				memoryMessages,
+				memoryEnabled,
+				updateStepIndicator: this.updateStepIndicator.bind(this),
+				prepareMessages: this.messagePreparationService.prepareMessages.bind(
+					this.messagePreparationService
+				),
+				autoGenerateSessionTitle:
+					this.messagePreparationService.autoGenerateSessionTitle.bind(
+						this.messagePreparationService
+					),
+				removeStepIndicators: this.removeStepIndicators.bind(this),
+			});
+
+			if (handled) {
+				Logger.debug("[ChatView] Conversation routed and handled successfully");
+				return; // Exit - handler managed everything
+			}
+
+			// Fall through to fallback implementation if not handled
+			Logger.warn(
+				"[ChatView] Conversation not handled by orchestrator, using fallback implementation"
+			);
+
+			// ============================================================
+			// Original Normal/Guided Mode Implementation (Fallback)
+			// ============================================================
+
+			Logger.debug("🎬 [ChatView] Entering Fallback Implementation");
+
+			// Get conversation mode and available tools
+			const conversationMode =
+				this.plugin.settings.conversationMode || "normal";
+
+			// Get available tools (only in Agent conversation mode)
+			let availableTools: any[] = [];
+			if (conversationMode === "agent") {
+				try {
+					availableTools =
+						(await this.plugin.getToolManager()?.getAllTools()) || [];
+					Logger.debug(
+						"Available tools for agent mode:",
+						availableTools.length
+					);
+				} catch (error) {
+					Logger.error("Failed to get available tools:", error);
 				}
 			}
 
+			// Prepare messages for fallback implementation
+			const messages = await this.messagePreparationService.prepareMessages(
+				userMessage,
+				stepIndicatorsEl,
+				memoryContext,
+				memoryMessages,
+				memoryEnabled
+			);
+
 			// Start streaming
 			const streamController = this.streamManager.startStreaming();
-			let accumulatedContent = '';
+			let accumulatedContent = "";
 			let totalTokens = 0;
-			let collectedToolCalls: any[] = [];
+			let collectedToolCalls: unknown[] = [];
 			const streamStartTime = Date.now();
 
 			// Extract system message from messages array for provider
-			const systemMessage = messages.find(m => m.role === 'system');
-			const conversationMessages = messages.filter(m => m.role !== 'system');
-			const systemPrompt = systemMessage?.content as string || '';
+			const systemMessage = messages.find((m) => m.role === "system");
+			const conversationMessages = messages.filter((m) => m.role !== "system");
+			const systemPrompt = (systemMessage?.content as string) || "";
 
-			await provider.sendStreamingMessage(conversationMessages, (chunk) => {
-				if (streamController.signal.aborted) return;
+			// Throttle UI updates during streaming to improve perceived streaming performance
+			let lastUIUpdateTime = 0;
+			const UI_UPDATE_INTERVAL = 100; // Update UI every 100ms max
+			let pendingUpdate = false;
+			let chunkCount = 0;
+			let thinkingContent = "";
+			let answerContent = "";
 
-				// Clear three dots loading indicator on first chunk
-				if (chunk.delta && accumulatedContent === '' && workingMessageEl) {
-					const contentEl = workingMessageEl.querySelector('.llmsider-message-content');
-					if (contentEl) {
-						// Remove working indicator and clear dots
-						contentEl.classList.remove('llmsider-working-indicator');
-						const existingDots = contentEl.querySelector('.llmsider-typing-dots');
-						if (existingDots) {
-							existingDots.remove();
+			// Set thread ID on provider for session management (e.g. Free Qwen)
+			if (this.currentSession?.id && provider.setThreadId) {
+				provider.setThreadId(this.currentSession.id);
+			}
+
+			await provider.sendStreamingMessage(
+				conversationMessages,
+				(chunk) => {
+					if (streamController.signal.aborted) return;
+
+					if (chunk.delta) {
+						chunkCount++;
+
+						// Accumulate content based on type
+						if (chunk.metadata?.type === "thinking") {
+							thinkingContent += chunk.delta;
+						} else {
+							answerContent += chunk.delta;
 						}
-						contentEl.empty();
+
+						// Build complete display content
+						let displayContent = "";
+
+						// Add thinking section with callout (if exists) - expanded by default
+						if (thinkingContent) {
+							displayContent += "> [!tip] 思考过程\n";
+							displayContent +=
+								"> " + thinkingContent.split("\n").join("\n> ") + "\n\n";
+						}
+
+						// Add answer section
+						if (answerContent) {
+							displayContent += answerContent;
+						}
+
+						accumulatedContent = displayContent;
+						if (assistantMessage) {
+							assistantMessage.content = accumulatedContent;
+						}
+
+						// Remove thinking indicator on first chunk
+						if (chunkCount === 1 && workingMessageEl) {
+							const contentEl = workingMessageEl.querySelector(
+								".llmsider-message-content"
+							);
+							if (contentEl) {
+								const thinkingCard = contentEl.querySelector(
+									".llmsider-plan-execute-tool-indicator"
+								);
+								if (thinkingCard) {
+									Logger.debug(
+										"🎬 [ChatView] Removing thinking indicator on first chunk"
+									);
+									thinkingCard.remove();
+								}
+								contentEl.empty();
+								Logger.debug("🎬 [ChatView] First chunk - contentEl cleared");
+							}
+						}
+
+						// Throttle UI updates: only update every 100ms to avoid excessive re-renders
+						const now = Date.now();
+						const contentEl = workingMessageEl?.querySelector(
+							".llmsider-message-content"
+						);
+						if (contentEl) {
+							const shouldUpdate =
+								now - lastUIUpdateTime >= UI_UPDATE_INTERVAL ||
+								chunkCount === 1;
+
+							if (chunkCount <= 5) {
+								Logger.debug(
+									`🎬 [ChatView] Chunk #${chunkCount} | shouldUpdate: ${shouldUpdate} | accumulatedLength: ${accumulatedContent.length} | timeSinceLastUpdate: ${now - lastUIUpdateTime}ms`
+								);
+							}
+
+							if (shouldUpdate) {
+								// Update immediately for first chunk or after throttle interval
+								lastUIUpdateTime = now;
+								pendingUpdate = false;
+								const displayContent =
+									this.memoryCoordinator.stripMemoryMarkers(accumulatedContent);
+
+								if (chunkCount <= 5) {
+									Logger.debug(
+										`🎬 [ChatView] Updating UI with content (${displayContent.length} chars): "${displayContent.substring(0, 30)}..."`
+									);
+								}
+
+								this.messageRenderer.updateStreamingContent(
+									contentEl as HTMLElement,
+									displayContent
+								);
+								requestAnimationFrame(() => {
+									this.messageManager.scrollToBottom();
+								});
+							} else if (!pendingUpdate) {
+								// Schedule a delayed update
+								pendingUpdate = true;
+								setTimeout(
+									() => {
+										if (contentEl && accumulatedContent) {
+											lastUIUpdateTime = Date.now();
+											pendingUpdate = false;
+											const displayContent =
+												this.memoryCoordinator.stripMemoryMarkers(
+													accumulatedContent
+												);
+											this.messageRenderer.updateStreamingContent(
+												contentEl as HTMLElement,
+												displayContent
+											);
+											requestAnimationFrame(() => {
+												this.messageManager.scrollToBottom();
+											});
+										}
+									},
+									UI_UPDATE_INTERVAL - (now - lastUIUpdateTime)
+								);
+							}
+						}
 					}
-				}
 
-				if (chunk.delta) {
-					accumulatedContent += chunk.delta;
-					if (assistantMessage) {
-						assistantMessage.content = accumulatedContent;
+					if (chunk.isComplete && chunk.usage) {
+						totalTokens = chunk.usage.totalTokens;
 					}
 
-					// Update streaming content
-					const contentEl = workingMessageEl?.querySelector('.llmsider-message-content');
-					if (contentEl) {
-						this.messageRenderer.updateStreamingContent(contentEl as HTMLElement, accumulatedContent);
-						// Auto-scroll to bottom during streaming with throttling
-						this.messageManager.scrollToBottom();
+					// Collect tool calls if present
+					if (chunk.toolCalls && chunk.toolCalls.length > 0) {
+						collectedToolCalls = chunk.toolCalls;
 					}
-				}
-
-				if (chunk.isComplete && chunk.usage) {
-					totalTokens = chunk.usage.totalTokens;
-				}
-
-				// Collect tool calls if present
-				if (chunk.toolCalls && chunk.toolCalls.length > 0) {
-					collectedToolCalls = chunk.toolCalls;
-				}
-			}, streamController.signal, this.plugin.settings.agentMode && availableTools.length > 0 ? availableTools : undefined, systemPrompt);
+				},
+				streamController.signal,
+				conversationMode === "agent" && availableTools.length > 0
+					? availableTools
+					: undefined,
+				systemPrompt
+			);
 
 			const streamDuration = Date.now() - streamStartTime;
 
 			// Check if stream failed (empty response indicates network error)
-			if (accumulatedContent.trim() === '' && collectedToolCalls.length === 0) {
-				Logger.debug('Empty response detected - treating as network error');
-				throw new Error('Failed to fetch: Empty response from server');
+			if (accumulatedContent.trim() === "" && collectedToolCalls.length === 0) {
+				Logger.debug("Empty response detected - treating as network error");
+				throw new Error("Failed to fetch: Empty response from server");
 			}
 
-			// Process Action mode responses for diff rendering (only when agent mode is disabled)
-			if (!this.plugin.settings.agentMode) {
+			// Build final display content with thinking section - expanded by default
+			let finalContent = "";
+			if (thinkingContent) {
+				finalContent += "> [!tip] 思考过程\n";
+				finalContent +=
+					"> " + thinkingContent.split("\n").join("\n> ") + "\n\n";
+			}
+			if (answerContent) {
+				finalContent += answerContent;
+			}
+
+			// Strip memory markers from final displayed content
+			const displayContent = this.memoryCoordinator.stripMemoryMarkers(
+				finalContent || accumulatedContent
+			);
+			if (assistantMessage) {
+				assistantMessage.content = displayContent;
+			} // Process Action mode responses for diff rendering (only in normal/guided mode, not agent mode)
+			if (conversationMode !== "agent") {
 				await this.messageManager.processActionModeResponse(
 					assistantMessage,
-					accumulatedContent,
-					'action', // Always treat as action mode when agent mode is disabled
+					displayContent,
+					"action", // Always treat as action mode when not in agent conversation mode
 					this.contextManager
 				);
 			}
 
-			// Process tool calls (only in Agent mode)
-			if (this.plugin.settings.agentMode) {
-				await this.processToolCalls({ toolCalls: collectedToolCalls }, accumulatedContent, availableTools);
+			// Process tool calls (only in Agent conversation mode)
+			if (conversationMode === "agent") {
+				await this.toolCoordinator.processToolCalls(
+					{ toolCalls: collectedToolCalls },
+					accumulatedContent,
+					availableTools
+				);
 			}
 
 			// Update final message metadata
@@ -463,9 +903,12 @@ export class ChatView extends ItemView {
 			// Update working message element to final state
 			if (workingMessageEl) {
 				workingMessageEl.dataset.messageId = assistantMessage.id;
-				// Only add message actions when agent mode is disabled
-				if (!this.plugin.settings.agentMode) {
-					this.messageRenderer.addMessageActions(workingMessageEl, assistantMessage);
+				// Only add message actions when not in agent conversation mode
+				if (conversationMode !== "agent") {
+					this.messageRenderer.addMessageActions(
+						workingMessageEl,
+						assistantMessage
+					);
 				}
 			}
 
@@ -473,44 +916,174 @@ export class ChatView extends ItemView {
 			if (this.currentSession) {
 				this.currentSession.messages.push(assistantMessage);
 				await this.plugin.updateChatSession(this.currentSession.id, {
-					messages: this.currentSession.messages
+					messages: this.currentSession.messages,
 				});
 
-				// Auto-generate session name after first round of conversation (first AI response)
-				// Count only user and assistant messages, excluding system messages
-				const conversationMessages = this.currentSession.messages.filter(
-					m => m.role === 'user' || m.role === 'assistant'
+				// Auto-generate session title after first round (unified for all modes)
+				await this.messagePreparationService.autoGenerateSessionTitle(
+					userMessage,
+					assistantMessage
 				);
-				if (conversationMessages.length === 2 && this.currentSession.name === 'Untitled') {
-					const firstUserMessage = conversationMessages.find(m => m.role === 'user');
-					const firstAssistantMessage = conversationMessages.find(m => m.role === 'assistant');
-					
-					if (firstUserMessage && firstAssistantMessage) {
-						const sessionName = await this.uiBuilder.generateSessionNameFromMessage(
-							firstUserMessage.content as string,
-							firstAssistantMessage.content as string
+
+				// Save conversation to memory (for all modes except agent, which handles memory internally)
+				if (conversationMode !== "agent") {
+					// Check if ANY memory feature is enabled
+					const isAnyMemoryEnabled =
+						this.plugin.settings.memorySettings.enableWorkingMemory ||
+						this.plugin.settings.memorySettings.enableConversationHistory ||
+						this.plugin.settings.memorySettings.enableSemanticRecall;
+
+					if (!isAnyMemoryEnabled) {
+						Logger.debug(
+							`[Memory] All Memory features disabled, skipping save (mode: ${conversationMode})`
 						);
-						await this.plugin.updateChatSession(this.currentSession.id, { name: sessionName });
-						this.currentSession.name = sessionName;
-						this.uiBuilder.updateSessionNameDisplay(sessionName);
-						Logger.debug('Auto-generated session name after first round:', sessionName);
+					} else {
+						Logger.debug(
+							`[Memory] Saving conversation to memory (mode: ${conversationMode})...`
+						);
+						try {
+							const memoryManager = await this.plugin.getMemoryManager();
+							if (!memoryManager) {
+								Logger.warn(
+									"[Memory] Memory manager not available, skipping save"
+								);
+							} else {
+								const resourceId = this.plugin.getResourceId();
+								const threadId = this.currentSession.id;
+
+								Logger.debug(
+									`[Memory] Creating memory instance for thread: ${threadId}`
+								);
+
+								// Save user message and assistant response to memory
+								const memory = await memoryManager.createMemorySimple({
+									resourceId,
+									threadId,
+									enableWorkingMemory:
+										this.plugin.settings.memorySettings.enableWorkingMemory,
+									conversationHistoryCount:
+										this.plugin.settings.memorySettings
+											.conversationHistoryLimit || 10,
+									semanticRecallCount:
+										this.plugin.settings.memorySettings.semanticRecallLimit ||
+										5,
+								});
+
+								Logger.debug("[Memory] Memory instance created");
+
+								// Add messages to memory thread (only if conversation history is enabled)
+								if (
+									this.plugin.settings.memorySettings.enableConversationHistory
+								) {
+									Logger.debug(
+										"[Memory] Adding messages to conversation history..."
+									);
+									const userContent =
+										typeof userMessage.content === "string"
+											? userMessage.content
+											: JSON.stringify(userMessage.content);
+
+									// CRITICAL: Use undefined for 'type' to let Mastra detect v1 format correctly
+									// If we pass 'text', it will be treated as v2 which causes format errors
+									await memory.addMessage({
+										threadId,
+										resourceId,
+										role: "user",
+										type: undefined as any, // Force v1 format detection
+										content: userContent,
+									});
+
+									Logger.debug(
+										"[Memory] User message saved, adding assistant message..."
+									);
+
+									await memory.addMessage({
+										threadId,
+										resourceId,
+										role: "assistant",
+										type: undefined as any, // Force v1 format detection
+										content: accumulatedContent,
+									});
+
+									Logger.debug(
+										`[Memory] ✅ Conversation saved successfully: thread=${threadId}, user_length=${userContent.length}, assistant_length=${accumulatedContent.length}`
+									);
+								} else {
+									Logger.debug(
+										"[Memory] ℹ️  Conversation history disabled, skipping addMessage"
+									);
+								}
+
+								// Check if AI included memory updates in response (new format) - only if working memory is enabled
+								if (this.plugin.settings.memorySettings.enableWorkingMemory) {
+									const memoryUpdateMatch = accumulatedContent.match(
+										/\[MEMORY_UPDATE\]([\s\S]*?)\[\/MEMORY_UPDATE\]/
+									);
+									if (memoryUpdateMatch) {
+										const memoryUpdate = memoryUpdateMatch[1].trim();
+										Logger.debug(
+											"[Memory] 🧠 Found memory update in AI response:",
+											memoryUpdate
+										);
+
+										try {
+											// Update working memory with the new information
+											await memory.updateWorkingMemory({
+												threadId,
+												resourceId,
+												workingMemory: memoryUpdate,
+											});
+											Logger.debug(
+												"[Memory] ✅ Working memory updated successfully"
+											);
+										} catch (updateError) {
+											Logger.error(
+												"[Memory] ❌ Failed to update working memory:",
+												updateError
+											);
+										}
+									}
+								} else {
+									Logger.debug(
+										"[Memory] ℹ️  Working memory disabled, skipping memory update check"
+									);
+								}
+							}
+						} catch (error) {
+							Logger.error(
+								"[Memory] ❌ Failed to save conversation to memory:",
+								error
+							);
+							if (error instanceof Error) {
+								Logger.error("[Memory] Save error details:", {
+									name: error.name,
+									message: error.message,
+									stack: error.stack?.split("\n").slice(0, 3).join("\n"),
+								});
+							}
+							// Non-critical - continue execution
+						}
 					}
+				} else {
+					Logger.debug("[Memory] Agent mode - memory handled by MastraAgent");
 				}
 			}
 
 			// Log conversation in Normal Mode (not in Agent or Guided mode)
-			if (conversationMode === 'normal' && this.currentSession) {
+			if (conversationMode === "normal" && this.currentSession) {
 				await conversationLogger.logConversation(
 					this.currentSession.id,
 					this.plugin.settings.activeProvider,
 					this.plugin.getActiveModelName(),
 					userMessage,
 					accumulatedContent,
-					totalTokens > 0 ? {
-						promptTokens: 0, // Not available from streaming
-						completionTokens: 0,
-						totalTokens: totalTokens
-					} : undefined,
+					totalTokens > 0
+						? {
+							promptTokens: 0, // Not available from streaming
+							completionTokens: 0,
+							totalTokens: totalTokens,
+						}
+						: undefined,
 					streamDuration,
 					collectedToolCalls.length > 0 ? collectedToolCalls : undefined
 				);
@@ -519,2127 +1092,260 @@ export class ChatView extends ItemView {
 			// Reset streaming state
 			this.streamManager.resetButtonStates();
 			this.messageRenderer.resetXmlBuffer();
-			
+
 			// Remove step indicators after completion
 			this.removeStepIndicators(stepIndicatorsEl);
-
 		} catch (error) {
-			Logger.debug('========== ERROR CAUGHT ==========');
-			Logger.debug('Error type:', error instanceof Error ? 'Error' : typeof error);
-			Logger.debug('Error name:', error instanceof Error ? error.name : 'N/A');
-			Logger.debug('Error message:', error instanceof Error ? error.message : String(error));
-			Logger.debug('workingMessageEl exists?', !!workingMessageEl);
-			Logger.debug('assistantMessage exists?', !!assistantMessage);
-			
+			Logger.debug("========== ERROR CAUGHT ==========");
+			Logger.debug(
+				"Error type:",
+				error instanceof Error ? "Error" : typeof error
+			);
+			Logger.debug("Error name:", error instanceof Error ? error.name : "N/A");
+			Logger.debug(
+				"Error message:",
+				error instanceof Error ? error.message : String(error)
+			);
+			Logger.debug("workingMessageEl exists?", !!workingMessageEl);
+			Logger.debug("assistantMessage exists?", !!assistantMessage);
+
 			this.streamManager.resetButtonStates();
 			this.messageRenderer.resetXmlBuffer();
 
-			if (error instanceof Error && error.name === 'AbortError') {
-				Logger.debug('Stream was aborted by user');
+			if (error instanceof Error && error.name === "AbortError") {
+				Logger.debug("Stream was aborted by user");
 				// Remove step indicators on abort
 				this.removeStepIndicators(stepIndicatorsEl);
 				return;
 			}
 
-			Logger.error('Error in AI response:', error);
-			
-			// Remove loading indicator from the working message
-			Logger.debug('Attempting to remove loading indicator...');
-			if (workingMessageEl) {
-				Logger.debug('workingMessageEl found, proceeding with error UI');
-				const contentEl = workingMessageEl.querySelector('.llmsider-message-content');
-				Logger.debug('contentEl found?', !!contentEl);
-				if (contentEl) {
-					Logger.debug('Removing working indicator class...');
-					contentEl.classList.remove('llmsider-working-indicator');
-					const dotsEl = contentEl.querySelector('.llmsider-typing-dots');
-					Logger.debug('dotsEl found?', !!dotsEl);
-					if (dotsEl) {
-						Logger.debug('Removing dots element...');
-						dotsEl.remove();
-					}
-					
-					// Show error UI in the message
-					Logger.debug('Emptying contentEl and creating error UI...');
-					contentEl.empty();
-					const errorContainer = contentEl.createDiv({ cls: 'llmsider-error-message' });
-					
-					const iconContainer = errorContainer.createDiv({ cls: 'llmsider-error-icon' });
-					setIcon(iconContainer, 'alert-circle');
-					
-					const errorContent = errorContainer.createDiv({ cls: 'llmsider-error-content' });
-					
-					// Determine error type and message
-					Logger.debug('Determining error type...');
-					let errorTitle = '';
-					let errorMessage = '';
-					let showRetry = true;
-					
-					if (error instanceof Error) {
-						Logger.debug('Error is Error instance, checking message:', error.message);
-						// Network errors
-						if (error.message.includes('Failed to fetch') || 
-						    error.message.includes('fetch failed') ||
-						    error.message.includes('NetworkError') ||
-						    error.message.includes('net::ERR_FAILED')) {
-							errorTitle = this.i18n.t('errors.aiServiceConnectionFailed');
-							errorMessage = this.i18n.t('errors.aiServiceConnectionFailedDetail');
-						}
-						// Timeout errors
-						else if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
-							errorTitle = this.i18n.t('errors.aiServiceTimeout');
-							errorMessage = this.i18n.t('errors.aiServiceTimeoutDetail');
-						}
-						// Rate limit errors
-						else if (error.message.includes('rate limit') || error.message.includes('429')) {
-							errorTitle = this.i18n.t('errors.aiServiceRateLimitExceeded');
-							errorMessage = this.i18n.t('errors.aiServiceRateLimitExceededDetail');
-						}
-						// Authentication errors
-						else if (error.message.includes('401') || error.message.includes('403') || 
-						         error.message.includes('unauthorized') || error.message.includes('Unauthorized')) {
-							errorTitle = this.i18n.t('errors.aiServiceAuthFailed');
-							errorMessage = this.i18n.t('errors.aiServiceAuthFailedDetail');
-							showRetry = false;
-						}
-						// Other errors
-						else {
-							errorTitle = this.i18n.t('errors.unknownError');
-							errorMessage = error.message;
-						}
-					} else {
-						errorTitle = this.i18n.t('errors.unknownError');
-						errorMessage = this.i18n.t('errors.unknownError');
-					}
-					
-					Logger.debug('Final error UI - Title:', errorTitle, 'Message:', errorMessage, 'ShowRetry:', showRetry);
-					
-					errorContent.createEl('div', { 
-						cls: 'llmsider-error-title',
-						text: errorTitle
-					});
-					
-					errorContent.createEl('div', { 
-						cls: 'llmsider-error-description',
-						text: errorMessage
-					});
-					
-					// Add retry button
-					Logger.debug('Creating error UI elements...');
-					if (showRetry) {
-						Logger.debug('Adding retry button...');
-						const actionsContainer = errorContainer.createDiv({ cls: 'llmsider-error-actions' });
-						
-						const retryBtn = actionsContainer.createEl('button', {
-							cls: 'llmsider-error-retry-btn',
-							text: this.i18n.t('common.retry') || 'Retry'
-						});
-						
-						retryBtn.onclick = async () => {
-							// Remove the error message element
-							if (workingMessageEl) {
-								workingMessageEl.remove();
-							}
-							
-							// Remove the failed message from session
-							if (this.currentSession && assistantMessage) {
-								const messageIndex = this.currentSession.messages.findIndex(m => m.id === assistantMessage!.id);
-								if (messageIndex > -1) {
-									this.currentSession.messages.splice(messageIndex, 1);
-								}
-							}
-							
-							// Retry the request
-							Logger.debug('Retrying request...');
-							await this.getAIResponse(userMessage);
-						};
-					}
-					Logger.debug('Error UI creation complete');
-				} else {
-					Logger.error('contentEl not found in workingMessageEl!');
-				}
-			} else {
-				Logger.error('workingMessageEl is null! Cannot show error UI.');
+			Logger.error("Error in AI response:", error);
+
+			// Ensure message is added to UI if not already (for error display)
+			if (!workingMessageEl && assistantMessage) {
+				this.messageManager.addMessageToUI(
+					assistantMessage,
+					this.currentSession
+				);
+				this.messageManager.scrollToBottom();
+				workingMessageEl = this.messageRenderer.findMessageElement(
+					assistantMessage.id
+				);
 			}
 
-			this.plugin.logError(error, 'Chat message failed');
-			Logger.debug('========== ERROR HANDLING COMPLETE ==========');
-			
+			// Check if it's a validation error that is handled by StreamingIndicatorManager
+			const isValidationError = error instanceof Error && 
+				(error.message.includes('Plan validation failed') || 
+				 (error as any).validationResult);
+
+			if (isValidationError) {
+				Logger.debug('[ChatView] Plan validation failed - removing working message as UI is handled by StreamingIndicatorManager');
+				if (workingMessageEl) {
+					workingMessageEl.remove();
+				}
+				// Also remove from session messages to keep history clean
+				if (this.currentSession && assistantMessage) {
+					const messageIndex = this.currentSession.messages.findIndex(
+						(m) => m.id === assistantMessage!.id
+					);
+					if (messageIndex !== -1) {
+						this.currentSession.messages.splice(messageIndex, 1);
+					}
+				}
+				return; 
+			}
+
+			// Use unified error renderer
+			if (workingMessageEl) {
+				ErrorRenderer.renderErrorInMessage(
+					workingMessageEl,
+					error,
+					this.i18n,
+					async () => {
+						// Remove the error message element
+						if (workingMessageEl) {
+							workingMessageEl.remove();
+						}
+
+						// Remove the failed message from session
+						if (this.currentSession && assistantMessage) {
+							const messageIndex = this.currentSession.messages.findIndex(
+								(m) => m.id === assistantMessage!.id
+							);
+							if (messageIndex > -1) {
+								this.currentSession.messages.splice(messageIndex, 1);
+							}
+						}
+
+						// Retry the request
+						Logger.debug("[ChatView] Retrying request...");
+						await this.getAIResponse(userMessage);
+					}
+				);
+			} else {
+				Logger.error(
+					"[ChatView] workingMessageEl is null! Cannot show error UI."
+				);
+			}
+
+			this.plugin.logError(error, "Chat message failed");
+			Logger.debug("========== ERROR HANDLING COMPLETE ==========");
+
 			// Remove step indicators on error
 			this.removeStepIndicators(stepIndicatorsEl);
 		}
 	}
 
 	/**
-	 * Process tool calls from AI response
+	 * Auto-generate session title after first conversation round (if title is still 'Untitled')
+	 * This is called from all conversation modes (normal, agent, guided)
 	 */
-	private async processToolCalls(streamingResult: any, accumulatedContent: string, availableTools: UnifiedTool[]) {
-		// Process native tool calls first
-		if (streamingResult?.toolCalls && Array.isArray(streamingResult.toolCalls)) {
-			// Handle native tool calls through the tool execution manager
-			Logger.debug('Processing native tool calls:', streamingResult.toolCalls.length);
+	private async autoGenerateSessionTitle(
+		userMessage: ChatMessage,
+		assistantMessage: ChatMessage
+	): Promise<void> {
+		if (!this.currentSession) {
+			Logger.debug("[TitleGen] No current session, skipping");
+			return;
 		}
 
-		// Always check for MCP tool calls in AI response content
-		if (availableTools.length > 0) {
-			const toolCalls = this.parseXMLToolCalls(accumulatedContent);
-			if (toolCalls.length > 0) {
-				Logger.debug('Processing MCP tool calls:', toolCalls.length);
-				// Tool execution would be handled by the tool execution manager
-			}
-		}
-	}
+		// Count only user and assistant messages, excluding system messages, tool messages, etc.
+		const conversationMessages = this.currentSession.messages.filter(
+			(m) => m.role === "user" || m.role === "assistant"
+		);
 
-	/**
-	 * Parse XML tool calls from content
-	 */
-	private parseXMLToolCalls(content: string): Array<{tool: string, parameters: any}> {
-		const toolCalls: Array<{tool: string, parameters: any}> = [];
+		Logger.debug("[TitleGen] Session name:", this.currentSession.name);
+		Logger.debug(
+			"[TitleGen] Conversation messages count:",
+			conversationMessages.length
+		);
+		Logger.debug(
+			"[TitleGen] Total messages count:",
+			this.currentSession.messages.length
+		);
+		Logger.debug(
+			"[TitleGen] Message roles:",
+			this.currentSession.messages.map((m) => m.role).join(", ")
+		);
 
-		// Parse MCP wrapper format
-		const xmlToolRegex = /<use_mcp_tool>([\s\S]*?)<\/use_mcp_tool>/g;
-		let xmlMatch;
+		// Only generate title after first round (2 messages: 1 user + 1 assistant)
+		if (
+			conversationMessages.length === 2 &&
+			this.currentSession.name === "Untitled"
+		) {
+			// Run title generation in background without blocking
+			const sessionId = this.currentSession.id;
+			const currentSession = this.currentSession;
 
-		while ((xmlMatch = xmlToolRegex.exec(content)) !== null) {
-			const toolContent = xmlMatch[1];
-			const toolNameMatch = toolContent.match(/<tool_name>(.*?)<\/tool_name>/);
-
-			if (toolNameMatch) {
-				const toolName = toolNameMatch[1].trim();
-				let parameters: any = {};
-
-				const argumentsMatch = toolContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
-				if (argumentsMatch) {
-					try {
-						parameters = JSON.parse(argumentsMatch[1].trim());
-					} catch {
-						parameters = { input: argumentsMatch[1].trim() };
-					}
-				}
-
-				toolCalls.push({ tool: toolName, parameters });
-			}
-		}
-
-		return toolCalls;
-	}
-
-	/**
-	 * Prepare messages for LLM
-	 */
-	private async prepareMessages(userMessage: ChatMessage, stepIndicatorsEl: HTMLElement | null = null): Promise<ChatMessage[]> {
-		const messages: ChatMessage[] = [];
-
-		// Add system message
-		const systemPrompt = await this.getSystemPrompt();
-		
-		// Add local vector search context if auto-search is enabled
-		let vectorSearchContext = '';
-		if (this.plugin.settings.vectorSettings.autoSearchEnabled) {
-			// Update step indicator to active
-			this.updateStepIndicator(stepIndicatorsEl, 'vector-search', 'active');
-			
-			const vectorDBManager = this.plugin.getVectorDBManager();
-			if (vectorDBManager && vectorDBManager.isSystemInitialized()) {
+			// Don't await - let it run in background
+			(async () => {
 				try {
-					const status = vectorDBManager.getStatus();
-					if (status.totalChunks > 0) {
-						// Extract query from user message
-						const query = typeof userMessage.content === 'string' 
-							? userMessage.content 
-							: '';
-						
-						if (query) {
-							Logger.debug('Performing local vector search for:', query);
-							const results = await vectorDBManager.search(query);
-							
-							if (results.length > 0) {
-								vectorSearchContext = `\n\n## Related Content from Your Vault\n\n${vectorDBManager.formatSearchResults(results)}`;
-								Logger.debug(`Added ${results.length} vector search results to context`);
-							}
-						}
+					const userContent =
+						typeof userMessage.content === "string"
+							? userMessage.content
+							: JSON.stringify(userMessage.content);
+					let assistantContent =
+						typeof assistantMessage.content === "string"
+							? assistantMessage.content
+							: JSON.stringify(assistantMessage.content);
+
+					// Extract final answer by removing thinking sections
+					assistantContent =
+						this.messagePreparationService.extractFinalAnswer(assistantContent);
+					Logger.debug(
+						"[TitleGen] Assistant content length (after removing thinking):",
+						assistantContent.length
+					);
+
+					const sessionName =
+						await this.uiBuilder.generateSessionNameFromMessage(
+							userContent,
+							assistantContent
+						);
+
+					Logger.debug("[TitleGen] ✓ Generated title:", sessionName);
+
+					// Update session title
+					await this.plugin.updateChatSession(sessionId, { name: sessionName });
+					if (currentSession === this.currentSession) {
+						currentSession.name = sessionName;
+						this.uiBuilder.updateSessionNameDisplay(sessionName);
+						Logger.debug("[TitleGen] ✓ Session title updated in UI");
+					} else {
+						Logger.debug("[TitleGen] ⚠️ Session changed, not updating UI");
 					}
 				} catch (error) {
-					Logger.error('Vector search failed:', error);
-				}
-			}
-			
-			// Mark vector search as completed
-			this.updateStepIndicator(stepIndicatorsEl, 'vector-search', 'completed');
-		}
-		
-		const systemMessage: ChatMessage = {
-			id: 'system-' + Date.now(),
-			role: 'system',
-			content: systemPrompt + vectorSearchContext,
-			timestamp: Date.now()
-		};
-
-		// Add recent chat history (start with more messages, will be truncated if needed)
-		let chatHistory: ChatMessage[] = [];
-		if (this.currentSession) {
-			// Start with more messages, token management will truncate if needed
-			chatHistory = this.currentSession.messages.slice(-20); // Increased from 10 to 20
-		}
-
-		// Prepare initial message list
-		messages.push(systemMessage);
-		messages.push(...chatHistory);
-
-		// Handle multimodal content if present
-		const imageData = this.contextManager.getImageDataForMultimodal();
-		let finalUserMessage = userMessage;
-
-		if (imageData.length > 0) {
-			const provider = this.plugin.getActiveProvider();
-			if (!provider?.supportsVision()) {
-				throw new Error('Current provider does not support image analysis');
-			}
-
-			// Create multimodal content
-			const multimodalContent: any[] = [];
-			if (userMessage.content && typeof userMessage.content === 'string') {
-				multimodalContent.push({ type: 'text', text: userMessage.content });
-			}
-
-			imageData.forEach(image => {
-				multimodalContent.push({
-					type: 'image',
-					source: {
-						type: 'base64',
-						media_type: image.mediaType,
-						data: image.base64
-					}
-				});
-			});
-
-			finalUserMessage = { ...userMessage, content: multimodalContent };
-		}
-
-		messages.push(finalUserMessage);
-
-		// Apply token management - this will truncate if needed
-		const contextPrompt = systemPrompt;
-
-		// Get available tools for token estimation (only in Agent mode)
-		let availableTools: any[] = [];
-		if (this.plugin.settings.agentMode) {
-			try {
-				const toolManager = this.plugin.getToolManager();
-				if (toolManager) {
-					availableTools = await toolManager.getAllTools();
-				}
-			} catch (error) {
-				Logger.warn('Failed to get tools for token estimation:', error);
-			}
-		}
-
-		// Check if token limit is exceeded and handle it
-		if (TokenManager.isTokenLimitExceeded(messages, contextPrompt, availableTools)) {
-			Logger.warn('Token limit exceeded, applying token management');
-
-			// Show warning to user
-			new Notice('Token limit exceeded. Truncating conversation history to fit within limits.', 5000);
-
-			// Get truncated messages (this will preserve the most recent messages and user input)
-			const truncatedMessages = TokenManager.truncateMessagesToFitTokens(messages, contextPrompt, availableTools);
-
-			// Log the truncation for debugging
-			Logger.debug('Message truncation applied:', {
-				originalCount: messages.length,
-				truncatedCount: truncatedMessages.length,
-				originalTokens: TokenManager.estimateTokensForMessages(messages),
-				truncatedTokens: TokenManager.estimateTokensForMessages(truncatedMessages)
-			});
-
-			return truncatedMessages;
-		}
-
-		// Log token usage for monitoring
-		const totalTokens = TokenManager.estimateTokensForMessages(messages) +
-			TokenManager.estimateTokensForContext(contextPrompt) +
-			TokenManager.estimateTokensForTools(availableTools);
-
-		Logger.debug('Token usage:', {
-			totalTokens: TokenManager.formatTokenUsage(totalTokens),
-			warningLevel: TokenManager.getTokenWarningLevel(totalTokens),
-			messageCount: messages.length
-		});
-
-		// Show warning if approaching limits
-		const warningLevel = TokenManager.getTokenWarningLevel(totalTokens);
-		if (warningLevel === 'warning') {
-			new Notice('Approaching token limit. Consider starting a new chat if you encounter issues.', 4000);
-		}
-
-		return messages;
-	}
-
-	/**
-	 * Get system prompt for current mode
-	 */
-	private async getSystemPrompt(): Promise<string> {
-		const basePrompt = `You are an AI assistant integrated into Obsidian, a note-taking app.`;
-
-		const directoryBestPractices = `
-
-CRITICAL: Content First, Operations Last
-When creating or modifying notes:
-1. **FOCUS ON CONTENT FIRST**: Ask about what the user wants (structure, format, fields)
-2. Generate/show the content for user review and confirmation
-3. **ONLY AFTER content is confirmed**, then handle file operations:
-   - If user wants to check directories/files: call list_directory({directoryPath: ""}) - this is READ-ONLY, no creation
-   - Present directory options to user
-   - Wait for user to choose location
-   - Then create/modify the file with create() tool
-
-IMPORTANT: list_directory is for VIEWING ONLY - it shows both folders AND files but does NOT create anything!
-Only use create() tool to actually create files/folders.
-
-**CRITICAL: ALWAYS Reuse Existing Directories - Creating New Directories is RARE!**
-- When list_directory shows existing directories and files, you MUST STRONGLY prefer reusing existing directories
-- **Default behavior: Use existing directories** - Creating new directories should be the EXCEPTION, not the norm
-- **ABSOLUTE RULE: Use EXACT directory names from list_directory result - NO modifications allowed!**
-  * ✅ If listing shows "Template", use "Template/" (exact match)
-  * ✅ If listing shows "模板", use "模板/" (exact Chinese name)
-  * ✅ If listing shows "Book", use "Book/" (capital B matches listing)
-  * ✗ If listing shows "Template", DO NOT use "Templates/" (different name!)
-  * ✗ If listing shows "模板", DO NOT use "Template/" (translation not allowed!)
-  * ✗ DO NOT change case: "Book" ≠ "book", "Template" ≠ "template"
-  * ✗ DO NOT pluralize/singularize existing names
-- Before even THINKING about "新建目录", thoroughly check if an existing directory can work:
-  * Consider semantic similarity: "日记" can use "Daily/", "工作" can use "Work/" or "Projects/"
-  * But always use the EXACT name from the listing!
-- **ONLY suggest "新建目录" if ALL of these are true:**
-  1. User EXPLICITLY asked to create a new directory/folder in their request, OR
-  2. NO existing directory is semantically suitable for the content type, AND
-  3. The content represents a genuinely new category not covered by existing directories
-- When checking for similar directories, understand semantic similarity but ALWAYS use exact names:
-  * "Template" and "模板" both mean templates - use whichever exists (exact name!)
-  * "Book" and "book" are the same semantically but use the exact case from listing
-- Note: list_directory returns BOTH folders and files, so you can see the full directory structure
-
-**PRIORITY ORDER when presenting options:**
-1. Most relevant existing directory with EXACT name (explain why it fits)
-2. Second relevant existing directory with EXACT name (if applicable)
-3. ONLY if truly necessary: "新建目录" (explain why existing ones don't work)
-
-Example workflow:
-User: "Create a reading template"
-Step 1: Ask about template structure/content (NOT about filename or location!)
-Step 2: Generate and show the template content
-Step 3: After user confirms content is good
-Step 4: If needed, call list_directory({directoryPath: ""}) to show existing directories and files
-Step 5: Check listing result shows: ["Template", "模板", "Book", "Daily"]
-   - Analyze and ask: "保存到哪里？Template/ (适合模板) / 模板/ (中文模板目录) / Book/ (适合读书相关)"
-   - Use EXACT names: "Template" not "Templates", "模板" not "Template"
-   - DO NOT automatically include "新建目录" unless user asked for it or no directory fits
-Step 6: After user chooses, MUST call create({path: "ChosenDirectory/filename.md", content: "..."})
-   - If user chose "Template", path must be "Template/filename.md" (exact match!)
-Step 7: Wait for create() tool result before concluding
-
-**After calling list_directory, you MUST continue with asking user for location and then call create()!**
-**DO NOT stop after listing directories/files - that's just step 4, you need to finish steps 5-6!**
-**File operations (where to save, what to name) come LAST, after content is ready!**`;
-
-		let modePrompt = '';
-		if (this.plugin.settings.agentMode) {
-			// Agent mode: use plan-execute system with tools
-			modePrompt = `You're in Agent mode - you have access to various tools and should use the plan-execute framework for complex tasks.
-
-CRITICAL: You MUST use the available tools. Do not just describe what you would do - actually call the tools!
-
-For weather queries about New Mexico:
-1. IMMEDIATELY call get-forecast tool with location "Albuquerque, NM"
-2. IMMEDIATELY call get-alerts tool with location "New Mexico"
-3. Only after getting the data, provide your response
-
-DO NOT say "I will get data" - ACTUALLY GET THE DATA by calling the tools first!
-
-IMPORTANT: When users ask about "latest", "recent", "current", or time-sensitive information:
-1. FIRST call the get_current_date tool to get the current date
-2. Use this date information to provide accurate, time-aware responses
-3. For example: "latest news", "recent updates", "what's new", "今天", "最新的", etc.
-
-CRITICAL: Avoid Redundant Web Content Fetching
-**Before fetching web page content, ALWAYS check conversation history first:**
-1. **Check if the URL has been fetched before** in this conversation
-2. **If the URL appears in previous messages with content**, DO NOT fetch it again
-3. **Reuse the previously fetched content** from conversation history
-4. **Only fetch if:**
-   - The URL has never been fetched in this conversation, OR
-   - Previous fetch failed or returned incomplete data, OR
-   - User explicitly asks to refresh/refetch the content
-5. **Look for these indicators in conversation history:**
-   - Tool execution results from fetch_web_content, fetch_url, or similar tools
-   - Messages containing "Successfully fetched content from [URL]"
-   - Previous responses that include content from the URL
-6. **Example - DO NOT DO THIS:**
-   Message 1: [fetch_web_content called for https://example.com, got content]
-   Message 3: User asks follow-up question about the article
-   You: [fetch_web_content for https://example.com again] ← WRONG! Content already available!
-7. **Example - CORRECT behavior:**
-   Message 1: [fetch_web_content called for https://example.com, got content]
-   Message 3: User asks follow-up question
-   You: [Use the content from Message 1 to answer] ← CORRECT!
-
-**Remember: Web fetching takes time and resources - avoid redundant fetches by checking history first!**
-
-The tools are real and functional - you must use them!
-${directoryBestPractices}
-
-IMPORTANT RESPONSE STYLE:
-- Always provide direct answers without preamble, introductions, or meta-commentary
-- Do NOT start responses with phrases like "我来帮你...", "我将为你...", "让我..." etc.
-- Do NOT end with summaries, suggestions for further action, or closing remarks
-- For any task (writing, expanding, modifying, explaining), output the actual result immediately
-- Avoid unnecessary framing language - just deliver the requested content directly`;
-		} else {
-			// Basic Q&A mode: provide helpful responses with action buttons
-			modePrompt = `You're in basic Q&A mode - provide helpful, informative responses to user questions. When the user references files or provides context, make sure to use that information to provide relevant answers.
-
-If the user asks you to modify or work with files mentioned in the context, provide specific suggestions or show what the modified content should look like.
-${directoryBestPractices}
-
-IMPORTANT RESPONSE STYLE:
-- Always provide direct answers without preamble, introductions, or meta-commentary
-- Do NOT start responses with phrases like "我来帮你...", "我将为你...", "让我..." etc.
-- Do NOT end with summaries, suggestions for further action, or closing remarks
-- For any task (writing, expanding, modifying, explaining), output the actual result immediately
-- Avoid unnecessary framing language - just deliver the requested content directly`;
-		}
-
-		// Get available tools and add them to the system prompt
-		const toolsInfo = await this.getAvailableToolsInfo();
-
-		// Add context from ContextManager (will auto-refresh file contents)
-		const contextPrompt = await this.contextManager.generateContextPrompt();
-
-		return `${basePrompt}
-
-${modePrompt}
-
-${toolsInfo}
-
-Context Information:
-${contextPrompt}
-
-Remember: Always respond to the user. If you use tools, explain what you're doing. If you can't use tools, explain what you would do with them.`;
-	}
-
-	private async getAvailableToolsInfo(): Promise<string> {
-		// Only provide tool information in Agent mode
-		if (!this.plugin.settings.agentMode) {
-			return "AVAILABLE TOOLS: None (Agent mode is disabled)";
-		}
-
-		try {
-			const toolManager = this.plugin.getToolManager();
-			if (!toolManager) {
-				return "AVAILABLE TOOLS: None";
-			}
-
-			const tools = await toolManager.getAllTools();
-			if (tools.length === 0) {
-				return "AVAILABLE TOOLS: None";
-			}
-
-			let toolsInfo = "AVAILABLE TOOLS:\n";
-
-			// Group tools by source
-			const builtInTools = tools.filter(t => t.source === 'built-in' && !t.server);
-			const fileEditingTools = tools.filter(t => t.source === 'built-in' && t.server === 'file-editing');
-			const mcpTools = tools.filter(t => t.source === 'mcp');
-
-			if (builtInTools.length > 0) {
-				toolsInfo += "\nBuilt-in Tools:\n";
-				builtInTools.forEach(tool => {
-					toolsInfo += `- ${tool.name}: ${tool.description}\n`;
-				});
-			}
-
-			if (fileEditingTools.length > 0) {
-				toolsInfo += "\nFile Editing Tools:\n";
-				fileEditingTools.forEach(tool => {
-					toolsInfo += `- ${tool.name}: ${tool.description}\n`;
-				});
-			}
-
-			if (mcpTools.length > 0) {
-				// Group MCP tools by server
-				const mcpByServer = mcpTools.reduce((acc, tool) => {
-					const server = tool.server || 'unknown';
-					if (!acc[server]) acc[server] = [];
-					acc[server].push(tool);
-					return acc;
-				}, {} as Record<string, typeof mcpTools>);
-
-				toolsInfo += "\nMCP Tools (External Services):\n";
-				Object.entries(mcpByServer).forEach(([server, serverTools]) => {
-					toolsInfo += `\nFrom ${server} server:\n`;
-					serverTools.forEach(tool => {
-						toolsInfo += `- ${tool.name}: ${tool.description}\n`;
-					});
-				});
-			}
-
-			toolsInfo += `\nTotal: ${tools.length} tools available\n`;
-
-			return toolsInfo;
-		} catch (error) {
-			Logger.warn('Failed to get tools info for system prompt:', error);
-			return "AVAILABLE TOOLS: Error retrieving tool information";
-		}
-	}
-
-	/**
-	 * Handle Guided Mode conversation
-	 */
-	private async handleGuidedMode(userMessage: ChatMessage, messages: ChatMessage[]): Promise<void> {
-		Logger.debug('Starting Guided Mode conversation');
-		
-		try {
-			// Check if this is a response to a guided question
-			const lastMessage = messages[messages.length - 2]; // -2 because last is current user message
-			const isGuidedResponse = lastMessage?.metadata?.isGuidedQuestion;
-			
-			if (isGuidedResponse) {
-				// User is responding to a guided question
-				await this.handleGuidedResponse(userMessage, messages);
-			} else {
-				// Start new guided conversation
-				await this.startGuidedConversation(userMessage, messages);
-			}
-		} catch (error) {
-			Logger.error('Error in guided mode:', error);
-			await this.messageManager.addMessage({
-				id: Date.now().toString(),
-				role: 'system',
-				content: `Error in guided mode: ${(error as Error).message || 'Unknown error'}`,
-				timestamp: Date.now()
-			}, this.currentSession);
-		}
-	}
-	
-	/**
-	 * Start new guided conversation
-	 */
-	/**
-	 * Start new guided conversation
-	 */
-	private async startGuidedConversation(userMessage: ChatMessage, messages: ChatMessage[]): Promise<void> {
-		Logger.debug('Starting new guided conversation');
-		
-		// Start streaming mode with stop button
-		const streamController = this.streamManager.startStreaming();
-
-		// Create placeholder message for streaming with fixed ID
-		const messageId = Date.now().toString();
-		
-		// Set up stop handler for guided mode
-		this.streamManager.setStopHandler(() => {
-			Logger.debug('Guided mode stopped by user');
-			
-			// Remove loading indicator immediately
-			const messageEl = this.messageRenderer.findMessageElement(messageId);
-			if (messageEl) {
-				const contentEl = messageEl.querySelector('.llmsider-message-content');
-				if (contentEl) {
-					contentEl.classList.remove('llmsider-working-indicator');
-					const dotsEl = contentEl.querySelector('.llmsider-typing-dots');
-					if (dotsEl) {
-						dotsEl.remove();
-					}
-					
-					// Show stopped message with icon
-					contentEl.empty();
-					const stoppedDiv = contentEl.createDiv({ cls: 'llmsider-stopped-message' });
-					
-					const iconContainer = stoppedDiv.createDiv({ cls: 'llmsider-stopped-icon' });
-					setIcon(iconContainer, 'pause-circle');
-					
-					stoppedDiv.createSpan({ 
-						text: this.i18n.t('ui.generationStopped') || '已停止生成',
-						cls: 'llmsider-stopped-text'
-					});
-				}
-			}
-			
-			this.streamManager.resetButtonStates();
-		});
-		
-		try {
-			// Get available tools (both built-in and MCP)
-			const tools = await this.plugin.toolManager.getAllTools();
-			Logger.debug('Available tools for guided mode:', tools.length);
-			
-			const streamingMessage: ChatMessage = {
-				id: messageId,
-				role: 'assistant',
-				content: '',
-				timestamp: Date.now(),
-				metadata: {
-					isGuidedQuestion: true,
-					guidedStepNumber: 1,
-					isStreaming: true
-				}
-			};
-			
-			// Add placeholder to UI
-			this.messageManager.addMessageToUI(streamingMessage, this.currentSession);
-			this.messageManager.scrollToBottom();
-			
-			// Verify the element was created
-			const streamingEl = this.messageRenderer.findMessageElement(messageId);
-			if (!streamingEl) {
-				Logger.error('Failed to create streaming message element!', messageId);
-			} else {
-				Logger.debug('Streaming message element created successfully:', messageId);
-				Logger.debug('Element data-message-id:', streamingEl.getAttribute('data-message-id'));
-				
-				// Add three dots loading indicator to the empty streaming message
-				const contentEl = streamingEl.querySelector('.llmsider-message-content');
-				if (contentEl) {
-					Logger.debug('Adding three dots to content element for messageId:', messageId);
-					contentEl.classList.add('llmsider-working-indicator');
-					
-					// Clear any existing content first
-					contentEl.empty();
-					
-					const dotsContainer = contentEl.createEl('div', { cls: 'llmsider-typing-dots' });
-					const middleDot = dotsContainer.createEl('span', { cls: 'llmsider-typing-dot' });
-					middleDot.style.cssText = `
-						display: inline-block;
-						width: 8px;
-						height: 8px;
-						border-radius: 50%;
-						background: var(--text-muted);
-						animation: typing 1.4s infinite both;
-						animation-delay: 0.2s;
-					`;
-					
-					Logger.debug('Three dots added successfully');
-				} else {
-					Logger.error('Content element not found in streaming message!');
-				}
-			}
-			
-			// Get AI's first guiding question with streaming
-			const guidedMessage = await this.guidedModeProcessor.startGuidedConversation(
-				userMessage.content as string,
-				messages,
-				tools,
-				(updatedMessage) => {
-					// Check if streaming was stopped
-					if (streamController.signal.aborted) {
-						Logger.debug('Stream aborted, ignoring update');
-						return;
-					}
-					// Stream update callback - update UI in real-time
-					this.updateGuidedMessageUI(updatedMessage);
-				},
-				messageId, // Pass the predefined message ID
-				streamController.signal // Pass abort signal
-			);
-			
-			// Check if aborted before processing result
-			if (streamController.signal.aborted) {
-				Logger.debug('Stream was aborted, skipping result processing');
-				return;
-			}
-			
-			if (guidedMessage) {
-				// No need to modify guidedMessage.id, it's already correct
-				guidedMessage.metadata!.isStreaming = false;
-				await this.updateGuidedMessageUI(guidedMessage);
-				
-				// Save to session
-				if (this.currentSession) {
-					this.currentSession.messages.push(guidedMessage);
-					await this.plugin.updateChatSession(this.currentSession.id, {
-						messages: this.currentSession.messages
-					});
-					
-					// Log conversation in Guided Mode
-					await conversationLogger.logConversation(
-						this.currentSession.id,
-						this.plugin.settings.activeProvider,
-						this.plugin.getActiveModelName(),
-						userMessage,
-						typeof guidedMessage.content === 'string' ? guidedMessage.content : JSON.stringify(guidedMessage.content),
-						undefined, // usage info not available from streaming in guided mode
-						undefined, // duration not tracked here
-						guidedMessage.metadata?.suggestedToolCalls
+					Logger.error(
+						"[TitleGen] ❌ Failed to auto-generate session title:",
+						error
 					);
 				}
-			}
-		} catch (error) {
-			if (error instanceof Error && error.name === 'AbortError') {
-				Logger.debug('Guided conversation was aborted by user');
-				return;
-			}
-			
-			Logger.error('Error in guided conversation:', error);
-			// The error is already handled in GuidedModeProcessor
-			// No need to throw, just log it
-		} finally {
-			// Always reset button states when guided mode completes or fails
-			this.streamManager.resetButtonStates();
-		}
-	}
-	
-	/**
-	 * Handle user response to guided question
-	 */
-	private async handleGuidedResponse(userMessage: ChatMessage, messages: ChatMessage[]): Promise<void> {
-		Logger.debug('Handling guided response');
-		
-		// Start streaming mode with stop button
-		const streamController = this.streamManager.startStreaming();
-
-		// Create placeholder message for streaming with fixed ID
-		const messageId = Date.now().toString();
-
-		// Set up stop handler for guided mode
-		this.streamManager.setStopHandler(() => {
-			Logger.debug('Guided mode stopped by user');
-			
-			// Mark this message as stopped to prevent further updates
-			this.stoppedMessageIds.add(messageId);
-			
-			// Remove loading indicator immediately
-			const messageEl = this.messageRenderer.findMessageElement(messageId);
-			if (messageEl) {
-				const contentEl = messageEl.querySelector('.llmsider-message-content');
-				if (contentEl) {
-					contentEl.classList.remove('llmsider-working-indicator');
-					const dotsEl = contentEl.querySelector('.llmsider-typing-dots');
-					if (dotsEl) {
-						dotsEl.remove();
-					}
-					
-					// Show stopped message with icon
-					contentEl.empty();
-					const stoppedDiv = contentEl.createDiv({ cls: 'llmsider-stopped-message' });
-					
-					const iconContainer = stoppedDiv.createDiv({ cls: 'llmsider-stopped-icon' });
-					setIcon(iconContainer, 'pause-circle');
-					
-					stoppedDiv.createSpan({ 
-						text: this.i18n.t('ui.generationStopped') || '已停止生成',
-						cls: 'llmsider-stopped-text'
-					});
-				}
-			}
-			
-			this.streamManager.resetButtonStates();
-		});
-		
-		try {
-			// Get available tools (both built-in and MCP)
-			const tools = await this.plugin.toolManager.getAllTools();
-			
-			const streamingMessage: ChatMessage = {
-				id: messageId,
-				role: 'assistant',
-				content: '',
-				timestamp: Date.now(),
-				metadata: {
-					isGuidedQuestion: true,
-					isStreaming: true
-				}
-			};
-			
-			// Add placeholder to UI
-			this.messageManager.addMessageToUI(streamingMessage, this.currentSession);
-			this.messageManager.scrollToBottom();
-			
-			// Verify the element was created
-			const streamingEl = this.messageRenderer.findMessageElement(messageId);
-			if (!streamingEl) {
-				Logger.error('Failed to create streaming message element!', messageId);
-			} else {
-				Logger.debug('Streaming message element created successfully:', messageId);
-				Logger.debug('Element data-message-id:', streamingEl.getAttribute('data-message-id'));
-				
-				// Add three dots loading indicator to the empty streaming message
-				const contentEl = streamingEl.querySelector('.llmsider-message-content');
-				if (contentEl) {
-					Logger.debug('Adding three dots to content element for messageId:', messageId);
-					contentEl.classList.add('llmsider-working-indicator');
-					
-					// Clear any existing content first
-					contentEl.empty();
-					
-					const dotsContainer = contentEl.createEl('div', { cls: 'llmsider-typing-dots' });
-					const middleDot = dotsContainer.createEl('span', { cls: 'llmsider-typing-dot' });
-					middleDot.style.cssText = `
-						display: inline-block;
-						width: 8px;
-						height: 8px;
-						border-radius: 50%;
-						background: var(--text-muted);
-						animation: typing 1.4s infinite both;
-						animation-delay: 0.2s;
-					`;
-					
-					Logger.debug('Three dots added successfully');
-				} else {
-					Logger.error('Content element not found in streaming message!');
-				}
-			}
-			
-			// Get next question or final answer with streaming
-			const guidedMessage = await this.guidedModeProcessor.processGuidedResponse(
-				userMessage.content as string,
-				messages,
-				tools,
-				(updatedMessage) => {
-					// Check if streaming was stopped
-					if (streamController.signal.aborted) {
-						Logger.debug('Stream aborted, ignoring update');
-						return;
-					}
-					// Stream update callback - update UI in real-time
-					this.updateGuidedMessageUI(updatedMessage);
-				},
-				messageId, // Pass the predefined message ID
-				streamController.signal // Pass abort signal
-			);
-			
-			// Check if aborted before processing result
-			if (streamController.signal.aborted) {
-				Logger.debug('Stream was aborted, skipping result processing');
-				return;
-			}
-			
-			if (guidedMessage) {
-				// Final check before updating - verify stop message isn't already shown
-				const messageEl = this.messageRenderer.findMessageElement(messageId);
-				if (messageEl) {
-					const contentEl = messageEl.querySelector('.llmsider-message-content');
-					if (contentEl && contentEl.querySelector('.llmsider-stopped-message')) {
-						Logger.debug('Stop message already shown, skipping final update');
-						return;
-					}
-				}
-				
-				// No need to modify guidedMessage.id, it's already correct
-				guidedMessage.metadata!.isStreaming = false;
-				await this.updateGuidedMessageUI(guidedMessage);
-				
-				// Save to session
-				if (this.currentSession) {
-					this.currentSession.messages.push(guidedMessage);
-					await this.plugin.updateChatSession(this.currentSession.id, {
-						messages: this.currentSession.messages
-					});
-					
-					// Log conversation in Guided Mode
-					await conversationLogger.logConversation(
-						this.currentSession.id,
-						this.plugin.settings.activeProvider,
-						this.plugin.getActiveModelName(),
-						userMessage,
-						typeof guidedMessage.content === 'string' ? guidedMessage.content : JSON.stringify(guidedMessage.content),
-						undefined, // usage info not available from streaming in guided mode
-						undefined, // duration not tracked here
-						guidedMessage.metadata?.suggestedToolCalls
-					);
-				}
-			}
-		} catch (error) {
-			if (error instanceof Error && error.name === 'AbortError') {
-				Logger.debug('Guided response was aborted by user');
-				// Keep the stopped message ID in the set - don't remove it
-				return;
-			}
-			
-			Logger.error('Error in guided response:', error);
-			// The error is already handled in GuidedModeProcessor
-			// No need to throw, just log it
-		} finally {
-			// Always reset button states when guided mode completes or fails
-			this.streamManager.resetButtonStates();
-			
-			// Clean up stopped message ID after processing completes (success or error)
-			// Note: Keep it during abort to ensure no late updates
-			if (!streamController.signal.aborted) {
-				// Only remove if not aborted - if aborted, we want to keep blocking updates
-				setTimeout(() => {
-					this.stoppedMessageIds.delete(messageId);
-				}, 1000); // 1 second delay to catch any late-arriving updates
-			}
-		}
-	}
-	
-	/**
-	 * Update guided message UI in real-time during streaming
-	 */
-	private async updateGuidedMessageUI(message: ChatMessage): Promise<void> {
-		// FIRST: Check if this message has been stopped - prevent ALL updates
-		if (this.stoppedMessageIds.has(message.id)) {
-			Logger.debug('Message', message.id, 'has been stopped, skipping ALL updates');
-			return;
-		}
-		
-		/*
-		Logger.debug('updateGuidedMessageUI called:', {
-			id: message.id,
-			contentLength: (message.content as string)?.length || 0,
-			hasOptions: !!message.metadata?.guidedOptions,
-			optionCount: message.metadata?.guidedOptions?.length || 0,
-			isStreaming: message.metadata?.isStreaming
-		});
-		*/
-		
-		let messageEl = this.messageRenderer.findMessageElement(message.id);
-		
-		if (!messageEl) {
-			Logger.error('Message element not found for ID:', message.id);
-			Logger.error('Searching for element with selector:', `[data-message-id="${message.id}"]`);
-			
-			// Debug: list all message elements
-			const allMessages = document.querySelectorAll('[data-message-id]');
-			Logger.error('All message elements in DOM:', Array.from(allMessages).map(el => el.getAttribute('data-message-id')));
-			
-			Logger.warn('Message element not found, creating new element for ID:', message.id);
-			// If element doesn't exist, create it
-			this.messageManager.addMessageToUI(message, this.currentSession);
-			messageEl = this.messageRenderer.findMessageElement(message.id);
-			
-			if (!messageEl) {
-				Logger.error('Failed to create message element even after addMessageToUI!');
-				return;
-			}
-		} else {
-			// Logger.debug('Message element found successfully');
-		}
-		
-		// Check if message has been stopped - if so, don't update it
-		const contentEl = messageEl.querySelector('.llmsider-message-content');
-		if (contentEl && contentEl.querySelector('.llmsider-stopped-message')) {
-			Logger.debug('Message has been stopped, skipping update');
-			return;
-		}
-		
-		// Update existing message
-		if (message.metadata?.isGuidedQuestion) {
-			this.renderGuidedCard(message);
-			// Use double requestAnimationFrame to ensure all DOM operations complete
-			// This prevents the jumping effect in guided mode
-			requestAnimationFrame(() => {
-				requestAnimationFrame(() => {
-					this.messageManager.scrollToBottom();
-				});
-			});
-		} else {
-			// Regular message update
-			// Pass isStreaming flag to disable mermaid placeholders during streaming
-			const isStreaming = message.metadata?.isStreaming ?? false;
-			this.messageRenderer.updateMessageContent(message.id, message.content as string, isStreaming);
-			// Single requestAnimationFrame is sufficient for regular updates
-			requestAnimationFrame(() => {
-				this.messageManager.scrollToBottom();
-			});
-		}
-	}
-	
-	/**
-	 * Render or update the guided card UI
-	 */
-	private renderGuidedCard(message: ChatMessage, isReloaded: boolean = false): void {
-		// Logger.debug('renderGuidedCard called:', {
-		// 	id: message.id,
-		// 	contentLength: (message.content as string)?.length || 0,
-		// 	hasOptions: !!message.metadata?.guidedOptions,
-		// 	optionCount: message.metadata?.guidedOptions?.length || 0,
-		// 	isReloaded
-		// });
-		
-		const messageEl = this.messageRenderer.findMessageElement(message.id);
-		if (!messageEl) {
-			Logger.warn('Message element not found in renderGuidedCard!');
-			return;
-		}
-		
-		const hasActualContent = message.content && (message.content as string).length > 0;
-		const hasToolCalls = message.metadata?.requiresToolConfirmation && message.metadata?.suggestedToolCalls;
-		
-		// If no content yet AND no tool calls, keep the three dots loading indicator and return early
-		// Don't render the card UI until we have content or tool calls
-		if (!hasActualContent && !hasToolCalls) {
-			Logger.debug('No content yet, keeping loading indicator');
-			return;
-		}
-		
-		// Now we have content or tool calls, remove the loading indicator
-		const contentEl = messageEl.querySelector('.llmsider-message-content');
-		if (contentEl) {
-			contentEl.classList.remove('llmsider-working-indicator');
-			const existingDots = contentEl.querySelector('.llmsider-typing-dots');
-			if (existingDots) {
-				existingDots.remove();
-			}
-		}
-		
-		// Add special class and hide actions
-		messageEl.addClass('llmsider-guided-question-message');
-		
-		const originalContent = messageEl.querySelector('.llmsider-message-content');
-		if (originalContent) {
-			(originalContent as HTMLElement).style.display = 'none';
-		}
-		
-		// Keep hover actions visible - users should be able to copy/generate notes
-		// Action buttons will appear on hover over the message
-		
-		// Check if card container already exists
-		let cardContainer = messageEl.querySelector('.llmsider-guided-card-container') as HTMLElement;
-		
-		if (!cardContainer) {
-			// Create new card container
-			cardContainer = messageEl.createDiv({ cls: 'llmsider-guided-card-container' });
-		}
-		
-		// Update or create question section
-		let questionSection = cardContainer.querySelector('.llmsider-guided-question-section') as HTMLElement;
-		
-		if (!questionSection) {
-			questionSection = cardContainer.createDiv({ cls: 'llmsider-guided-question-section' });
-		}
-		
-		// Update question content
-		let questionContent = questionSection.querySelector('.llmsider-guided-question-content') as HTMLElement;
-		
-		if (!questionContent) {
-			questionContent = questionSection.createDiv({ cls: 'llmsider-guided-question-content' });
-		}
-		
-		const contentText = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
-		const cleanedContent = this.removeOptionsFromContent(contentText);
-		
-		// Clear and re-render content
-		questionContent.empty();
-		this.messageRenderer.renderMarkdownContentPublic(questionContent, cleanedContent);
-		
-		// Hide question section if there's no meaningful content or if there are tool calls
-		// (tool calls will show the description in their own cards)
-		if (cleanedContent.trim().length === 0 || 
-		    (message.metadata?.requiresToolConfirmation && message.metadata?.suggestedToolCalls)) {
-			questionSection.style.display = 'none';
-		} else {
-			questionSection.style.display = 'block';
-		}
-		
-		// Handle tool calls if present - render as independent cards after this message
-		if (message.metadata?.requiresToolConfirmation && message.metadata?.suggestedToolCalls) {
-			this.renderGuidedToolCallsAsIndependent(message, isReloaded);
-		}
-		
-		// Handle options if present
-		if (message.metadata?.guidedOptions && message.metadata.guidedOptions.length > 0) {
-			this.renderGuidedOptions(cardContainer, message, isReloaded);
-		}
-	}
-	
-	/**
-	 * Render guided tool calls as independent card messages (not inside AI message)
-	 */
-	private renderGuidedToolCallsAsIndependent(message: ChatMessage, isReloaded: boolean = false): void {
-		Logger.debug('renderGuidedToolCallsAsIndependent called');
-		
-		const toolCalls = message.metadata!.suggestedToolCalls as any[];
-		const actionDescription = typeof message.content === 'string' ? message.content : '';
-		
-		// Find the parent message element to insert cards after it
-		const messageEl = this.messageRenderer.findMessageElement(message.id);
-		if (!messageEl) {
-			Logger.warn('Parent message element not found, cannot insert tool cards');
-			return;
-		}
-		
-		// Track the last inserted element to maintain correct order for multiple tool calls
-		let lastInsertedElement: Element = messageEl;
-		
-		toolCalls.forEach((toolCall) => {
-			const toolName = toolCall.name || toolCall.function?.name || 'Unknown Tool';
-			
-			// Parse tool arguments for display
-			let toolParameters: Record<string, any> = {};
-			try {
-				if (toolCall.function?.arguments) {
-					toolParameters = typeof toolCall.function.arguments === 'string' 
-						? JSON.parse(toolCall.function.arguments) 
-						: toolCall.function.arguments;
-				} else if (toolCall.arguments) {
-					toolParameters = typeof toolCall.arguments === 'string' 
-						? JSON.parse(toolCall.arguments) 
-						: toolCall.arguments;
-				} else if (toolCall.input) {
-					toolParameters = toolCall.input;
-				}
-			} catch (error) {
-				Logger.error('Failed to parse tool parameters:', error);
-				toolParameters = { error: 'Failed to parse parameters' };
-			}
-			
-			// Create independent tool card container
-			const toolCardEl = document.createElement('div');
-			toolCardEl.className = 'llmsider-tool-card-message';
-			
-			// Insert card after the last inserted element to maintain order
-			// First card goes after message, second after first card, etc.
-			lastInsertedElement.insertAdjacentElement('afterend', toolCardEl);
-			lastInsertedElement = toolCardEl; // Update for next iteration
-			
-			// If reloaded, create a read-only card with 'success' status (no approve/cancel buttons)
-			if (isReloaded) {
-				new ToolResultCard(toolCardEl, {
-					toolName: toolName,
-					status: 'success', // Show as completed
-					parameters: toolParameters,
-					timestamp: new Date(),
-					description: actionDescription
-				});
-			} else {
-				// Create the tool approval card with pending status
-				new ToolResultCard(toolCardEl, {
-					toolName: toolName,
-					status: 'pending',
-					parameters: toolParameters,
-					timestamp: new Date(),
-					description: actionDescription
-				}, async () => {
-					// Approve callback - execute the tool
-					await this.executeToolWithCard(toolCardEl, toolCall, message);
-				}, () => {
-					// Cancel callback - remove the card
-					toolCardEl.remove();
-				});
-			}
-		});
-	}
-	
-	/**
-	 * Render or update guided tool calls (for tool confirmation) - DEPRECATED
-	 * Use renderGuidedToolCallsAsIndependent instead
-	 */
-	private renderGuidedToolCalls(cardContainer: HTMLElement, message: ChatMessage, isReloaded: boolean = false): void {
-		Logger.debug('renderGuidedToolCalls called');
-		
-		// Check if tools section already exists
-		let toolsSection = cardContainer.querySelector('.llmsider-guided-tools-section') as HTMLElement;
-		
-		if (!toolsSection) {
-			toolsSection = cardContainer.createDiv({ cls: 'llmsider-guided-tools-section' });
-		} else {
-			// Clear existing tools
-			toolsSection.empty();
-		}
-		
-		const toolCalls = message.metadata!.suggestedToolCalls as any[];
-		const actionDescription = typeof message.content === 'string' ? message.content : '';
-		
-		toolCalls.forEach((toolCall) => {
-			const toolName = toolCall.name || toolCall.function?.name || 'Unknown Tool';
-			
-			// Parse tool arguments for display
-			let toolParameters: Record<string, any> = {};
-			try {
-				if (toolCall.function?.arguments) {
-					toolParameters = typeof toolCall.function.arguments === 'string' 
-						? JSON.parse(toolCall.function.arguments) 
-						: toolCall.function.arguments;
-				} else if (toolCall.arguments) {
-					toolParameters = typeof toolCall.arguments === 'string' 
-						? JSON.parse(toolCall.arguments) 
-						: toolCall.arguments;
-				} else if (toolCall.input) {
-					toolParameters = toolCall.input;
-				}
-			} catch (error) {
-				Logger.error('Failed to parse tool parameters:', error);
-				toolParameters = { error: 'Failed to parse parameters' };
-			}
-			
-			// Create card container for this tool
-			const toolCardContainer = toolsSection.createDiv({ cls: 'llmsider-tool-card-wrapper' });
-			
-			// If reloaded, create a read-only card with 'success' status (no approve/cancel buttons)
-			if (isReloaded) {
-				new ToolResultCard(toolCardContainer, {
-					toolName: toolName,
-					status: 'success', // Show as completed
-					parameters: toolParameters,
-					timestamp: new Date(),
-					description: actionDescription
-				});
-			} else {
-				// Create the tool approval card with pending status
-				new ToolResultCard(toolCardContainer, {
-					toolName: toolName,
-					status: 'pending',
-					parameters: toolParameters,
-					timestamp: new Date(),
-					description: actionDescription
-				}, async () => {
-					// Approve callback - execute the tool
-					await this.executeToolWithCard(toolCardContainer, toolCall, message);
-				}, () => {
-					// Cancel callback - remove the card
-					toolCardContainer.remove();
-				});
-			}
-		});
-	}
-	
-	/**
-	 * Render or update guided options
-	 */
-	private renderGuidedOptions(cardContainer: HTMLElement, message: ChatMessage, isReloaded: boolean = false): void {
-		// Check if options section already exists
-		let optionsSection = cardContainer.querySelector('.llmsider-guided-options-section') as HTMLElement;
-		
-		if (!optionsSection) {
-			optionsSection = cardContainer.createDiv({ cls: 'llmsider-guided-options-section' });
-		}
-		
-		// Clear existing options if any
-		let optionsContainer = optionsSection.querySelector('.llmsider-guided-options') as HTMLElement;
-		
-		if (optionsContainer) {
-			optionsContainer.empty();
-		} else {
-			optionsContainer = optionsSection.createDiv({ cls: 'llmsider-guided-options' });
-		}
-		
-		const i18n = this.plugin.getI18nManager();
-		const options = message.metadata!.guidedOptions as string[];
-		
-		// Get multi-select mode from metadata (set by AI)
-		const isMultiSelect = message.metadata!.isMultiSelect || false;
-		const selectedOptions = new Set<number>();
-		
-		options.forEach((option, index) => {
-			const optionCard = optionsContainer.createDiv({
-				cls: 'llmsider-guided-option-card'
-			});
-			
-			// If reloaded, mark all options as disabled
-			if (isReloaded) {
-				optionCard.addClass('disabled');
-			}
-			
-			// Add multi-select class if applicable
-			if (isMultiSelect) {
-				optionCard.addClass('multi-select-mode');
-			}
-			
-			// Number badge or checkbox
-			const badge = optionCard.createEl('div', {
-				cls: 'llmsider-guided-option-number',
-				text: (index + 1).toString()
-			});
-			
-			// Checkmark icon (hidden by default)
-			const checkmark = optionCard.createDiv({
-				cls: 'llmsider-guided-option-checkmark'
-			});
-			setIcon(checkmark, 'check');
-			
-			// Content
-			const content = optionCard.createDiv({ cls: 'llmsider-guided-option-content' });
-			
-			const parts = option.split(' - ');
-			const title = parts[0];
-			const desc = parts.length > 1 ? parts.slice(1).join(' - ') : '';
-			
-			content.createEl('div', {
-				cls: 'llmsider-guided-option-title',
-				text: title
-			});
-			
-			if (desc) {
-				content.createEl('div', {
-					cls: 'llmsider-guided-option-desc',
-					text: desc
-				});
-			}
-			
-			// Only add click handler if streaming is complete AND not reloaded
-			if (!message.metadata?.isStreaming && !isReloaded) {
-				if (isMultiSelect) {
-					// Multi-select mode: toggle selection
-					optionCard.onclick = () => {
-						if (selectedOptions.has(index)) {
-							selectedOptions.delete(index);
-							optionCard.removeClass('selected');
-						} else {
-							selectedOptions.add(index);
-							optionCard.addClass('selected');
-						}
-					};
-				} else {
-					// Single-select mode: original behavior
-					let isProcessing = false;
-					
-					optionCard.onclick = async () => {
-						if (isProcessing) return;
-						
-						isProcessing = true;
-						optionCard.addClass('selected');
-						optionsContainer.querySelectorAll('.llmsider-guided-option-card').forEach(card => {
-							card.addClass('disabled');
-							(card as HTMLElement).onclick = null;
-						});
-						
-						// Check for special options
-						if (option === i18n?.t('ui.endGuidedMode') || option === 'End guided mode') {
-							const endMessage: ChatMessage = {
-								id: Date.now().toString(),
-								role: 'assistant',
-								content: i18n?.t('ui.guidedModeEnded') || 'Guided mode ended.',
-								timestamp: Date.now()
-							};
-							
-							this.messageManager.addMessageToUI(endMessage, this.currentSession);
-							
-							if (this.currentSession) {
-								this.currentSession.messages.push(endMessage);
-								await this.plugin.updateChatSession(this.currentSession.id, {
-									messages: this.currentSession.messages
-								});
-							}
-							return;
-						}
-						
-						if (option === i18n?.t('ui.continueWithSuggestions') || option === 'Continue with AI suggestions') {
-							const userMessage: ChatMessage = {
-								id: Date.now().toString(),
-								role: 'user',
-								content: 'Please continue with the next suggestions.',
-								timestamp: Date.now()
-							};
-							
-							if (this.currentSession) {
-								this.currentSession.messages.push(userMessage);
-								await this.plugin.updateChatSession(this.currentSession.id, {
-									messages: this.currentSession.messages
-								});
-							}
-							
-							await this.handleGuidedResponse(userMessage, this.currentSession?.messages || []);
-							return;
-						}
-						
-						// Send selected option
-						await this.handleSendMessage(title, {
-							isGuidedOption: true,
-							guidedStep: message.metadata?.guidedStepNumber
-						});
-					};
-				}
-			}
-		});
-		
-		// Add submit button for multi-select mode
-		if (isMultiSelect && !message.metadata?.isStreaming && !isReloaded) {
-			const submitContainer = optionsSection.createDiv({ cls: 'llmsider-guided-options-submit' });
-			const submitBtn = submitContainer.createEl('button', {
-				cls: 'llmsider-guided-submit-btn',
-				text: i18n?.t('ui.submitSelection') || 'Submit Selection'
-			});
-			
-			submitBtn.onclick = async () => {
-				if (selectedOptions.size === 0) return;
-				
-				// Disable all options and submit button
-				optionsContainer.querySelectorAll('.llmsider-guided-option-card').forEach(card => {
-					card.addClass('disabled');
-					(card as HTMLElement).onclick = null;
-				});
-				submitBtn.disabled = true;
-				submitBtn.addClass('disabled');
-				
-				// Build selected options text
-				const selectedTitles = Array.from(selectedOptions)
-					.map(index => {
-						const option = options[index];
-						const parts = option.split(' - ');
-						return parts[0];
-					})
-					.join(', ');
-				
-				// Send selected options
-				await this.handleSendMessage(selectedTitles, {
-					isGuidedOption: true,
-					guidedStep: message.metadata?.guidedStepNumber
-				});
-			};
-		}
-	}
-	
-	/**
-	 * Add guided message with options to UI
-	 */
-	private async addGuidedMessageToUI(message: ChatMessage): Promise<void> {
-		// Add to UI
-		this.messageManager.addMessageToUI(message, this.currentSession);
-		
-		// Add to session
-		if (this.currentSession) {
-			this.currentSession.messages.push(message);
-			await this.plugin.updateChatSession(this.currentSession.id, {
-				messages: this.currentSession.messages
-			});
-		}
-		
-		const messageEl = this.messageRenderer.findMessageElement(message.id);
-		if (!messageEl) return;
-		
-	// If message has tool calls requiring confirmation, render tool approval cards
-	if (message.metadata?.requiresToolConfirmation && message.metadata?.suggestedToolCalls) {
-		const toolsContainer = messageEl.createDiv({ cls: 'llmsider-guided-tools' });
-		const toolCalls = message.metadata.suggestedToolCalls as any[];
-		
-		// Get action description from message content
-		const actionDescription = typeof message.content === 'string' 
-			? message.content 
-			: '';
-		
-		toolCalls.forEach((toolCall) => {
-			const toolName = toolCall.name || toolCall.function?.name || 'Unknown Tool';
-			
-			// Parse tool arguments for display
-			let toolParameters: Record<string, any> = {};
-			if (toolCall.function?.arguments) {
-				toolParameters = typeof toolCall.function.arguments === 'string' 
-					? JSON.parse(toolCall.function.arguments) 
-					: toolCall.function.arguments;
-			} else if (toolCall.arguments) {
-				toolParameters = typeof toolCall.arguments === 'string' 
-					? JSON.parse(toolCall.arguments) 
-					: toolCall.arguments;
-			} else if (toolCall.input) {
-				toolParameters = toolCall.input;
-			}
-			
-			// Create card container
-			const cardContainer = toolsContainer.createDiv();
-			
-			// Create the tool approval card with pending status
-			new ToolResultCard(cardContainer, {
-				toolName: toolName,
-				status: 'pending',
-				parameters: toolParameters,
-				timestamp: new Date(),
-				description: actionDescription // 添加动作描述
-			}, async () => {
-				// Approve callback - execute the tool
-				await this.executeToolWithCard(cardContainer, toolCall, message);
-			}, () => {
-				// Cancel callback - remove the card
-				cardContainer.remove();
-			});
-		});
-	}		// If message has options, render them as cards
-		if (message.metadata?.isGuidedQuestion && message.metadata?.guidedOptions) {
-			// Add a special class for guided questions
-			messageEl.addClass('llmsider-guided-question-message');
-			
-			// Hide the original message content (it will be shown in the card)
-			const originalContent = messageEl.querySelector('.llmsider-message-content');
-			if (originalContent) {
-				(originalContent as HTMLElement).style.display = 'none';
-			}
-			
-			// Keep hover actions visible for guided question messages
-			// Users should be able to copy the question or generate notes
-			// The action buttons will appear on hover over the message
-			
-			// Create a single card container for both question and options
-			const cardContainer = messageEl.createDiv({ cls: 'llmsider-guided-card-container' });
-			
-			// Question section (gray background at top)
-			const questionSection = cardContainer.createDiv({ cls: 'llmsider-guided-question-section' });
-			
-			// Render the question content using markdown
-			const questionContent = questionSection.createDiv({ cls: 'llmsider-guided-question-content' });
-			const contentText = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
-			
-			// Remove the numbered list items from the question content
-			// Only show the question/instruction part before the options
-			const cleanedContent = this.removeOptionsFromContent(contentText);
-			this.messageRenderer.renderMarkdownContentPublic(questionContent, cleanedContent);
-			
-			// Hide question section if there's no meaningful content
-			if (cleanedContent.trim().length === 0) {
-				questionSection.style.display = 'none';
-			}
-			
-			// Options section (white background with option cards)
-			const optionsSection = cardContainer.createDiv({ cls: 'llmsider-guided-options-section' });
-			
-			// Create option cards directly without title/description
-			const optionsContainer = optionsSection.createDiv({ cls: 'llmsider-guided-options' });
-			
-			// Get i18n manager for later use
-			const i18n = this.plugin.getI18nManager();
-			
-			const options = message.metadata.guidedOptions as string[];
-			options.forEach((option, index) => {
-				const optionCard = optionsContainer.createDiv({
-					cls: 'llmsider-guided-option-card'
-				});
-				
-				// Number badge (shown by default)
-				const numberBadge = optionCard.createEl('div', {
-					cls: 'llmsider-guided-option-number',
-					text: (index + 1).toString()
-				});
-				
-				// Checkmark icon (hidden by default, shown when selected)
-				const checkmark = optionCard.createDiv({
-					cls: 'llmsider-guided-option-checkmark'
-				});
-				setIcon(checkmark, 'check');
-				
-				// Content
-				const content = optionCard.createDiv({ cls: 'llmsider-guided-option-content' });
-				
-				// Split option into title and description if it contains " - "
-				const parts = option.split(' - ');
-				const title = parts[0];
-				const desc = parts.length > 1 ? parts.slice(1).join(' - ') : '';
-				
-				content.createEl('div', {
-					cls: 'llmsider-guided-option-title',
-					text: title
-				});
-				
-				if (desc) {
-					content.createEl('div', {
-						cls: 'llmsider-guided-option-desc',
-						text: desc
-					});
-				}
-				
-				// Prevent multiple clicks
-				let isProcessing = false;
-				
-				optionCard.onclick = async () => {
-					// Prevent duplicate clicks
-					if (isProcessing) {
-						Logger.debug('Option already being processed, ignoring click');
-						return;
-					}
-					
-					isProcessing = true;
-					
-					// Mark as selected and disable all cards
-					optionCard.addClass('selected');
-					optionsContainer.querySelectorAll('.llmsider-guided-option-card').forEach(card => {
-						card.addClass('disabled');
-						// Remove onclick handler to prevent any further clicks
-						(card as HTMLElement).onclick = null;
-					});
-					
-					// Check if user wants to end guided mode
-					if (option === i18n?.t('ui.endGuidedMode') || option === 'End guided mode') {
-						// Send a final message
-						const endMessage: ChatMessage = {
-							id: Date.now().toString(),
-							role: 'assistant',
-							content: i18n?.t('ui.guidedModeEnded') || 'Guided mode ended. You can continue chatting normally or start a new guided conversation anytime.',
-							timestamp: Date.now()
-						};
-						
-						this.messageManager.addMessageToUI(endMessage, this.currentSession);
-						
-						if (this.currentSession) {
-							this.currentSession.messages.push(endMessage);
-							await this.plugin.updateChatSession(this.currentSession.id, {
-								messages: this.currentSession.messages
-							});
-						}
-						return;
-					}
-					
-					// Check if user wants to continue with AI suggestions after tool execution
-					if (option === i18n?.t('ui.continueWithSuggestions') || option === 'Continue with AI suggestions') {
-						// Send the tool result to AI and continue guided conversation
-						const userMessage: ChatMessage = {
-							id: Date.now().toString(),
-							role: 'user',
-							content: 'Please continue with the next suggestions.',
-							timestamp: Date.now()
-						};
-						
-						// Add user message to session
-						if (this.currentSession) {
-							this.currentSession.messages.push(userMessage);
-							await this.plugin.updateChatSession(this.currentSession.id, {
-								messages: this.currentSession.messages
-							});
-						}
-						
-						// Continue with guided conversation
-						await this.handleGuidedResponse(userMessage, this.currentSession?.messages || []);
-						return;
-					}
-					
-					// Send the selected option as user's response
-					await this.handleSendMessage(title, {
-						isGuidedOption: true,
-						guidedStep: message.metadata?.guidedStepNumber
-					});
-				};
-			});
-		}
-		
-		this.messageManager.scrollToBottom();
-	}
-
-	/**
-	 * Remove option lines (with ➤CHOICE: prefix) from content, keeping only the question/instruction
-	 * Regular numbered lists in markdown content are preserved
-	 */
-	private removeOptionsFromContent(content: string): string {
-		const lines = content.split('\n');
-		const cleanedLines: string[] = [];
-		
-		for (const line of lines) {
-			// Check if this line is a ➤CHOICE line (option, MULTI, or SINGLE marker)
-			const isOptionLine = /^\s*➤CHOICE:\s*(\d+\.\s+|MULTI\s*$|SINGLE\s*$)/i.test(line);
-			
-			if (isOptionLine) {
-				// Skip this line (it's an option or mode marker)
-				continue;
-			}
-			
-			// Keep all other lines, including regular numbered lists
-			cleanedLines.push(line);
-		}
-		
-		// Join lines and trim trailing whitespace
-		return cleanedLines.join('\n').trim();
-	}
-
-	/**
-	 * Execute a tool in guided mode after user confirmation
-	 */
-	private async executeGuidedTool(toolCall: any, guidedMessage: ChatMessage, buttonElement?: HTMLButtonElement): Promise<void> {
-		Logger.debug('Executing guided mode tool:', toolCall);
-		
-		try {
-			const toolName = toolCall.name || toolCall.function?.name;
-			
-			// Parse tool arguments - handle different formats
-			let toolArgs: any = {};
-			if (toolCall.function?.arguments) {
-				// Format: { function: { name: '...', arguments: '...' } }
-				toolArgs = typeof toolCall.function.arguments === 'string' 
-					? JSON.parse(toolCall.function.arguments) 
-					: toolCall.function.arguments;
-			} else if (toolCall.arguments) {
-				// Format: { name: '...', arguments: '...' }
-				toolArgs = typeof toolCall.arguments === 'string' 
-					? JSON.parse(toolCall.arguments) 
-					: toolCall.arguments;
-			} else if (toolCall.input) {
-				// Format: { toolName: '...', input: {...} }
-				toolArgs = toolCall.input;
-			}
-			
-			Logger.debug('Parsed tool args:', toolArgs);
-			
-			// Execute the tool using tool manager
-			const executionResult = await this.plugin.toolManager.executeTool(toolName, toolArgs);
-			
-			// Update button to show result (if button provided)
-			if (buttonElement) {
-				if (executionResult.error) {
-					buttonElement.classList.add('failed');
-					buttonElement.classList.remove('executing');
-					buttonElement.innerHTML = `
-						<span class="llmsider-guided-tool-icon">❌</span>
-						<span class="llmsider-guided-tool-name">${toolName} failed</span>
-					`;
-				} else {
-					buttonElement.classList.add('completed');
-					buttonElement.classList.remove('executing');
-					buttonElement.innerHTML = `
-						<span class="llmsider-guided-tool-icon">✅</span>
-						<span class="llmsider-guided-tool-name">${toolName} completed</span>
-					`;
-				}
-			}
-			
-			// Format result content for AI and display
-			let resultContent = '';
-			let displayContent = '';
-			
-			if (executionResult.error) {
-				resultContent = `Error: ${executionResult.error}`;
-				displayContent = `❌ **Error**\n\n${executionResult.error}`;
-			} else if (executionResult.result) {
-				// Format for AI
-				if (typeof executionResult.result === 'string') {
-					resultContent = executionResult.result;
-					displayContent = resultContent;
-				} else if (Array.isArray(executionResult.result)) {
-					resultContent = executionResult.result.map((item: any) => 
-						typeof item === 'object' && item.type === 'text' ? item.text : String(item)
-					).join('\n');
-					displayContent = resultContent;
-				} else {
-					// For object results, format nicely for display
-					resultContent = JSON.stringify(executionResult.result, null, 2);
-					
-					// Parse common tool result formats
-					const result = executionResult.result;
-					if (result.success !== undefined && result.message) {
-						// Format: { success: true, message: "...", content: "..." }
-						displayContent = `✅ **${result.message}**`;
-						if (result.content) {
-							displayContent += `\n\n\`\`\`\n${result.content}\n\`\`\``;
-						}
-						if (result.path) {
-							displayContent += `\n\n📁 Path: \`${result.path}\``;
-						}
-					} else {
-						// Fallback: show JSON in code block
-						displayContent = `\`\`\`json\n${resultContent}\n\`\`\``;
-					}
-				}
-			} else {
-				resultContent = 'Tool executed successfully (no result)';
-				displayContent = '✅ Tool executed successfully';
-			}
-			
-			// Show tool result to user using the card component
-			const i18n = this.plugin.getI18nManager();
-			
-			// Parse tool arguments for display
-			let toolParameters: Record<string, any> = {};
-			if (toolCall.function?.arguments) {
-				toolParameters = typeof toolCall.function.arguments === 'string' 
-					? JSON.parse(toolCall.function.arguments) 
-					: toolCall.function.arguments;
-			} else if (toolCall.arguments) {
-				toolParameters = typeof toolCall.arguments === 'string' 
-					? JSON.parse(toolCall.arguments) 
-					: toolCall.arguments;
-			} else if (toolCall.input) {
-				toolParameters = toolCall.input;
-			}
-			
-			// Create a message container for the tool result card
-			const toolResultMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: 'assistant',
-				content: JSON.stringify({
-					toolName: toolName,
-					status: executionResult.error ? 'error' : 'success',
-					parameters: toolParameters,
-					result: executionResult.result,
-					error: executionResult.error,
-					timestamp: new Date()
-				}),
-				timestamp: Date.now(),
-				metadata: {
-					toolResult: true
-				}
-			};
-			
-			this.messageManager.addMessageToUI(toolResultMessage, this.currentSession);
-			
-			if (this.currentSession) {
-				this.currentSession.messages.push(toolResultMessage);
-				await this.plugin.updateChatSession(this.currentSession.id, {
-					messages: this.currentSession.messages
-				});
-			}
-			
-			// Let AI decide next steps based on tool result
-			// Send tool result back to AI for analysis and next action determination
-			const allMessages = this.currentSession?.messages || [];
-			await this.handleGuidedResponse(toolResultMessage, allMessages);
-			
-		} catch (error) {
-			Logger.error('Error executing guided tool:', error);
-			
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			
-			// Update button to show error (if button provided)
-			if (buttonElement) {
-				buttonElement.classList.add('failed');
-				buttonElement.classList.remove('executing');
-				const toolName = toolCall.name || toolCall.function?.name || 'tool';
-				buttonElement.innerHTML = `
-					<span class="llmsider-guided-tool-icon">❌</span>
-					<span class="llmsider-guided-tool-name">${toolName} failed</span>
-				`;
-			}
-			
-			// Show error in chat
-			const errorMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: 'assistant',
-				content: `Error executing tool: ${errorMsg}`,
-				timestamp: Date.now(),
-				metadata: {
-					hasError: true
-				}
-			};
-			
-			this.messageManager.addMessageToUI(errorMessage, this.currentSession);
-			
-			if (this.currentSession) {
-				this.currentSession.messages.push(errorMessage);
-				await this.plugin.updateChatSession(this.currentSession.id, {
-					messages: this.currentSession.messages
-				});
-			}
+			})();
 		}
 	}
 
 	/**
-	 * Execute a tool with card status updates
+	 * Handle Guided Mode conversation - delegates to GuidedModeOrchestrator
 	 */
-	private async executeToolWithCard(cardContainer: HTMLElement, toolCall: any, guidedMessage: ChatMessage): Promise<void> {
-		Logger.debug('Executing tool with card:', toolCall);
-		
-		try {
-			const toolName = toolCall.name || toolCall.function?.name;
-			
-			// Parse tool arguments - handle different formats
-			let toolArgs: any = {};
-			if (toolCall.function?.arguments) {
-				toolArgs = typeof toolCall.function.arguments === 'string' 
-					? JSON.parse(toolCall.function.arguments) 
-					: toolCall.function.arguments;
-			} else if (toolCall.arguments) {
-				toolArgs = typeof toolCall.arguments === 'string' 
-					? JSON.parse(toolCall.arguments) 
-					: toolCall.arguments;
-			} else if (toolCall.input) {
-				toolArgs = toolCall.input;
-			}
-			
-			// Show loading indicator before execution
-			cardContainer.empty();
-			const loadingEl = cardContainer.createDiv({ cls: 'llmsider-tool-loading' });
-			const dotsContainer = loadingEl.createDiv({ cls: 'llmsider-typing-dots' });
-			const middleDot = dotsContainer.createEl('span', { cls: 'llmsider-typing-dot' });
-			middleDot.style.cssText = `
-				width: 8px;
-				height: 8px;
-				border-radius: 50%;
-				background: var(--text-muted);
-				animation: typing 1.4s infinite both;
-				animation-delay: 0.2s;
-			`;
-			
-			// Small delay to show loading animation
-			await new Promise(resolve => setTimeout(resolve, 300));
-			
-			// Update card to executing status
-			cardContainer.empty();
-			new ToolResultCard(cardContainer, {
-				toolName: toolName,
-				status: 'executing',
-				parameters: toolArgs,
-				timestamp: new Date()
-			});
-			
-		// Execute the tool
-		const toolManager = this.plugin.getToolManager();
-		if (!toolManager) {
-			throw new Error('Tool manager not available');
-		}
-		const result = await toolManager.executeTool(toolName, toolArgs);
-		
-		// Check if tool execution failed
-		if (result.success === false) {
-			const errorMsg = result.error || 'Tool execution failed';
-			throw new Error(errorMsg);
-		}
-		
-		// Update card to success status
-		cardContainer.empty();
-		const actionDescription = typeof guidedMessage.content === 'string' ? guidedMessage.content : '';
-		new ToolResultCard(cardContainer, {
-			toolName: toolName,
-			status: 'success',
-			parameters: toolArgs,
-			result: result,
-			timestamp: new Date(),
-			description: actionDescription // 保留工具执行目的描述
-		});			// Add tool result to messages (for AI context only, NOT displayed in UI)
-			const i18n = this.plugin.getI18nManager();
-			
-			// Format tool result for AI to understand
-			let toolResultContent = `${i18n?.t('ui.toolExecutedSuccessfully') || 'Tool executed successfully'}: ${toolName}\n\n`;
-			
-			// Add tool result in a structured format
-			if (result.result) {
-				// If result has a structured result field, format it nicely
-				if (typeof result.result === 'object') {
-					toolResultContent += `**Result:**\n\`\`\`json\n${JSON.stringify(result.result, null, 2)}\n\`\`\``;
-				} else {
-					toolResultContent += `**Result:** ${result.result}`;
-				}
-			} else if (typeof result === 'object') {
-				// If the result itself is an object, format it
-				toolResultContent += `**Result:**\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
-			} else {
-				toolResultContent += `**Result:** ${result}`;
-			}
-			
-			const toolResultMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: 'assistant',
-				content: toolResultContent,
-				timestamp: Date.now(),
-				metadata: {
-					toolResult: true,
-					toolName: toolName,
-					toolExecutions: [{
-						id: Date.now().toString(),
-						toolName: toolName,
-						parameters: toolArgs,
-						result: result,
-						status: 'completed',
-						timestamp: Date.now()
-					}],
-					// Mark as internal message - don't render in UI
-					internalMessage: true
-				}
-			};
-			
-			// Add to session messages for AI context, but DON'T add to UI
-			// The ToolResultCard above is the only UI representation needed
-			if (this.currentSession) {
-				this.currentSession.messages.push(toolResultMessage);
-				await this.plugin.updateChatSession(this.currentSession.id, {
-					messages: this.currentSession.messages
-				});
-			}
-			
-			// Let AI decide next steps based on tool result
-			// Send tool result back to AI for analysis and next action determination
-			const allMessages = this.currentSession?.messages || [];
-			await this.handleGuidedResponse(toolResultMessage, allMessages);
-			
-		} catch (error) {
-			Logger.error('Error executing tool with card:', error);
-			
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			const toolName = toolCall.name || toolCall.function?.name;
-			
-			// Parse parameters again for error card
-			let toolArgs: any = {};
-			if (toolCall.function?.arguments) {
-				toolArgs = typeof toolCall.function.arguments === 'string' 
-					? JSON.parse(toolCall.function.arguments) 
-					: toolCall.function.arguments;
-			} else if (toolCall.arguments) {
-				toolArgs = typeof toolCall.arguments === 'string' 
-					? JSON.parse(toolCall.arguments) 
-					: toolCall.arguments;
-			} else if (toolCall.input) {
-				toolArgs = toolCall.input;
-			}
-			
-			// Update card to error status with three action buttons
-			cardContainer.empty();
-			const i18n = this.plugin.getI18nManager();
-			new ToolResultCard(cardContainer, {
-				toolName: toolName,
-				status: 'error',
-				parameters: toolArgs,
-				error: errorMsg,
-				timestamp: new Date(),
-				// Three buttons for error handling
-				onRegenerateAndRetry: async () => {
-					Logger.debug('User chose: Regenerate and Retry for Guided mode tool');
-					// For Guided mode, regeneration is simpler - just ask AI to try again with corrected parameters
-					// Update card to show regenerating status
-					cardContainer.empty();
-					new ToolResultCard(cardContainer, {
-						toolName: toolName,
-						status: 'executing',
-						parameters: toolArgs,
-						timestamp: new Date()
-					});
-					
-					// Send error context back to AI for regeneration
-					const regenerationPrompt = `上一次工具执行失败了。工具名称：${toolName}，错误信息：${errorMsg}。请分析错误原因，调整参数后重新调用工具。`;
-					await this.handleSendMessage(regenerationPrompt);
-				},
-				onRetry: async () => {
-					Logger.debug('User chose: Retry for Guided mode tool');
-					// Retry callback - execute again with same parameters
-					await this.executeToolWithCard(cardContainer, toolCall, guidedMessage);
-				},
-				onSkip: async () => {
-					Logger.debug('User chose: Skip for Guided mode tool');
-					// Update card to show skipped status (keep error state)
-					cardContainer.empty();
-					new ToolResultCard(cardContainer, {
-						toolName: toolName,
-						status: 'error',
-						parameters: toolArgs,
-						error: `${errorMsg} (${i18n?.t('common.skip') || '已跳过'})`,
-						timestamp: new Date()
-					});
-					
-					// Send skip context to AI
-					const skipMessage = `工具 ${toolName} 执行失败已被跳过。错误：${errorMsg}。请继续后续步骤或提供替代方案。`;
-					await this.handleSendMessage(skipMessage);
-				},
-				regenerateAndRetryButtonText: i18n?.t('common.regenerateAndRetry') || '重新生成并重试',
-				retryButtonText: i18n?.t('common.retry') || '重试',
-				skipButtonText: i18n?.t('common.skip') || '跳过'
-			});
-			
-			// Note: Error is already shown in the tool card above, no need to show a separate error message
-			// This keeps the UI clean and avoids redundant error information
-		}
+	private async handleGuidedMode(
+		userMessage: ChatMessage,
+		messages: ChatMessage[]
+	): Promise<void> {
+		return this.guidedModeOrchestrator.handleGuidedMode(userMessage, messages);
 	}
 
 	/**
-	 * Determine if query should use plan-execute framework
+	 * Start new guided conversation - delegates to GuidedModeOrchestrator
 	 */
-	private shouldUsePlanExecuteFramework(_content: string, availableTools: UnifiedTool[]): boolean {
-		// Always use plan-execute framework when agent mode is enabled and tools are available
-		return this.plugin.settings.agentMode && availableTools.length > 0;
+	private async startGuidedConversation(
+		userMessage: ChatMessage,
+		messages: ChatMessage[]
+	): Promise<void> {
+		return this.guidedModeOrchestrator.startGuidedConversation(
+			userMessage,
+			messages
+		);
 	}
 
 	/**
-	 * Handle Agent mode change and manage MCP connections
+	 * Handle user response to guided question - delegates to GuidedModeOrchestrator
 	 */
+	private async handleGuidedResponse(
+		userMessage: ChatMessage,
+		messages: ChatMessage[]
+	): Promise<void> {
+		return this.guidedModeOrchestrator.handleGuidedResponse(
+			userMessage,
+			messages
+		);
+	}
+
+	/**
+	  /**
+	   * Handle Agent mode change and manage MCP connections
+	   */
 	private async handleAgentModeChange(agentMode: boolean): Promise<void> {
 		const mcpManager = this.plugin.getMCPManager();
 		if (!mcpManager) {
-			Logger.debug('MCP Manager not available');
+			Logger.debug("MCP Manager not available");
 			return;
 		}
 
 		try {
 			if (agentMode) {
 				// Agent mode enabled - connect auto-connect servers
-				Logger.debug('Agent mode enabled, connecting MCP servers...');
+				Logger.debug("Agent mode enabled, connecting MCP servers...");
 				await mcpManager.connectAutoConnectServers();
 			} else {
 				// Agent mode disabled - disconnect all servers
-				Logger.debug('Agent mode disabled, disconnecting MCP servers...');
+				Logger.debug("Agent mode disabled, disconnecting MCP servers...");
 				await mcpManager.disconnectAllServers();
 			}
 		} catch (error) {
-			Logger.error('Error handling MCP connections during Agent mode change:', error);
+			Logger.error(
+				"Error handling MCP connections during Agent mode change:",
+				error
+			);
 		}
 	}
 
@@ -2651,542 +1357,99 @@ Remember: Always respond to the user. If you use tools, explain what you're doin
 	}
 
 	/**
-	 * Set up UI event listeners
+	 * Handle new chat creation
 	 */
-	private setupUIEventListeners(): void {
-		this.cleanupEventListeners();
-
-		// New chat event
-		const newChatHandler = async () => {
-			Logger.debug('New chat button clicked - starting new session process');
-
-			// Clear context first
-			Logger.debug('Clearing context manager');
-			this.contextManager.clearContext();
-			this.updateContextDisplay();
-
-			// Create new session
-			Logger.debug('Creating new session via sessionManager');
-			const oldSession = this.currentSession;
-			this.currentSession = await this.sessionManager.newChat();
-			Logger.debug('New session created:', {
-				oldSessionId: oldSession?.id,
-				newSessionId: this.currentSession?.id,
-				newSessionMessages: this.currentSession?.messages?.length || 0
-			});
-
-			// Update session name in header
-			this.uiBuilder.updateSessionNameDisplay(this.currentSession.name);
-
-			// Keep current conversation mode (already loaded from SQLite on startup)
-			// No need to apply defaultConversationMode - user's preference is already persisted
-			Logger.debug('Using current conversation mode:', this.plugin.settings.conversationMode);
-			
-			// Update mode selector UI to reflect current mode
-			window.dispatchEvent(new CustomEvent('llmsider-conversation-mode-changed', { 
-				detail: { mode: this.plugin.settings.conversationMode } 
-			}));
-
-			// Clear and re-render messages
-			Logger.debug('Rendering messages for new session');
-			this.messageManager.renderMessages(this.currentSession);
-
-			// Force refresh UI state after new session creation
-			Logger.debug('Refreshing UI state');
-			this.refreshUIState();
-
-			Logger.debug('New chat process completed with mode:', this.plugin.settings.conversationMode);
-		};
-		this.uiEventListeners.set('llmsider-new-chat', newChatHandler);
-		window.addEventListener('llmsider-new-chat', newChatHandler);
-
-		// Show history event
-		const showHistoryHandler = () => this.sessionManager.showChatHistory();
-		this.uiEventListeners.set('llmsider-show-history', showHistoryHandler);
-		window.addEventListener('llmsider-show-history', showHistoryHandler);
-
-		// Show context options event
-		const showContextHandler = () => this.inputHandler?.showContextOptions();
-		this.uiEventListeners.set('llmsider-show-context-options', showContextHandler);
-		window.addEventListener('llmsider-show-context-options', showContextHandler);
-
-		// Agent mode change event
-		const agentModeChangeHandler = (event: any) => {
-			const { agentMode } = event.detail;
-			Logger.debug('Agent mode changed:', agentMode);
-
-			// Handle MCP server connections based on Agent mode
-			this.handleAgentModeChange(agentMode);
-
-			// Refresh message actions for all existing messages
-			if (this.currentSession) {
-				this.messageManager.refreshMessageActions(this.currentSession);
-			}
-		};
-		this.uiEventListeners.set('llmsider-agent-mode-changed', agentModeChangeHandler);
-		window.addEventListener('llmsider-agent-mode-changed', agentModeChangeHandler);
-		
-		// Mode changed event (for the new ConversationMode selector)
-		const modeChangedHandler = (event: any) => {
-			const { mode } = event.detail;
-			Logger.debug('Conversation mode changed:', mode);
-			// No special handling needed currently, mode is already saved in settings
-		};
-		this.uiEventListeners.set('llmsider-mode-changed', modeChangedHandler);
-		window.addEventListener('llmsider-mode-changed', modeChangedHandler);
-
-		// Add provider for message comparison event
-		const addProviderForMessageHandler = (event: any) => {
-			const { messageId, triggerButton } = event.detail;
-			Logger.debug('Add provider for message:', messageId);
-			this.handleAddProviderForMessage(messageId, triggerButton);
-		};
-		this.uiEventListeners.set('llmsider-add-provider-for-message', addProviderForMessageHandler);
-		window.addEventListener('llmsider-add-provider-for-message', addProviderForMessageHandler);
-
-		// Clear chat event
-		const clearChatHandler = async () => {
-			await this.handleClearCurrentChat();
-		};
-		this.uiEventListeners.set('llmsider-clear-chat', clearChatHandler);
-		window.addEventListener('llmsider-clear-chat', clearChatHandler);
-
-		// Edit message event
-		const editMessageHandler = (event: any) => {
-			const { messageId, message } = event.detail;
-			this.messageManager.handleEditMessage(messageId, message, this.currentSession, this.inputElement);
-		};
-		this.uiEventListeners.set('llmsider-edit-message', editMessageHandler);
-		window.addEventListener('llmsider-edit-message', editMessageHandler);
-
-		// Diff reprocess event
-		const diffReprocessHandler = (event: any) => {
-			const { messageId, contentEl } = event.detail;
-			if (this.currentSession) {
-				const message = this.currentSession.messages.find(msg => msg.id === messageId);
-				if (message && message.metadata?.hasJSDiff && message.metadata?.diffResult) {
-					this.diffProcessor.renderJSDiffVisualization(
-						contentEl,
-						message.metadata.diffResult,
-						message.metadata.originalContent!,
-						message.metadata.modifiedContent!
-					);
+	/**
+	 * Handle diff reprocess event
+	 */
+	private handleDiffReprocess(messageId: string): void {
+		if (this.currentSession) {
+			const message = this.currentSession.messages.find(
+				(msg) => msg.id === messageId
+			);
+			if (
+				message &&
+				message.metadata?.hasJSDiff &&
+				message.metadata?.diffResult
+			) {
+				const messageEl = document.querySelector(
+					`[data-message-id="${messageId}"]`
+				);
+				if (messageEl) {
+					const contentEl = messageEl.querySelector(
+						".llmsider-message-content"
+					) as HTMLElement;
+					if (contentEl) {
+						this.diffProcessor.renderJSDiffVisualization(
+							contentEl,
+							message.metadata.diffResult,
+							message.metadata.originalContent!,
+							message.metadata.modifiedContent!
+						);
+					}
 				}
 			}
-		};
-		this.uiEventListeners.set('llmsider-reprocess-diff', diffReprocessHandler);
-		window.addEventListener('llmsider-reprocess-diff', diffReprocessHandler);
-
-		// Render guided card event (for reloaded guided messages)
-		const renderGuidedCardHandler = (event: any) => {
-			const { message } = event.detail;
-			if (message?.metadata?.isGuidedQuestion) {
-				setTimeout(() => {
-					// When reloading from session, mark as reloaded so options/tools are disabled
-					this.renderGuidedCard(message, true);
-				}, 100); // Delay to ensure DOM is ready
-			}
-		};
-		this.uiEventListeners.set('llmsider-render-guided-card', renderGuidedCardHandler);
-		window.addEventListener('llmsider-render-guided-card', renderGuidedCardHandler);
-
-// Provider tab switched event
-const providerTabSwitchedHandler = async (event: any) => {
-const { messageId, providerKey } = event.detail;
-Logger.debug('Provider tab switched:', messageId, providerKey);
-
-// Only save the session, do NOT change the global active provider
-// This keeps the provider selector independent from tab switching
-if (this.currentSession) {
-await this.plugin.updateChatSession(this.currentSession.id, {
-messages: this.currentSession.messages,
-updated: Date.now()
-});
-}
-};
-		this.uiEventListeners.set('llmsider-provider-tab-switched', providerTabSwitchedHandler);
-		window.addEventListener('llmsider-provider-tab-switched', providerTabSwitchedHandler);
-
-		// Provider tab removed event
-		const providerTabRemovedHandler = async (event: any) => {
-			const { messageId, providerKey } = event.detail;
-			Logger.debug('Provider tab removed:', messageId, providerKey);
-			if (this.currentSession) {
-				await this.plugin.updateChatSession(this.currentSession.id, {
-					messages: this.currentSession.messages,
-					updated: Date.now()
-				});
-			}
-		};
-		this.uiEventListeners.set('llmsider-provider-tab-removed', providerTabRemovedHandler);
-		window.addEventListener('llmsider-provider-tab-removed', providerTabRemovedHandler);
+		}
 	}
 
 	/**
-	 * Clean up event listeners
+	 * Handle render guided card event
 	 */
-	private cleanupEventListeners(): void {
-		this.uiEventListeners.forEach((handler, eventName) => {
-			window.removeEventListener(eventName, handler);
-		});
-		this.uiEventListeners.clear();
+	private handleRenderGuidedCard(messageId: string): void {
+		if (this.currentSession) {
+			const message = this.currentSession.messages.find(
+				(msg) => msg.id === messageId
+			);
+			if (message?.metadata?.isGuidedQuestion) {
+				// When reloading from session, mark as reloaded so options/tools are disabled
+				this.guidedModeUIRenderer.renderGuidedCard(message, true);
+			}
+		}
 	}
 
+	/**
+	 * Handle provider tab switched event
+	 */
 	/**
 	 * Update context display
 	 */
 	private updateContextDisplay(): void {
-		if (!this.contextDisplay) return;
+		this.uiCoordinator.updateContextDisplay();
+	}
 
-		this.contextDisplay.innerHTML = '';
-
-		if (!this.contextManager.hasContext()) {
-			this.contextDisplay.style.display = 'none';
-			return;
-		}
-
-		this.contextDisplay.style.display = 'block';
-		const contextContainer = this.contextDisplay.createDiv({ cls: 'llmsider-context-container' });
-
-		// Display note contexts
-		const noteContexts = this.contextManager.getCurrentNoteContext();
-		noteContexts.forEach((noteContext) => {
-			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag' });
-
-			// Create icon container with SVG
-			const iconContainer = contextTag.createEl('span', { cls: 'llmsider-context-icon' });
-			
-			// Determine icon based on type
-			let svgIcon = '';
-			if (noteContext.type === 'image') {
-				// Image icon
-				svgIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-					<circle cx="8.5" cy="8.5" r="1.5"></circle>
-					<polyline points="21 15 16 10 5 21"></polyline>
-				</svg>`;
-			} else if (noteContext.type === 'document') {
-				// Document icon
-				svgIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-					<polyline points="14 2 14 8 20 8"></polyline>
-					<line x1="16" y1="13" x2="8" y2="13"></line>
-					<line x1="16" y1="17" x2="8" y2="17"></line>
-					<polyline points="10 9 9 9 8 9"></polyline>
-				</svg>`;
-			} else {
-				// Default file icon
-				svgIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-					<polyline points="14 2 14 8 20 8"></polyline>
-				</svg>`;
-			}
-			
-			iconContainer.innerHTML = svgIcon;
-			contextTag.createEl('span', { cls: 'llmsider-context-name', text: noteContext.name });
-
-			const removeBtn = contextTag.createEl('button', {
-				cls: 'llmsider-context-remove',
-				text: '×',
-				title: 'Remove note context'
-			});
-
-			removeBtn.onclick = () => {
-				this.contextManager.removeNoteContext(noteContext.name);
-				this.updateContextDisplay();
-			};
-		});
-
-		// Display selected text contexts
-		const selectedTextContexts = this.contextManager.getSelectedTextContexts();
-		selectedTextContexts.forEach((selectedTextContext, index) => {
-			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag' });
-
-			// Scissors icon for selected text
-			const iconContainer = contextTag.createEl('span', { cls: 'llmsider-context-icon' });
-			iconContainer.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<circle cx="6" cy="6" r="3"></circle>
-				<circle cx="6" cy="18" r="3"></circle>
-				<line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-				<line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-				<line x1="8.12" y1="8.12" x2="12" y2="12"></line>
-			</svg>`;
-			
-			// Show index if multiple selections
-			const displayText = selectedTextContexts.length > 1 
-				? `${index + 1}. ${selectedTextContext.preview}`
-				: selectedTextContext.preview;
-			
-			contextTag.createEl('span', {
-				cls: 'llmsider-context-name',
-				text: displayText,
-				title: selectedTextContext.text
-			});
-
-			const removeBtn = contextTag.createEl('button', {
-				cls: 'llmsider-context-remove',
-				text: '×',
-				title: 'Remove selected text'
-			});
-
-			removeBtn.onclick = () => {
-				this.contextManager.removeSelectedTextContext(index);
-				this.updateContextDisplay();
-			};
-		});
-
-		// Display suggested files (in pending state)
-		this.renderSuggestedFiles(contextContainer);
+	/**
+	 * Show context content in a modal
+	 */
+	public showContextModal(title: string, content: string, type?: string): void {
+		this.uiCoordinator.showContextModal(title, content, type);
 	}
 
 	/**
 	 * Render suggested files with gray/pending styling
 	 */
 	private renderSuggestedFiles(container: HTMLElement): void {
-		// Clear existing suggested elements from container if they exist
-		this.activeSuggestions.forEach((suggestion, key) => {
-			if (suggestion.element && suggestion.element.parentElement === container) {
-				clearTimeout(suggestion.timeout);
-				suggestion.element.remove();
-			}
-		});
-		// Note: We don't clear the map here as new suggestions may come in
-
-		// Only show suggestions from activeSuggestions map
-		this.activeSuggestions.forEach((suggestion, filePath) => {
-			const suggestionTag = container.createEl('span', { 
-				cls: 'llmsider-context-tag llmsider-suggested-tag'
-			});
-
-			// Create icon container with SVG (suggestion icon)
-			const iconContainer = suggestionTag.createEl('span', { cls: 'llmsider-context-icon' });
-			iconContainer.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-				<line x1="9" y1="10" x2="15" y2="10"></line>
-				<line x1="12" y1="7" x2="12" y2="13"></line>
-			</svg>`;
-
-			// Get filename from path
-			const fileName = filePath.split('/').pop() || filePath;
-			
-			suggestionTag.createEl('span', { 
-				cls: 'llmsider-context-name', 
-				text: fileName,
-				title: `Suggested: ${filePath}`
-			});
-
-			const removeBtn = suggestionTag.createEl('button', {
-				cls: 'llmsider-context-remove',
-				text: '×',
-				title: 'Dismiss suggestion'
-			});
-
-			removeBtn.onclick = (e) => {
-				e.stopPropagation();
-				this.dismissSuggestion(filePath);
-			};
-
-			// Click on the tag to confirm the suggestion
-			suggestionTag.onclick = () => {
-				this.confirmSuggestion(filePath);
-			};
-
-			suggestionTag.style.cursor = 'pointer';
-			suggestionTag.title = 'Click to add this file to context';
-
-			// Update the element reference in the map
-			suggestion.element = suggestionTag;
-		});
+		this.suggestionsCoordinator.renderSuggestedFiles(container);
 	}
 
 	/**
 	 * Add suggestions for related files
 	 */
 	async showSuggestionsForFile(file: TFile): Promise<void> {
-		if (!this.suggestedFilesManager.isEnabled()) {
-			return;
-		}
-
-		try {
-			const suggestions = await this.suggestedFilesManager.findRelatedFiles(file, 3);
-			
-			if (suggestions.length === 0) {
-				return;
-			}
-
-			Logger.debug('Found suggestions:', suggestions.map(s => s.file.path));
-
-			// Add each suggestion with timeout
-			suggestions.forEach(suggestion => {
-				this.addSuggestion(suggestion);
-			});
-
-			// Update display to show suggestions
-			this.updateContextDisplay();
-		} catch (error) {
-			Logger.error('Error getting suggestions:', error);
-		}
+		await this.suggestionsCoordinator.showSuggestionsForFile(file);
 	}
 
 	/**
-	 * Add a single suggestion with auto-dismiss timeout
-	 */
-	private addSuggestion(suggestion: SuggestedFile): void {
-		const filePath = suggestion.file.path;
-
-		// Don't suggest files already in context
-		const existingContexts = this.contextManager.getCurrentNoteContext();
-		if (existingContexts.some(ctx => ctx.filePath === filePath)) {
-			return;
-		}
-
-		// Don't re-add if already suggested
-		if (this.activeSuggestions.has(filePath)) {
-			return;
-		}
-
-		// Create timeout for auto-dismiss
-		const timeout = window.setTimeout(() => {
-			this.dismissSuggestion(filePath);
-		}, this.suggestedFilesManager.getSuggestionTimeout());
-
-		// Store suggestion with timeout reference and placeholder element
-		this.activeSuggestions.set(filePath, {
-			timeout,
-			element: document.createElement('span') // Placeholder, will be replaced in render
-		});
-	}
-
-	/**
-	 * Confirm a suggestion by adding it to context
-	 */
-	private async confirmSuggestion(filePath: string): Promise<void> {
-		const suggestion = this.activeSuggestions.get(filePath);
-		if (!suggestion) return;
-
-		// Clear timeout
-		clearTimeout(suggestion.timeout);
-
-		// Remove from suggestions
-		this.activeSuggestions.delete(filePath);
-
-		// Find the file
-		const file = this.app.vault.getAbstractFileByPath(filePath);
-		if (file instanceof TFile) {
-			// Add to context
-			await this.addFileReference(file);
-		}
-
-		// Update display
-		this.updateContextDisplay();
-	}
-
-	/**
-	 * Dismiss a suggestion without adding to context
-	 */
-	private dismissSuggestion(filePath: string): void {
-		const suggestion = this.activeSuggestions.get(filePath);
-		if (!suggestion) return;
-
-		// Clear timeout
-		clearTimeout(suggestion.timeout);
-
-		// Remove from suggestions
-		this.activeSuggestions.delete(filePath);
-
-		// Update display
-		this.updateContextDisplay();
-	}
-
-	/**
-	 * Handle session loaded from history
-	 */
-	private handleSessionLoaded(session: ChatSession): void {
-		Logger.debug('handleSessionLoaded - session loaded:', session.id);
-
-		// Clear context first when switching sessions
-		// This prevents stale context from previous sessions or after plugin reload
-		Logger.debug('Clearing context manager for session switch');
-		this.contextManager.clearContext();
-
-		// Clear any active suggestions
-		this.clearAllSuggestions();
-
-		// Update current session
-		this.currentSession = session;
-
-		// Update session name in header
-		this.uiBuilder.updateSessionNameDisplay(session.name);
-
-		// Re-render messages for the loaded session
-		this.messageManager.renderMessages(this.currentSession);
-
-		// Refresh UI state
-		this.refreshUIState();
-
-		// Update context display (will show no context after clearing)
-		this.updateContextDisplay();
-
-		// Refresh message actions and diff rendering
-		setTimeout(() => {
-			this.messageManager.scrollToBottom();
-			this.messageManager.refreshMessageActions(this.currentSession);
-			this.messageManager.refreshDiffRendering(this.currentSession);
-		}, 100);
-
-		Logger.debug('Session loaded and UI refreshed');
-	}
-
-	/**
-	 * Refresh UI state after session changes
-	 */
+	   * Handle session loaded from history
+	  /**
+	   * Refresh UI state after session changes
+	   */
 	private refreshUIState(): void {
-		Logger.debug('refreshUIState - starting UI refresh');
-
-		// Reset input element state
-		if (this.inputElement) {
-			Logger.debug('refreshUIState - resetting input element');
-			this.inputElement.disabled = false;
-			this.inputElement.placeholder = 'Type your message...';
-		} else {
-			Logger.debug('refreshUIState - WARNING: inputElement not found');
-		}
-
-		// Reset button states
-		if (this.sendButton) {
-			Logger.debug('refreshUIState - showing send button');
-			this.sendButton.style.display = 'block';
-		} else {
-			Logger.debug('refreshUIState - WARNING: sendButton not found');
-		}
-
-		if (this.stopButton) {
-			Logger.debug('refreshUIState - hiding stop button');
-			this.stopButton.style.display = 'none';
-		} else {
-			Logger.debug('refreshUIState - WARNING: stopButton not found');
-		}
-
-		// Update mode button if exists (no longer needed for agent mode)
-		// this.uiBuilder.updateModeButton(this.currentMode);
+		this.uiCoordinator.refreshUIState();
 
 		// Update provider select if needed
 		if (this.inputHandler) {
-			Logger.debug('refreshUIState - updating provider select');
 			this.inputHandler.updateProviderSelect();
-		} else {
-			Logger.debug('refreshUIState - WARNING: inputHandler not found');
 		}
-
-		// Force focus to input after state refresh
-		setTimeout(() => {
-			if (this.inputElement) {
-				Logger.debug('refreshUIState - focusing input element');
-				this.inputElement.focus();
-			}
-		}, 100);
-
-		Logger.debug('UI state refreshed after session change');
 	}
 
 	// Public methods for external access
@@ -3196,12 +1459,21 @@ updated: Date.now()
 	 */
 	public async addFileReference(file: TFile): Promise<void> {
 		try {
-			const result = await this.contextManager.addFileToContext(file);
+			// Pass model name to ensure proper token limits for file extraction
+			const provider = this.plugin.getActiveProvider();
+			const modelName = provider?.getModelName();
+			const result = await this.contextManager.addFileToContext(
+				file,
+				modelName
+			);
 
 			if (result.success) {
 				this.updateContextDisplay();
 				let message = result.message;
-				if (result.note?.metadata?.extractedImages && result.note.metadata.extractedImages.length > 0) {
+				if (
+					result.note?.metadata?.extractedImages &&
+					result.note.metadata.extractedImages.length > 0
+				) {
 					message += ` (includes ${result.note.metadata.extractedImages.length} image(s))`;
 				}
 				new Notice(message);
@@ -3209,11 +1481,20 @@ updated: Date.now()
 				// Show suggestions for related files
 				await this.showSuggestionsForFile(file);
 			} else {
-				new Notice(`Failed to add file: ${result.message}`);
+				const i18n = this.plugin.getI18nManager();
+				new Notice(
+					i18n?.t("notifications.chatView.failedToAddFile", {
+						message: result.message,
+					}) || `Failed to add file: ${result.message}`
+				);
 			}
 		} catch (error) {
-			Logger.error('Error adding file reference:', error);
-			new Notice('Failed to add file reference');
+			Logger.error("Error adding file reference:", error);
+			const i18n = this.plugin.getI18nManager();
+			new Notice(
+				i18n?.t("notifications.chatView.failedToAddFileReference") ||
+				"Failed to add file reference"
+			);
 		}
 	}
 
@@ -3230,515 +1511,1026 @@ updated: Date.now()
 	onProviderChanged() {
 		this.inputHandler?.updateProviderSelect();
 		this.uiBuilder.updateProviderButtonPublic(); // Update provider button display
-	}
 
-	/**
-	 * Handle Final Answer message from Plan-Execute processor
-	 */
-	private handleFinalAnswerMessage(message: ChatMessage): void {
-		this.plugin.debug('[ChatView] Handling Final Answer message:', {
-			id: message.id,
-			isStreaming: message.metadata?.isStreaming,
-			contentLength: message.content.length
-		});
-
-		// Check if this is a new message or update to existing
-		if (this.currentSession) {
-			const existingMessageIndex = this.currentSession.messages.findIndex(m => m.id === message.id);
-
-			if (existingMessageIndex >= 0) {
-				// Update existing message in session
-				this.currentSession.messages[existingMessageIndex] = { ...message };
-			} else {
-				// Add new message to session
-				this.currentSession.messages.push({ ...message });
-				Logger.debug('Added new Final Answer message to session');
-			}
-		}
-
-		// Use streaming update method instead of addMessageToUI
-		this.messageManager.updateStreamingMessage(message, this.currentSession);
-
-		// If streaming is complete, save the session
-		if (!message.metadata?.isStreaming && this.currentSession) {
-			Logger.debug('Final Answer streaming complete, saving session');
-			this.plugin.updateChatSession(this.currentSession.id, {
-				messages: this.currentSession.messages
-			}).catch(error => {
-				Logger.error('Error saving session after Final Answer:', error);
-			});
+		// Reset agent to force re-initialization with new provider
+		if (this.mastraPlanExecuteProcessor) {
+			this.mastraPlanExecuteProcessor.resetAgent();
 		}
 	}
+
+	// Agent 模式不需要 final answer - handleFinalAnswerMessage 方法已删除
+	// 所有执行结果通过工具执行过程直接显示
 
 	/**
 	 * Handle plan created - save plan data to session for restoration
 	 */
-	private async handlePlanCreated(planData: any, tasks: any[]): Promise<void> {
+	private async handlePlanCreated(
+		planData: unknown,
+		tasks: unknown[],
+		executionMode?: "dag" | "sequential"
+	): Promise<void> {
 		if (!this.currentSession) {
-			Logger.debug('No current session to save plan data');
+			Logger.debug("No current session to save plan data");
 			return;
 		}
 
-		Logger.debug('Saving plan data to session:', {
-			stepsCount: planData.steps?.length,
-			tasksCount: tasks.length
+		Logger.debug("Saving plan data to session:", {
+			stepsCount: (planData as any).steps?.length,
+			tasksCount: tasks.length,
+			executionMode,
 		});
 
 		// Create a plan message to persist in session
 		const planMessage: ChatMessage = {
-			id: 'plan-' + Date.now().toString(),
-			role: 'assistant',
+			id: "plan-" + Date.now().toString(),
+			role: "assistant",
 			content: JSON.stringify(planData),
 			timestamp: Date.now(),
 			metadata: {
-				phase: 'plan',
+				phase: "plan",
 				isPlanExecuteMode: true,
 				internalMessage: false, // This should be displayed
-				planTasks: JSON.parse(JSON.stringify(tasks)) as any // Save tasks for reload
-			}
+				planTasks: JSON.parse(JSON.stringify(tasks)), // Save tasks for reload
+				executionMode: executionMode || "dag", // Save execution mode for restoration
+			},
 		};
 
 		// Add to session and save
 		this.currentSession.messages.push(planMessage);
 		await this.plugin.updateChatSession(this.currentSession.id, {
-			messages: this.currentSession.messages
+			messages: this.currentSession.messages,
 		});
 
-		Logger.debug('Plan data saved to session for restoration');
+		Logger.debug("Plan data saved to session for restoration");
+
+		// Auto-generate session title for agent mode after plan is created
+		// Find the user message that triggered this plan (the last user message)
+		const lastUserMessage = [...this.currentSession.messages]
+			.reverse()
+			.find((m) => m.role === "user");
+
+		if (lastUserMessage) {
+			// Generate a summary of the plan for title generation
+			let planSummary = "";
+			try {
+				if (tasks && tasks.length > 0) {
+					const taskDescriptions = (tasks as any[])
+						.map((t, i) => `${i + 1}. ${t.title || t.tool || "Task"}`)
+						.join("; ");
+					planSummary = `计划：${taskDescriptions}`;
+				} else {
+					planSummary = JSON.stringify(planData).substring(0, 200);
+				}
+			} catch (error) {
+				Logger.error("Failed to generate plan summary for title:", error);
+				planSummary = "Agent 计划已创建";
+			}
+
+			await this.messagePreparationService.autoGenerateSessionTitle(
+				lastUserMessage,
+				planMessage
+			);
+		}
 	}
 
 	/**
 	 * Handle clearing the current chat
 	 */
-	private async handleClearCurrentChat(): Promise<void> {
-		if (!this.currentSession) {
-			Logger.debug('No current session to clear');
-			return;
-		}
-
-		Logger.debug('Clearing current chat session:', this.currentSession.id);
-
-		// Stop any ongoing streaming or execution before clearing
-		Logger.debug('Stopping any ongoing streaming before clearing chat');
-		this.handleStopStreaming();
-		
-		// Stop Plan-Execute processor if running
-		if (this.planExecuteProcessor) {
-			Logger.debug('Stopping Plan-Execute processor before clearing chat');
-			this.planExecuteProcessor.stop();
-		}
-
-		// Explicitly reset button states to ensure UI is correct
-		Logger.debug('Resetting button states after stopping');
-		this.streamManager.resetButtonStates();
-
-		// Clear the messages from the current session
-		this.currentSession.messages = [];
-
-		// Clear the UI
-		this.messageManager.renderMessages(this.currentSession);
-
-		// Save the updated session
-		await this.plugin.updateChatSession(this.currentSession.id, {
-			messages: [],
-			updated: Date.now()
-		});
-
-		Logger.debug('Current chat cleared successfully');
-	}
-
 	/**
 	 * Handle provider tab change
 	 */
-	/**
-	 * Handle add provider for specific message comparison
-	 */
-	private async handleAddProviderForMessage(messageId: string, triggerButton?: HTMLElement): Promise<void> {
-		if (!this.currentSession) {
-			new Notice('No active session');
-			return;
-		}
-
-		Logger.debug('Add provider for message:', messageId);
-		
-		// Find the target assistant message
-		const targetMessage = this.currentSession.messages.find(m => m.id === messageId);
-		if (!targetMessage || targetMessage.role !== 'assistant') {
-			new Notice('Message not found or not an assistant message');
-			return;
-		}
-		
-		// Find the message index
-		const messageIndex = this.currentSession.messages.findIndex(m => m.id === messageId);
-
-		// Show provider selection dropdown near the trigger button
-		this.providerTabsManager.showAddProviderModal(async (selectedProvider: string) => {
-			await this.addProviderResponseForMessage(targetMessage, messageIndex, selectedProvider);
-		}, triggerButton);
-	}
-
-	/**
-	 * Add a new provider response to an existing assistant message
-	 */
-	private async addProviderResponseForMessage(
-		targetMessage: ChatMessage,
-		messageIndex: number,
-		selectedProvider: string
-	): Promise<void> {
-		if (!this.currentSession) return;
-
-		Logger.debug('Adding provider response for message:', targetMessage.id, 'provider:', selectedProvider);
-
-		// Store current provider's content if not already stored
-		if (!targetMessage.providerResponses) {
-			targetMessage.providerResponses = {};
-			// Store the original content as the first provider response
-			const originalProvider = targetMessage.metadata?.provider || this.currentSession.provider;
-			if (originalProvider) {
-				targetMessage.providerResponses[originalProvider] = {
-					content: targetMessage.content,
-					timestamp: targetMessage.timestamp,
-					tokens: targetMessage.metadata?.tokens,
-					model: targetMessage.metadata?.model
-				};
-				targetMessage.activeProvider = originalProvider;
-			}
-		}
-
-		// Check if this provider already has a response
-		if (targetMessage.providerResponses[selectedProvider]) {
-			new Notice('This provider already has a response for this message');
-			return;
-		}
-
-		// Get all messages up to (but not including) the target assistant message
-		const conversationHistory = this.currentSession.messages.slice(0, messageIndex);
-		
-		// Find the last user message
-		const lastUserMessage = conversationHistory.filter(m => m.role === 'user').pop();
-		if (!lastUserMessage) {
-			new Notice('No user message found before this assistant message');
-			return;
-		}
-
-		// Initialize providerResponses if not exists
-		if (!targetMessage.providerResponses) {
-			targetMessage.providerResponses = {};
-			// Store the original content as the first provider response
-			const originalProvider = targetMessage.metadata?.provider || this.currentSession.provider;
-			if (originalProvider) {
-				targetMessage.providerResponses[originalProvider] = {
-					content: targetMessage.content,
-					timestamp: targetMessage.timestamp,
-					tokens: targetMessage.metadata?.tokens,
-					model: targetMessage.metadata?.model
-				};
-				targetMessage.activeProvider = originalProvider;
-			}
-		}
-
-// Get the message element first (before modifying data)
-const messageEl = document.querySelector(`[data-message-id="${targetMessage.id}"]`);
-if (!messageEl) {
-	Logger.error('Message element not found:', targetMessage.id);
-	return;
-}
-
-// Get content element
-const contentEl = messageEl.querySelector('.llmsider-message-content');
-if (!contentEl) {
-	Logger.error('Content element not found before rendering tabs');
-	return;
-}
-
-// Create placeholder response for the new provider
-targetMessage.providerResponses[selectedProvider] = {
-	content: '', // Empty content, will be filled with streaming
-	timestamp: Date.now()
-};
-
-// Set active provider to the new one
-targetMessage.activeProvider = selectedProvider;
-
-// First, render tabs at the top of contentEl (this will handle the new tab)
-this.messageRenderer.renderProviderTabsForMessage(messageEl as HTMLElement, targetMessage);
-
-// Now the tab is rendered, but we need to show loading in the content area
-// Remove all children EXCEPT the tabs container
-const tabsContainer = contentEl.querySelector('.llmsider-message-provider-tabs');
-const children = Array.from(contentEl.children);
-children.forEach(child => {
-	if (child !== tabsContainer) {
-		child.remove();
-	}
-});
-
-// Add loading indicator in the content area (AFTER tabs)
-// Use the same three-dot animation style as single provider
-const dotsContainer = (contentEl as HTMLElement).createEl('div', { cls: 'llmsider-typing-dots' });
-const middleDot = dotsContainer.createEl('span', { cls: 'llmsider-typing-dot' });
-middleDot.style.cssText = `
-	display: inline-block;
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background: var(--text-muted);
-	animation: typing 1.4s infinite both;
-	animation-delay: 0.2s;
-`;
-
-		// Temporarily switch provider
-		const originalProvider = this.currentSession.provider;
-		const originalActiveConnectionId = this.plugin.settings.activeConnectionId;
-		const originalActiveModelId = this.plugin.settings.activeModelId;
-		
-		// Parse and set the new provider
-		if (selectedProvider.includes('::')) {
-			const [connectionId, modelId] = selectedProvider.split('::');
-			this.plugin.settings.activeConnectionId = connectionId;
-			this.plugin.settings.activeModelId = modelId;
-		}
-		this.currentSession.provider = selectedProvider;
-
-		// Start streaming mode with stop button
-		const streamController = this.streamManager.startStreaming();
-		
-		// Set up stop handler - must call stopStreaming() to actually abort
-		this.streamManager.setStopHandler(() => {
-			Logger.debug('Multi-provider stream stopped by user');
-			
-			// Clear loading indicator if it's still showing
-			const currentContentEl = messageEl.querySelector('.llmsider-message-content');
-			if (currentContentEl) {
-				// Remove the typing dots container (same as single provider)
-				const dotsContainer = currentContentEl.querySelector('.llmsider-typing-dots');
-				if (dotsContainer) {
-					dotsContainer.remove();
-				}
-			}
-			
-			this.streamManager.stopStreaming();
-		});
-
-		try {
-			// Get the provider instance
-			const provider = this.plugin.getActiveProvider();
-			if (!provider) {
-				new Notice('Failed to get provider instance');
-				return;
-			}
-
-			// Build the messages for the provider
-			const systemPrompt = await this.getSystemPrompt();
-			
-			// Prepare conversation history without system message (will be passed separately)
-			const conversationMessages = conversationHistory.map((msg, idx) => ({
-				id: msg.id || `temp-${idx}`,
-				role: msg.role,
-				content: msg.content,
-				timestamp: msg.timestamp || Date.now(),
-				metadata: msg.metadata
-			}));
-
-			// Accumulated content for streaming
-			let accumulatedContent = '';
-
-		// Use streaming API with proper abort signal
-		await provider.sendStreamingMessage(conversationMessages, (chunk) => {
-			// Check if streaming was stopped
-			if (streamController.signal.aborted) return;
-
-			// Clear loading indicator on first chunk
-			if (chunk.delta && accumulatedContent === '') {
-				const currentContentEl = messageEl.querySelector('.llmsider-message-content');
-				if (currentContentEl) {
-					currentContentEl.classList.remove('llmsider-working-indicator');
-					// Remove the typing dots container, keep the tabs!
-					const dotsContainer = currentContentEl.querySelector('.llmsider-typing-dots');
-					if (dotsContainer) {
-						dotsContainer.remove();
-					}
-				}
-			}
-
-				if (chunk.delta) {
-					accumulatedContent += chunk.delta;
-					
-					// Update the provider response content
-					targetMessage.providerResponses![selectedProvider].content = accumulatedContent;
-
-					// Update the UI with streaming content
-					const currentContentEl = messageEl.querySelector('.llmsider-message-content');
-					if (currentContentEl) {
-						this.messageRenderer.updateStreamingContent(currentContentEl as HTMLElement, accumulatedContent);
-					}
-				}
-			}, streamController.signal, undefined, systemPrompt);
-
-			// Update final response
-			targetMessage.providerResponses[selectedProvider] = {
-				content: accumulatedContent,
-				timestamp: Date.now()
-			};
-
-			// Save the session
-			await this.plugin.updateChatSession(this.currentSession.id, {
-				messages: this.currentSession.messages,
-				updated: Date.now()
-			});
-
-			Logger.debug(`Response from ${this.getProviderLabel(selectedProvider)} completed`);
-		} catch (error) {
-			Logger.error('Error getting provider response:', error);
-			
-			// Handle abort error gracefully
-			if (error instanceof Error && error.name === 'AbortError') {
-				Logger.debug('Multi-provider stream was aborted by user');
-				// Keep partial content if any was received
-				if (targetMessage.providerResponses![selectedProvider].content) {
-					// Save partial result
-					await this.plugin.updateChatSession(this.currentSession.id, {
-						messages: this.currentSession.messages,
-						updated: Date.now()
-					});
-				} else {
-					// Remove the empty response
-					delete targetMessage.providerResponses[selectedProvider];
-					// Re-render to remove the failed tab
-					this.messageManager.renderMessages(this.currentSession);
-				}
-				return;
-			}
-			
-			// Remove the failed response
-			delete targetMessage.providerResponses[selectedProvider];
-			// Re-render to remove the failed tab
-			this.messageManager.renderMessages(this.currentSession);
-			
-			if (error instanceof Error) {
-				new Notice(`Error: ${error.message}`);
-			} else {
-				new Notice('Failed to get response from provider');
-			}
-		} finally {
-			// Always reset button states when streaming completes or fails
-			this.streamManager.resetButtonStates();
-			
-			// Restore original provider settings
-			this.currentSession.provider = originalProvider;
-			this.plugin.settings.activeConnectionId = originalActiveConnectionId;
-			this.plugin.settings.activeModelId = originalActiveModelId;
-		}
-	}
-
-	/**
-	 * Get human-readable label for a provider
-	 */
-	private getProviderLabel(provider: string): string {
-		if (provider.includes('::')) {
-			const [connectionId, modelId] = provider.split('::');
-			const connection = this.plugin.settings.connections?.find((c: LLMConnection) => c.id === connectionId);
-			const model = this.plugin.settings.models?.find((m: LLMModel) => m.id === modelId && m.connectionId === connectionId);
-			if (model && connection) {
-				return `${connection.name}: ${model.name}`;
-			}
-		}
-		// Fallback to provider type name
-		return provider.charAt(0).toUpperCase() + provider.slice(1);
-	}
-
-	/**
-	 * Update provider tabs UI
-	 */
-	private updateProviderTabs(): void {
-		if (!this.providerTabsManager || !this.currentSession) return;
-		
-		// Remove any existing tabs container first
-		const existingTabs = this.messageContainer.querySelector('.llmsider-provider-tabs-container');
-		if (existingTabs) {
-			existingTabs.remove();
-		}
-	}
-
 	/**
 	 * Create step indicators for AI response process
 	 * Returns container element that can be updated during the process
 	 */
 	private createStepIndicators(): HTMLElement {
-		const container = this.messageContainer.createDiv({ cls: 'llmsider-step-indicators' });
-		
-		// Check if auto-search is enabled (not just vector DB loaded)
-		const isVectorSearchEnabled = this.plugin.settings.vectorSettings.autoSearchEnabled;
-		
-		// Step 1: Vector Search (only if enabled)
-		if (isVectorSearchEnabled) {
-			const vectorStep = container.createDiv({ cls: 'llmsider-step-indicator pending' });
-			vectorStep.dataset.step = 'vector-search';
-			
-			const vectorIcon = vectorStep.createDiv({ cls: 'llmsider-step-icon' });
-			setIcon(vectorIcon, 'sparkles');
-			
-			vectorStep.createDiv({ 
-				cls: 'llmsider-step-text',
-				text: this.i18n.t('common.searchingLocalContext')
-			});
-		}
-		
-		// Step 2: AI Response
-		const aiStep = container.createDiv({ cls: 'llmsider-step-indicator pending' });
-		aiStep.dataset.step = 'ai-response';
-		
-		const aiIcon = aiStep.createDiv({ cls: 'llmsider-step-icon' });
-		setIcon(aiIcon, 'bot');
-		
-		aiStep.createDiv({ 
-			cls: 'llmsider-step-text',
-			text: this.i18n.t('common.waitingForAIResponse')
-		});
-		
-		return container;
+		return this.uiCoordinator.createStepIndicators();
 	}
 
 	/**
 	 * Update step indicator state
 	 */
-	private updateStepIndicator(container: HTMLElement | null, stepName: string, state: 'pending' | 'active' | 'completed') {
-		if (!container) return;
-		
-		const stepEl = container.querySelector(`[data-step="${stepName}"]`) as HTMLElement;
-		if (!stepEl) return;
-		
-		// Remove all state classes
-		stepEl.classList.remove('pending', 'active', 'completed');
-		
-		// Add new state class
-		stepEl.classList.add(state);
-		
-		// Update icon for completed state
-		if (state === 'completed') {
-			const iconEl = stepEl.querySelector('.llmsider-step-icon') as HTMLElement;
-			if (iconEl) {
-				iconEl.empty();
-				setIcon(iconEl, 'check-circle');
-			}
-		}
+	private updateStepIndicator(
+		container: HTMLElement | null,
+		stepName: string,
+		state: "pending" | "active" | "completed"
+	) {
+		this.uiCoordinator.updateStepIndicator(container, stepName, state);
+	}
+
+	/**
+	 * Display vector search results summary
+	 */
+	private displayVectorSearchResults(
+		container: HTMLElement | null,
+		results: any[]
+	) {
+		this.uiCoordinator.displayVectorSearchResults(container, results);
 	}
 
 	/**
 	 * Remove step indicators
 	 */
 	private removeStepIndicators(container: HTMLElement | null) {
-		if (container && container.parentElement) {
-			container.remove();
-		}
+		this.uiCoordinator.removeStepIndicators(container);
 	}
 
 	/**
 	 * Refresh context search button state (called after vector DB initialization)
 	 */
 	public refreshContextSearchButton(): void {
-		if (this.uiBuilder) {
-			this.uiBuilder.refreshContextSearchButton();
+		this.uiCoordinator.refreshContextSearchButton();
+	}
+
+	/**
+	 * Start guided conversation using Mastra framework
+	 */
+	private async startGuidedConversationWithMastra(
+		userMessage: ChatMessage,
+		messages: ChatMessage[]
+	): Promise<void> {
+		const flowStartTime = Date.now();
+		Logger.debug(
+			"[GuidedMode-Mastra] ========== START startGuidedConversationWithMastra =========="
+		);
+		Logger.debug(
+			"[GuidedMode-Mastra] Flow start timestamp:",
+			new Date().toISOString()
+		);
+		Logger.debug("[GuidedMode-Mastra] Session ID:", this.currentSession?.id);
+		Logger.debug(
+			"[GuidedMode-Mastra] User message preview:",
+			typeof userMessage.content === "string"
+				? userMessage.content.substring(0, 150)
+				: JSON.stringify(userMessage.content).substring(0, 150)
+		);
+		Logger.debug(
+			"[GuidedMode-Mastra] Message history length:",
+			messages.length
+		);
+
+		let stepIndicatorsEl: HTMLElement | null = null;
+
+		try {
+			// Initialize shared memory manager if not already done
+			if (!this.sharedMemoryManager) {
+				Logger.debug(
+					"[GuidedMode-Mastra] Initializing shared Memory Manager..."
+				);
+				this.sharedMemoryManager = await AgentFactory.createSharedMemoryManager(
+					this.plugin,
+					this.i18n
+				);
+				Logger.debug("[GuidedMode-Mastra] ✓ Shared Memory Manager initialized");
+			}
+
+			// Get available tools
+			const toolsInitTime = Date.now();
+			const allTools = await this.plugin.toolManager.getAllTools();
+			const toolsMap: Record<string, any> = {};
+			allTools.forEach((tool) => {
+				toolsMap[tool.name] = tool;
+			});
+			Logger.debug(
+				"[GuidedMode-Mastra] ✓ Tools available:",
+				Object.keys(toolsMap).length,
+				"| Time:",
+				Date.now() - toolsInitTime,
+				"ms"
+			);
+
+			// Get current provider and model
+			const provider = this.plugin.getActiveProvider();
+			if (!provider) {
+				throw new Error("No active provider configured");
+			}
+			const currentProvider = provider.getProviderName();
+			const currentModel = provider.getModelName();
+
+			// Create or reuse Guided Mode Agent
+			// Recreate if: 1) agent doesn't exist, 2) session changed, 3) provider/model changed
+			const needsRecreate =
+				!this.guidedModeAgent ||
+				this.guidedModeAgent.getThreadId() !== this.currentSession?.id ||
+				this.agentProvider !== currentProvider ||
+				this.agentModel !== currentModel;
+
+			if (needsRecreate) {
+				Logger.debug("[GuidedMode-Mastra] Creating Guided Mode Agent:", {
+					session: this.currentSession?.id,
+					provider: currentProvider,
+					model: currentModel,
+					reason: !this.guidedModeAgent
+						? "new"
+						: this.guidedModeAgent.getThreadId() !== this.currentSession?.id
+							? "session-change"
+							: "provider-or-model-change",
+				});
+
+				this.guidedModeAgent = (await AgentFactory.createAgent({
+					plugin: this.plugin,
+					i18n: this.i18n,
+					mode: "guided",
+					memoryManager: this.sharedMemoryManager,
+					threadId: this.currentSession?.id,
+					resourceId: this.plugin.getResourceId(),
+					tools: toolsMap,
+					onToolSuggestion: async (toolCall: any) => {
+						// Show tool confirmation UI and wait for user response
+						Logger.debug(
+							"[GuidedMode-Mastra] Tool suggested, waiting for user confirmation:",
+							toolCall.function?.name || toolCall.name
+						);
+
+						// Pause streaming UI to allow interaction (e.g. Add Context)
+						this.streamManager.pauseStreaming();
+
+						// Return a Promise that resolves when user approves/rejects
+						return new Promise<boolean>((resolve) => {
+							// Find the most recent assistant message element (the one being streamed)
+							// We can't use messageId here because it's defined later in the code
+							const allMessages = document.querySelectorAll(
+								".llmsider-message.llmsider-assistant"
+							);
+							const messageEl = allMessages[
+								allMessages.length - 1
+							] as HTMLElement;
+
+							if (!messageEl) {
+								Logger.warn(
+									"Parent message element not found, auto-approving tool"
+								);
+								this.streamManager.resumeStreaming();
+								resolve(true);
+								return;
+							}
+
+							Logger.debug(
+								"[GuidedMode-Mastra] Found message element for tool card"
+							);
+
+							// Clear any loading indicator from the message content
+							const contentEl = messageEl.querySelector(
+								".llmsider-message-content"
+							);
+							if (contentEl) {
+								contentEl.classList.remove("llmsider-working-indicator");
+								const existingDots = contentEl.querySelector(
+									".llmsider-typing-dots"
+								);
+								if (existingDots) existingDots.remove();
+							}
+
+							const toolName =
+								toolCall.function?.name || toolCall.name || "Unknown Tool";
+
+							// Parse tool arguments
+							let toolParameters: Record<string, unknown> = {};
+							try {
+								if (toolCall.function?.arguments) {
+									toolParameters =
+										typeof toolCall.function.arguments === "string"
+											? JSON.parse(toolCall.function.arguments)
+											: toolCall.function.arguments;
+								} else if (toolCall.arguments) {
+									toolParameters =
+										typeof toolCall.arguments === "string"
+											? JSON.parse(toolCall.arguments)
+											: toolCall.arguments;
+								} else if (toolCall.input) {
+									toolParameters = toolCall.input;
+								}
+							} catch (error) {
+								Logger.error("Failed to parse tool parameters:", error);
+								toolParameters = { error: "Failed to parse parameters" };
+							}
+
+							// Create tool card for confirmation
+							const toolCardEl = document.createElement("div");
+							toolCardEl.className = "llmsider-tool-card-message";
+
+							// Find the absolute last tool card or indicator to maintain chronological order
+							const chatMessagesContainer = messageEl.closest('.llmsider-messages');
+							let insertAfter: Element = messageEl;
+
+							Logger.debug('[onToolSuggestion] Processing tool:', toolName);
+							Logger.debug('[onToolSuggestion] Current message element:', messageEl);
+
+							if (chatMessagesContainer) {
+							// Collect elements that come AFTER the current message (in document order)
+							// to find the correct insertion point within this message's flow
+							let nextEl = messageEl.nextElementSibling;
+							const toolCardsAfterMessage: Element[] = [];
+							const indicatorsAfterMessage: Element[] = [];
+							const followUpMessagesAfterMessage: HTMLElement[] = [];
+							
+							// Walk through siblings until we hit another main message (not a tool card, indicator, or follow-up)
+							while (nextEl) {
+								if (nextEl.classList.contains('llmsider-tool-card-message')) {
+									toolCardsAfterMessage.push(nextEl);
+								} else if (nextEl.classList.contains('llmsider-plan-execute-tool-indicator')) {
+									indicatorsAfterMessage.push(nextEl);
+								} else if (nextEl.classList.contains('llmsider-message') && 
+										   (nextEl as HTMLElement).dataset.isFollowUp === 'true') {
+									followUpMessagesAfterMessage.push(nextEl as HTMLElement);
+								} else if (nextEl.classList.contains('llmsider-message')) {
+									// Hit another main message, stop looking
+									break;
+								}
+								nextEl = nextEl.nextElementSibling;
+							}
+
+							Logger.debug(`[onToolSuggestion] Found ${toolCardsAfterMessage.length} cards, ${indicatorsAfterMessage.length} indicators, ${followUpMessagesAfterMessage.length} follow-up messages after current message`);
+
+							const lastFollowUpMessage = followUpMessagesAfterMessage[followUpMessagesAfterMessage.length - 1];
+							const lastToolCard = toolCardsAfterMessage[toolCardsAfterMessage.length - 1];
+							const lastIndicator = indicatorsAfterMessage[indicatorsAfterMessage.length - 1];
+
+							if (lastToolCard) Logger.debug('[onToolSuggestion] Last tool card:', (lastToolCard as HTMLElement).dataset.toolName);
+							if (lastIndicator) Logger.debug('[onToolSuggestion] Last indicator found:', lastIndicator);
+							if (lastFollowUpMessage) Logger.debug('[onToolSuggestion] Last follow-up message found:', (lastFollowUpMessage as HTMLElement).dataset.messageId);
+
+							// Priority: follow-up message > indicator > tool card > initial message
+							if (lastFollowUpMessage) {
+								insertAfter = lastFollowUpMessage;
+								Logger.debug('[ToolCard] Inserting after last follow-up message in this flow');
+							} else if (lastToolCard && lastIndicator) {
+								if (lastIndicator.compareDocumentPosition(lastToolCard) & Node.DOCUMENT_POSITION_PRECEDING) {
+									insertAfter = lastIndicator;
+									Logger.debug('[ToolCard] Inserting after last indicator (global)');
+								} else {
+									insertAfter = lastToolCard;
+									Logger.debug('[ToolCard] Inserting after last tool card (global)');
+								}
+							} else if (lastToolCard) {
+								insertAfter = lastToolCard;
+								Logger.debug('[ToolCard] Inserting after last tool card (global)');
+							} else if (lastIndicator) {
+								insertAfter = lastIndicator;
+								Logger.debug('[ToolCard] Inserting after last indicator (global)');
+							} else {
+								insertAfter = messageEl;
+								Logger.debug('[ToolCard] No existing tool flow, inserting after message');
+							}
+						}
+
+							Logger.debug(`[onToolSuggestion] Final insertion: ${toolName} after`, insertAfter);
+							insertAfter.insertAdjacentElement("afterend", toolCardEl);
+							Logger.debug(`[onToolSuggestion] Tool card inserted, now in DOM:`, toolCardEl);
+
+							// Extract current message content for description
+							const messageContentEl = messageEl.querySelector(
+								".llmsider-message-content"
+							);
+							const currentContent = messageContentEl?.textContent || "";
+
+							// Render tool card with approve/cancel callbacks
+							new ToolResultCard(
+								toolCardEl,
+								{
+									toolName: toolName,
+									status: "pending",
+									parameters: toolParameters,
+									timestamp: new Date(),
+									description: currentContent,
+								},
+								async () => {
+									// Approve callback - show executing state and resolve promise
+									// Resume streaming UI
+									this.streamManager.resumeStreaming();
+
+									toolCardEl.empty();
+									new ToolResultCard(toolCardEl, {
+										toolName: toolName,
+										status: "executing",
+										parameters: toolParameters,
+										timestamp: new Date(),
+									});
+									await new Promise((r) => setTimeout(r, 100)); // Small delay to show animation
+									resolve(true);
+								},
+								() => {
+									// Cancel callback - remove card and reject
+									// Resume streaming UI
+									this.streamManager.resumeStreaming();
+
+									toolCardEl.remove();
+									resolve(false);
+								}
+							);
+						});
+					},
+				})) as GuidedModeAgent;
+
+				// Update tracked provider/model
+				this.agentProvider = currentProvider;
+				this.agentModel = currentModel;
+
+				Logger.debug("[GuidedMode-Mastra] Guided Mode Agent created");
+			}
+
+			// Start streaming controller
+			const streamController = this.streamManager.startStreaming();
+
+			// Check if auto-search is enabled (not just vector DB loaded)
+			const isVectorSearchEnabled =
+				this.plugin.settings.vectorSettings.autoSearchEnabled;
+
+			// Create step indicators (always show for consistency)
+			stepIndicatorsEl = this.createStepIndicators();
+
+			// Note: Vector search is already handled by prepareMessages in handleSendMessage
+			// We just need to update the UI to show the AI response step
+			if (stepIndicatorsEl) {
+				// If vector search was enabled, mark it as completed (since it was done in prepareMessages)
+				if (isVectorSearchEnabled) {
+					this.updateStepIndicator(
+						stepIndicatorsEl,
+						"vector-search",
+						"completed"
+					);
+				}
+			}
+
+			// Create placeholder message (will be added to UI when first chunk arrives)
+			const messageId = Date.now().toString();
+			const assistantMessage: ChatMessage = {
+				id: messageId,
+				role: "assistant",
+				content: "",
+				timestamp: Date.now(),
+				metadata: {
+					isGuidedQuestion: true,
+					guidedStepNumber: 1,
+					isStreaming: true,
+				},
+			};
+
+			// Don't add to UI yet - will be added when first chunk arrives
+			let suggestedTools: any[] = [];
+
+			// Create stream callback state
+			const streamState: IStreamState = {
+				chunkCount: 0,
+				lastChunkTime: Date.now(),
+				accumulatedContent: "",
+				workingMessageEl: null,
+				followUpMessageEl: null,
+				isFollowUpResponse: false,
+				stepIndicatorsEl: stepIndicatorsEl,
+				toolPlaceholders: new Map(),
+			};
+
+			// Create tool callback state
+			const toolState: IToolCallbackState = {
+				assistantMessage,
+				workingMessageEl: null,
+				followUpMessageEl: null,
+				isFollowUpResponse: false,
+				accumulatedContent: "",
+				stepIndicatorsEl: stepIndicatorsEl,
+				toolAnalysisTimer: null,
+			};
+
+			// Create stream callbacks handler
+			const streamCallbacks = new GuidedModeStreamCallbacks({
+				messageRenderer: this.messageRenderer,
+				messageManager: this.messageManager,
+				memoryCoordinator: this.memoryCoordinator,
+				guidedModeUIRenderer: this.guidedModeUIRenderer,
+				getCurrentSession: () => this.currentSession,
+				updateStepIndicator: (
+					el: HTMLElement,
+					step: string,
+					status: "pending" | "active" | "completed"
+				) => {
+					if (streamState.stepIndicatorsEl) {
+						this.updateStepIndicator(el, step, status);
+					}
+				},
+				removeStepIndicators: () => {
+					if (
+						streamState.stepIndicatorsEl &&
+						streamState.stepIndicatorsEl.parentElement
+					) {
+						streamState.stepIndicatorsEl.remove();
+					}
+					streamState.stepIndicatorsEl = null;
+				},
+			});
+			// Create tool callbacks handler
+			const toolCallbacks = new GuidedModeToolCallbacks({
+				memoryCoordinator: this.memoryCoordinator,
+				messageRenderer: this.messageRenderer,
+				guidedModeUIRenderer: this.guidedModeUIRenderer,
+				sharedMemoryManager: this.sharedMemoryManager,
+				plugin: this.plugin,
+				getCurrentSession: () => this.currentSession,
+				updateStepIndicator: (tool: string) => {
+					if (toolState.stepIndicatorsEl) {
+						this.updateStepIndicator(
+							toolState.stepIndicatorsEl,
+							tool,
+							"completed"
+						);
+					}
+				},
+				removeStepIndicators: () => {
+					if (
+						toolState.stepIndicatorsEl &&
+						toolState.stepIndicatorsEl.parentElement
+					) {
+						toolState.stepIndicatorsEl.remove();
+						toolState.stepIndicatorsEl = null;
+					}
+				},
+				scrollToBottom: () => this.messageManager.scrollToBottom(),
+				getThreadId: () => this.guidedModeAgent.getThreadId(),
+				handleSendMessage: (message: string) => this.handleSendMessage(message),
+			});
+
+			// Execute guided mode agent
+			const agentExecuteStartTime = Date.now();
+			Logger.debug(
+				"[GuidedMode-Mastra] ▶▶▶ Calling guidedModeAgent.execute() ▶▶▶"
+			);
+			Logger.debug(
+				"[GuidedMode-Mastra] Agent execute start timestamp:",
+				new Date().toISOString()
+			);
+			Logger.debug("[GuidedMode-Mastra] Messages count:", messages.length);
+			Logger.debug(
+				"[GuidedMode-Mastra] Last message preview:",
+				messages[messages.length - 1]?.content?.toString().substring(0, 100)
+			);
+			await this.guidedModeAgent.execute({
+				messages,
+				abortController: streamController,
+				onToolError: async (toolName: string, error: string) => {
+					return new Promise<"skip" | "retry" | "regenerate">((resolve) => {
+						// Create a mock step for the error panel
+						const mockStep: any = {
+							id: `tool-${Date.now()}`,
+							title: `Tool Execution: ${toolName}`,
+							status: "failed",
+							error: error,
+						};
+
+						// Find the last message element to attach the panel to
+						const messageElements = this.messageContainer.querySelectorAll(
+							".llmsider-chat-message"
+						);
+						const lastMessageEl =
+							messageElements.length > 0
+								? (messageElements[messageElements.length - 1] as HTMLElement)
+								: this.messageContainer;
+
+						const panel = new ErrorActionPanel(this.messageContainer, {
+							step: mockStep,
+							stepIndex: 0,
+							i18n: this.plugin.i18n,
+							targetEl: lastMessageEl,
+							onAction: (action) => {
+								resolve(action);
+							},
+						});
+						panel.show();
+					});
+				},
+				onStream: streamCallbacks.createOnStreamCallback(
+					streamState,
+					assistantMessage,
+					messageId,
+					agentExecuteStartTime,
+					streamController
+				),
+				onToolSuggested: (toolCalls: any[]) => {
+					// Replace placeholders with actual tool cards
+					streamState.toolPlaceholders.forEach((placeholder) => {
+						placeholder.classList.add('llmsider-tool-placeholder-fade-out');
+						setTimeout(() => placeholder.remove(), 300);
+					});
+					streamState.toolPlaceholders.clear();
+
+					// Sync accumulated content from streamState to toolState
+					// This ensures pre-tool explanation text (accumulated via onStream) is available
+					toolState.accumulatedContent = streamState.accumulatedContent;
+					toolState.workingMessageEl = streamState.workingMessageEl;
+
+					return toolCallbacks.createOnToolSuggestedCallback(toolState)(toolCalls);
+				},
+				onToolExecuted: async (toolName: string, result: any) => {
+					// Call the tool executed handler which modifies toolState
+					// (sets isFollowUpResponse = true, resets followUpMessageEl, etc.)
+					await toolCallbacks.createOnToolExecutedCallback(toolState)(
+						result,
+						toolName,
+						undefined
+					);
+
+					// Sync modified state FROM toolState TO streamState
+					Logger.debug('[onToolExecuted] Syncing state from toolState to streamState:', {
+						isFollowUpResponse: toolState.isFollowUpResponse,
+						hasWaitingIndicator: !!toolState.waitingIndicatorEl,
+						chunkCount: toolState.chunkCount
+					});
+					streamState.workingMessageEl = toolState.workingMessageEl;
+					streamState.followUpMessageEl = toolState.followUpMessageEl;
+					streamState.isFollowUpResponse = toolState.isFollowUpResponse;
+					streamState.accumulatedContent = toolState.accumulatedContent;
+					streamState.waitingIndicatorEl = toolState.waitingIndicatorEl;
+					streamState.chunkCount = toolState.chunkCount;
+					streamState.lastChunkTime = toolState.lastChunkTime;
+				},
+
+				onComplete: async (fullResponse: string) => {
+					const completeTime = Date.now();
+					Logger.debug(
+						"[GuidedMode-Mastra] ========== ✅ onComplete TRIGGERED =========="
+					);
+					Logger.debug(
+						"[GuidedMode-Mastra] Timestamp:",
+						new Date().toISOString()
+					);
+					Logger.debug(
+						"[GuidedMode-Mastra] Full response length:",
+						fullResponse.length
+					);
+					Logger.debug(
+						"[GuidedMode-Mastra] Total time since agent.execute():",
+						completeTime - agentExecuteStartTime,
+						"ms"
+					);
+					Logger.debug(
+						"[GuidedMode-Mastra] Has follow-up message element:",
+						!!streamState.followUpMessageEl
+					);
+
+					// Remove step indicators after completion
+					if (
+						streamState.stepIndicatorsEl &&
+						streamState.stepIndicatorsEl.parentElement
+					) {
+						streamState.stepIndicatorsEl.remove();
+					}
+					// Check for tool_code blocks in the response (some models like Qwen return tools in this format)
+					const toolCodeMatch = fullResponse.match(
+						/```tool_code\s*\n([\s\S]*?)\n```/
+					);
+					if (toolCodeMatch && toolCodeMatch[1]) {
+						Logger.debug(
+							"[GuidedMode-Mastra] 🔧 Detected tool_code block in response"
+						);
+						try {
+							const toolJson = JSON.parse(toolCodeMatch[1].trim());
+							Logger.debug("[GuidedMode-Mastra] Parsed tool call:", toolJson);
+
+							// Clean the content to remove the tool_code block before updating UI
+							const cleanedContent = fullResponse
+								.replace(/```tool_code\s*\n[\s\S]*?\n```/g, "")
+								.trim();
+							assistantMessage.content = cleanedContent;
+
+							// Mark streaming as complete so tool cards can render immediately
+							if (assistantMessage.metadata) {
+								assistantMessage.metadata.isStreaming = false;
+							}
+
+							// Update UI with cleaned content
+							if (streamState.workingMessageEl) {
+								const questionContent =
+									streamState.workingMessageEl.querySelector(
+										".llmsider-guided-question-content"
+									) as HTMLElement;
+								if (questionContent) {
+									let displayContent =
+										this.memoryCoordinator.stripMemoryMarkers(cleanedContent);
+									displayContent =
+										this.guidedModeUIRenderer.removeOptionsFromContent(
+											displayContent
+										);
+									this.messageRenderer.updateStreamingContent(
+										questionContent,
+										displayContent
+									);
+								}
+							}
+
+							// Convert to OpenAI-style tool call format and store in metadata
+							const toolCalls = [
+								{
+									function: {
+										name: toolJson.tool,
+										arguments: JSON.stringify(toolJson.parameters || {}),
+									},
+								},
+							];
+
+							// Manually render tool cards using the existing infrastructure
+							Logger.debug(
+								"[GuidedMode-Mastra] Rendering tool cards for parsed tool"
+							);
+							if (assistantMessage.metadata) {
+								assistantMessage.metadata.suggestedToolCalls = toolCalls;
+								assistantMessage.metadata.requiresToolConfirmation = true;
+								assistantMessage.metadata.toolCalls = toolCalls;
+							}
+
+							// Trigger UI update to show tool cards
+							await this.guidedModeUIRenderer.updateGuidedMessageUI(
+								assistantMessage
+							);
+
+							// Don't save message yet - it will be saved after tool execution
+							Logger.debug(
+								"[GuidedMode-Mastra] Tool code detected, waiting for tool execution before saving"
+							);
+							return;
+						} catch (error) {
+							Logger.error(
+								"[GuidedMode-Mastra] Failed to parse tool_code:",
+								error
+							);
+							// Continue with normal flow if parsing fails
+						}
+					}
+
+					// Cleanup: Remove any remaining thinking indicators (especially from follow-up that didn't stream text)
+					// This fixes the issue where "Thinking..." stays visible if the agent returns no text after tool execution
+					const remainingIndicators = document.querySelectorAll(
+						".llmsider-plan-execute-tool-indicator"
+					);
+					remainingIndicators.forEach((indicator) => {
+						// Check if it's the follow-up indicator (has the specific data attribute)
+						if (indicator.querySelector("[data-followup-streaming-content]")) {
+							Logger.debug(
+								"[GuidedMode-Mastra] Removing leftover thinking indicator"
+							);
+							indicator.remove();
+						}
+					});
+
+					// Clear tool analysis timer if it's running
+					if (toolState.toolAnalysisTimer) {
+						clearTimeout(toolState.toolAnalysisTimer);
+						toolState.toolAnalysisTimer = null;
+						Logger.debug(
+							"[GuidedMode-Mastra] 🎯 Cleared tool analysis timer in onComplete"
+						);
+					}
+
+					assistantMessage.content = fullResponse;
+					assistantMessage.metadata!.isStreaming = false;
+
+					// If we have a follow-up message element, process and save it
+					if (streamState.followUpMessageEl) {
+						Logger.debug(
+							"[GuidedMode-Mastra] Processing follow-up message, content length:",
+							streamState.accumulatedContent.length
+						);
+
+						// Extract options from the accumulated content
+						// More flexible regex that handles various whitespace and newline scenarios
+						const lines = streamState.accumulatedContent.split("\n");
+						let options: string[] = [];
+						let isMultiSelect = false;
+
+						// Find mode marker (SINGLE or MULTIPLE)
+						for (const line of lines) {
+							if (/➤CHOICE:\s*SINGLE\s*$/i.test(line.trim())) {
+								isMultiSelect = false;
+								Logger.debug("[GuidedMode-Mastra] Found SINGLE mode marker");
+								break;
+							} else if (/➤CHOICE:\s*MULTIPLE\s*$/i.test(line.trim())) {
+								isMultiSelect = true;
+								Logger.debug("[GuidedMode-Mastra] Found MULTIPLE mode marker");
+								break;
+							}
+						}
+
+						// Extract option lines (those starting with ➤CHOICE: followed by content)
+						for (const line of lines) {
+							const trimmed = line.trim();
+							// Match lines like: ➤CHOICE: 1. xxx or ➤CHOICE: xxx
+							if (
+								trimmed.startsWith("➤CHOICE:") &&
+								!trimmed.match(/➤CHOICE:\s*(SINGLE|MULTIPLE)\s*$/i)
+							) {
+								const optionText = trimmed.replace(/^➤CHOICE:\s*/, "").trim();
+								if (optionText.length > 0) {
+									options.push(optionText);
+								}
+							}
+						}
+
+						Logger.debug(
+							"[GuidedMode-Mastra] Extracted options:",
+							options.length,
+							options
+						);
+
+						// Create a message object for the follow-up (with or without options)
+						const followUpMessage: ChatMessage = {
+							id:
+								streamState.followUpMessageEl.getAttribute("data-message-id") ||
+								`followup-${Date.now()}`,
+							role: "assistant",
+							content: streamState.accumulatedContent,
+							timestamp: Date.now(),
+							metadata: {
+								isGuidedQuestion: true,
+								isFollowUpMessage: true,
+								guidedOptions: options.length > 0 ? options : undefined,
+								isMultiSelect: isMultiSelect,
+							},
+						};
+
+						// Save follow-up message to session
+						if (this.currentSession) {
+							this.currentSession.messages.push(followUpMessage);
+						}
+
+						// Save follow-up message to Memory system
+						if (this.sharedMemoryManager && this.guidedModeAgent) {
+							try {
+								const threadId = this.guidedModeAgent.getThreadId();
+								await this.sharedMemoryManager.addConversationMessage(
+									{
+										role: "assistant",
+										content:
+											typeof followUpMessage.content === "string"
+												? followUpMessage.content
+												: JSON.stringify(followUpMessage.content),
+									},
+									threadId || undefined
+								);
+								Logger.debug(
+									"[GuidedMode-Mastra] Follow-up message saved to Memory"
+								);
+							} catch (error) {
+								Logger.warn(
+									"[GuidedMode-Mastra] Failed to save follow-up message to Memory:",
+									error
+								);
+							}
+						}
+
+						// Render options if found
+						if (options.length > 0) {
+							Logger.debug(
+								"[GuidedMode-Mastra] Found options in follow-up:",
+								options
+							);
+							const cardContainer = streamState.followUpMessageEl.querySelector(
+								".llmsider-guided-card-container"
+							) as HTMLElement;
+							if (cardContainer) {
+								this.guidedModeUIRenderer.renderGuidedOptions(
+									cardContainer,
+									followUpMessage,
+									false
+								);
+								// Scroll to bottom after options are rendered
+								this.messageManager.scrollToBottom();
+							}
+						}
+					} else {
+						// CRITICAL: Update guided message UI to render guided card structure
+						// This ensures proper rendering of tool cards, options, etc.
+						// Force re-rendering to extract options from content (including numbered lists)
+						Logger.debug(
+							"[GuidedMode-Mastra] Stream complete, forcing guided card re-render to extract options"
+						);
+						this.guidedModeUIRenderer.renderGuidedCard(assistantMessage, false);
+					}
+
+					// Update UI actions
+					const targetElement =
+						streamState.followUpMessageEl || streamState.workingMessageEl;
+					if (targetElement) {
+						this.messageRenderer.addMessageActions(
+							targetElement,
+							assistantMessage
+						);
+					}
+
+					// Update session
+					if (this.currentSession) {
+						// Check if assistant message is already in session (added in onToolSuggested)
+						const assistantMessageExists = this.currentSession.messages.some(
+							(m) => m.id === assistantMessage.id
+						);
+						if (!assistantMessageExists) {
+							Logger.debug(
+								"[GuidedMode-Mastra] 💾 Saving assistant message to session (onComplete)..."
+							);
+							this.currentSession.messages.push(assistantMessage);
+						} else {
+							Logger.debug(
+								"[GuidedMode-Mastra] ⚠️ Assistant message already in session (from onToolSuggested)"
+							);
+						}
+
+						await this.plugin.updateChatSession(this.currentSession.id, {
+							messages: this.currentSession.messages,
+						});
+
+						// Auto-generate session title (will check if conditions are met)
+						await this.messagePreparationService.autoGenerateSessionTitle(
+							userMessage,
+							assistantMessage
+						);
+					}
+
+					// Reset streaming state
+					this.streamManager.resetButtonStates();
+				},
+				onError: (error: Error) => {
+					Logger.error(
+						"[GuidedMode-Mastra] ❌ Agent onError callback triggered ❌"
+					);
+					Logger.error(
+						"[GuidedMode-Mastra] Error type:",
+						error.constructor.name
+					);
+					Logger.error("[GuidedMode-Mastra] Error message:", error.message);
+					Logger.error("[GuidedMode-Mastra] Error stack:", error.stack);
+					throw error;
+				},
+			});
+
+			Logger.debug(
+				"[GuidedMode-Mastra] Guided conversation completed successfully"
+			);
+		} catch (error) {
+			Logger.error(
+				"[GuidedMode-Mastra] ❌❌❌ CRITICAL ERROR in guided conversation ❌❌❌"
+			);
+			
+			// Remove step indicators on error
+			if (stepIndicatorsEl && stepIndicatorsEl.parentElement) {
+				stepIndicatorsEl.remove();
+			}
+			
+			Logger.error(
+				"[GuidedMode-Mastra] Error type:",
+				error instanceof Error ? error.constructor.name : typeof error
+			);
+			Logger.error(
+				"[GuidedMode-Mastra] Error message:",
+				error instanceof Error ? error.message : String(error)
+			);
+			Logger.error(
+				"[GuidedMode-Mastra] Error stack:",
+				error instanceof Error ? error.stack : "No stack trace"
+			);
+			Logger.error("[GuidedMode-Mastra] Error object:", error);
+			throw error;
 		}
+	}
+
+	/**
+	 * Handle guided response using Mastra framework
+	 */
+	private async handleGuidedResponseWithMastra(
+		userMessage: ChatMessage,
+		messages: ChatMessage[]
+	): Promise<void> {
+		const startTime = Date.now();
+		Logger.debug(
+			"[GuidedMode-Mastra] ========== START handleGuidedResponseWithMastra =========="
+		);
+		Logger.debug("[GuidedMode-Mastra] Timestamp:", new Date().toISOString());
+		Logger.debug(
+			"[GuidedMode-Mastra] User message content preview:",
+			typeof userMessage.content === "string"
+				? userMessage.content.substring(0, 100)
+				: JSON.stringify(userMessage.content).substring(0, 100)
+		);
+
+		// Reuse the same logic as startGuidedConversationWithMastra
+		// since both are conversational turns
+		await this.startGuidedConversationWithMastra(userMessage, messages);
+
+		const duration = Date.now() - startTime;
+		Logger.debug(
+			"[GuidedMode-Mastra] ========== END handleGuidedResponseWithMastra =========="
+		);
+		Logger.debug("[GuidedMode-Mastra] Total duration:", duration, "ms");
+	}
+
+	/**
+	 * Public API: Get context manager
+	 */
+	public getContextManager(): ContextManager {
+		return this.contextManager;
+	}
+
+	/**
+	 * Public API: Send a message programmatically
+	 */
+	public async sendMessage(content: string): Promise<void> {
+		this.inputElement.value = content;
+		await this.inputHandler["handleSendMessage"]();
 	}
 }

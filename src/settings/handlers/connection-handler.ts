@@ -2,6 +2,7 @@ import { App, Notice } from 'obsidian';
 import LLMSiderPlugin from '../../main';
 import { LLMConnection } from '../../types';
 import { ConnectionModal } from '../../ui/connection-modal';
+import { I18nManager } from '../../i18n/i18n-manager';
 
 /**
  * Handles Connection CRUD operations
@@ -10,40 +11,32 @@ export class ConnectionHandler {
 	constructor(
 		private app: App,
 		private plugin: LLMSiderPlugin,
+		private i18n: I18nManager,
 		private onUpdate: () => void
 	) {}
 
-	async showAddConnectionModal(type?: 'openai' | 'anthropic' | 'qwen' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'huggingface' | 'github-copilot'): Promise<void> {
+	async showAddConnectionModal(type?: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode'): Promise<void> {
 		const modal = new ConnectionModal(
 			this.app,
 			this.plugin,
 			async (connection: LLMConnection) => {
 				// Add new connection
 				this.plugin.settings.connections.push(connection);
-				await this.plugin.saveSettings();
+				// Optimize: Save only the new connection instead of full settings save
+				await this.plugin.configDb.saveConnection(connection);
 				await this.plugin.reinitializeProviders();
 				
 				// Start GitHub token monitoring if applicable
 				await this.plugin.startGitHubTokenMonitoring(connection);
 				
 				this.onUpdate(); // Refresh UI
-			}
+			},
+			undefined, // no existing connection
+			type // preset type
 		);
 		
 		// Open the modal
 		modal.open();
-		
-		// Pre-select type if provided
-		if (type) {
-			// Wait a bit for modal to render, then set the type
-			setTimeout(() => {
-				const typeDropdown = modal.contentEl.querySelector('.llmsider-connection-form select') as HTMLSelectElement;
-				if (typeDropdown) {
-					typeDropdown.value = type;
-					typeDropdown.dispatchEvent(new Event('change'));
-				}
-			}, 50);
-		}
 	}
 
 	async editConnection(connection: LLMConnection, index: number): Promise<void> {
@@ -55,7 +48,8 @@ export class ConnectionHandler {
 				const connIndex = this.plugin.settings.connections.findIndex(c => c.id === updatedConnection.id);
 				if (connIndex !== -1) {
 					this.plugin.settings.connections[connIndex] = updatedConnection;
-					await this.plugin.saveSettings();
+					// Optimize: Save only the updated connection instead of full settings save
+					await this.plugin.configDb.saveConnection(updatedConnection);
 					await this.plugin.reinitializeProviders();
 					
 					// Restart GitHub token monitoring if applicable (in case enabled status changed)
@@ -86,10 +80,11 @@ export class ConnectionHandler {
 				m => m.connectionId !== connection.id
 			);
 			
-			await this.plugin.saveSettings();
+			// Optimize: Delete only the connection (cascade deletes models) instead of full settings save
+			await this.plugin.configDb.deleteConnection(connection.id);
 			await this.plugin.reinitializeProviders();
 			
-			new Notice(`Connection "${connection.name}" deleted`);
+			new Notice(this.i18n.t('notifications.settingsHandlers.connectionDeleted', { name: connection.name }) || `Connection "${connection.name}" deleted`);
 			this.onUpdate(); // Refresh UI
 		}
 	}

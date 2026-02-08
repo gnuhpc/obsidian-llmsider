@@ -3,6 +3,10 @@
  */
 
 export const enOthersTools = {
+	generate_content: {
+		name: 'Generate Content',
+		description: 'Synthesize gathered information to produce report or narrative text'
+	},
 	getMovieBoxOfficeRealtime: {
 			name: 'Get Movie Box Office Realtime',
 			description: 'Get real-time movie box office data for currently showing movies in China. Shows today\'s box office, total box office, release days, and rankings.'
@@ -1994,7 +1998,7 @@ export const enOthersTools = {
                 name: 'Get Bank Loan-Deposit Ratio',
                 description: 'Get banking sector loan-to-deposit ratios showing liquidity management and lending capacity'
         },
-        getBankNplRatio: {
+        getBankNPLRatio: {
                 name: 'Get Bank NPL Ratio',
                 description: 'Get banking sector non-performing loan (NPL) ratios showing asset quality and credit risk'
         },
@@ -2042,7 +2046,7 @@ export const enOthersTools = {
                 name: 'Get Hospital Operation Metrics',
                 description: 'Get hospital operation metrics showing patient volumes, bed occupancy rates, revenue per bed, operational efficiency'
         },
-        getReitsPerformance: {
+        getREITsPerformance: {
                 name: 'Get REITs Performance',
                 description: 'Get REITs (Real Estate Investment Trusts) performance showing NAV, distribution yield, premium/discount rates'
         },
@@ -2102,4 +2106,109 @@ export const enOthersTools = {
                 name: 'Get Alpha Generation',
                 description: 'Get stock alpha generation analysis showing excess returns vs benchmark with attribution to factors'
         },
+	// Douban search tools
+	searchDoubanMovies: {
+		name: 'Search Douban Movies',
+		description: 'Search for movies on Douban by keyword, returns title, rating, year, and ID'
+	},
+	searchDoubanBooksByTag: {
+		name: 'Search Douban Books by Tag',
+		description: 'Search for books on Douban by tag/genre (e.g., science fiction, literature, history, philosophy)'
+	},
+	searchDoubanBooks: {
+		name: 'Search Douban Books',
+		description: 'Search for books on Douban by keyword (title, author, ISBN, etc.)'
+	},
+	searchDoubanMusicByTag: {
+		name: 'Search Douban Music by Tag',
+		description: 'Search for music on Douban by tag/genre (e.g., pop, rock, folk, classical, electronic, jazz)'
+	},
+	searchDoubanMusic: {
+		name: 'Search Douban Music',
+		description: 'Search for music albums on Douban by keyword (artist name, album name, etc.)'
+	},
+	searchDoubanGroups: {
+		name: 'Search Douban Groups',
+		description: 'Search for Douban groups by keyword (group name, topic, etc.)'
+	},
+	searchDoubanPeople: {
+		name: 'Search Douban People',
+		description: 'Search for people on Douban by keyword (name, celebrity, etc.)'
+	},
+	searchDoubanStage: {
+		name: 'Search Douban Stage Plays',
+		description: 'Search for stage plays, dramas, and musicals on Douban by keyword'
+	},
+	searchDoubanGames: {
+		name: 'Search Douban Games',
+		description: 'Search for video games on Douban by keyword (game name, series, etc.)'
+	},
+	searchDoubanPodcasts: {
+		name: 'Search Douban Podcasts',
+		description: 'Search for podcasts on Douban by keyword (podcast name, topic, etc.)'
+	},
+	searchDoubanEvents: {
+		name: 'Search Douban Events',
+		description: 'Search for local events on Douban by keyword (location, event type, etc.)'
+	},
+	searchDoubanNotes: {
+		name: 'Search Douban Notes',
+		description: 'Search for user notes and diaries on Douban by keyword'
+	},
+	getGitHubTrendingDevelopers: {
+		name: 'Get GitHub Trending Developers',
+		description: 'Get trending developers on GitHub.'
+	},
+	getGitHubTrendingRepos: {
+		name: 'Get GitHub Trending Repos',
+		description: 'Get trending repositories on GitHub.'
+	},
+	searchGitHubTopics: {
+		name: 'Search GitHub Topics',
+		description: 'Search for GitHub topics and repositories.'
+	},
+	hnGetAskStores: {
+		name: 'Get Hacker News Ask Stories',
+		description: 'Get Ask HN stories from Hacker News.'
+	},
+	searchIMDB: {
+		name: 'Search IMDB',
+		description: 'Search movies, TV shows, and people on IMDB.'
+	},
+	searchSymbol: {
+		name: 'Search Symbol',
+		description: 'Search for stock symbols and securities.'
+	},
+	getBBCNews: {
+		name: 'Get BBC News',
+		description: 'Get latest news from BBC.'
+	},
+	getNPRNews: {
+		name: 'Get NPR News',
+		description: 'Get latest news from NPR.'
+	},
+	baiduSearch: {
+		name: 'Baidu Search',
+		description: 'Search using Baidu search engine.'
+	},
+	bingSearch: {
+		name: 'Bing Search',
+		description: 'Search using Bing search engine.'
+	},
+	getTVSchedule: {
+		name: 'Get TV Schedule',
+		description: 'Get TV program schedule and listings.'
+	},
+	getTVShowDetails: {
+		name: 'Get TV Show Details',
+		description: 'Get detailed information about TV shows.'
+	},
+	searchPeople: {
+		name: 'Search People',
+		description: 'Search for people in entertainment industry.'
+	},
+	searchTVShows: {
+		name: 'Search TV Shows',
+		description: 'Search for TV shows and series.'
+	},
 };

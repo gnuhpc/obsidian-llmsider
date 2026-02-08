@@ -1,9 +1,12 @@
 import initSqlJs, { Database } from 'sql.js';
 import { Logger } from '././logger';
 import { ProviderType, PromptTemplate, MCPServersConfig, ChatSession } from '../types';
-import { DataAdapter } from 'obsidian';
+import { DataAdapter, Vault } from 'obsidian';
 import { BUILT_IN_PROMPTS, getBuiltInPrompts } from '../data/built-in-prompts';
 import { SQL_WASM_BASE64 } from './sql-wasm-data';
+
+// Helper type for sql.js query results
+type SqlRow = Record<string, string | number | boolean | null>;
 
 export interface ConfigData {
     agentMode: boolean;
@@ -15,10 +18,17 @@ export class ConfigDatabase {
     private db: Database | null = null;
     private dbPath: string;
     private isInitialized = false;
+    private vault?: Vault;
+    private saveTimer: number | null = null;
+    private pendingSave = false;
 
-    constructor(private dataDir: string, private adapter?: DataAdapter) {
-        // Use relative path for Obsidian adapter
-        this.dbPath = `.obsidian/plugins/obsidian-llmsider/config.db`;
+    constructor(private dataDir: string, private adapter?: DataAdapter, vault?: Vault) {
+        this.vault = vault;
+        // Use configDir from vault (user-configurable)
+        // Note: vault.configDir is always available in Obsidian, no fallback needed
+        // eslint-disable-next-line obsidianmd/hardcoded-config-path
+        const configDir = vault?.configDir || '.obsidian'; // Fallback only for tests
+        this.dbPath = `${configDir}/plugins/obsidian-llmsider/config.db`;
     }
 
     async initialize(): Promise<void> {
@@ -33,9 +43,42 @@ export class ConfigDatabase {
             Logger.debug('Loaded embedded WASM, size:', wasmBinary.byteLength);
             
             // Initialize SQL.js with embedded WASM binary
-            const SQL = await initSqlJs({
-                wasmBinary: wasmBinary
-            });
+            // Retry up to 3 times if WASM initialization fails due to memory issues
+            let SQL;
+            let lastError;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    SQL = await initSqlJs({
+                        wasmBinary: wasmBinary
+                    });
+                    Logger.debug(`SQL.js initialized successfully on attempt ${attempt}`);
+                    break;
+                } catch (error) {
+                    lastError = error;
+                    const errorMsg = error instanceof Error ? error.message : String(error);
+                    
+                    // Check if it's a WASM memory error
+                    if (errorMsg.includes('Out of memory') || errorMsg.includes('Cannot allocate Wasm memory')) {
+                        Logger.warn(`WASM memory allocation failed on attempt ${attempt}/3:`, errorMsg);
+                        
+                        // Wait a bit before retrying to allow memory to be freed
+                        if (attempt < 3) {
+                            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                            // Suggest garbage collection (only a hint to the browser)
+                            if (globalThis.gc) {
+                                globalThis.gc();
+                            }
+                        }
+                    } else {
+                        // Not a memory error, don't retry
+                        throw error;
+                    }
+                }
+            }
+            
+            if (!SQL) {
+                throw lastError || new Error('Failed to initialize SQL.js after retries');
+            }
 
             // Try multiple possible locations for the database file
             const possiblePaths = [
@@ -92,11 +135,95 @@ export class ConfigDatabase {
                 base_url TEXT,
                 organization_id TEXT,
                 region TEXT,
+                proxy_enabled INTEGER NOT NULL DEFAULT 0,
+                proxy_type TEXT,
+                proxy_host TEXT,
+                proxy_port INTEGER,
+                proxy_auth INTEGER NOT NULL DEFAULT 0,
+                proxy_username TEXT,
+                proxy_password TEXT,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 created INTEGER NOT NULL,
                 updated INTEGER NOT NULL
             )
         `);
+
+        // Migrate existing connections table to add proxy fields if they don't exist
+        try {
+            // Check if proxy_enabled column exists by querying table structure
+            const stmt = this.db.prepare('PRAGMA table_info(connections)');
+            const columns: string[] = [];
+            while (stmt.step()) {
+                const row = stmt.getAsObject();
+                columns.push(row.name as string);
+            }
+            stmt.free();
+
+            // If proxy_enabled column doesn't exist, add all proxy columns
+            if (!columns.includes('proxy_enabled')) {
+                Logger.info('Migrating connections table to add proxy support...');
+                this.db.run('ALTER TABLE connections ADD COLUMN proxy_enabled INTEGER NOT NULL DEFAULT 0');
+                this.db.run('ALTER TABLE connections ADD COLUMN proxy_type TEXT');
+                this.db.run('ALTER TABLE connections ADD COLUMN proxy_host TEXT');
+                this.db.run('ALTER TABLE connections ADD COLUMN proxy_port INTEGER');
+                this.db.run('ALTER TABLE connections ADD COLUMN proxy_auth INTEGER NOT NULL DEFAULT 0');
+                this.db.run('ALTER TABLE connections ADD COLUMN proxy_username TEXT');
+                this.db.run('ALTER TABLE connections ADD COLUMN proxy_password TEXT');
+                Logger.info('✅ Proxy columns added successfully to connections table');
+            }
+        } catch (e) {
+            Logger.error('Failed to migrate connections table:', e);
+        }
+
+        // Fix connections with missing or empty type field
+        // Run this every time to catch any connections created with empty type
+        try {
+            const stmt = this.db.prepare("SELECT id, name, type FROM connections WHERE type IS NULL OR type = ''");
+            const needsFix: { id: string; name: string }[] = [];
+            
+            while (stmt.step()) {
+                const row = stmt.getAsObject();
+                needsFix.push({ id: row.id as string, name: row.name as string });
+            }
+            stmt.free();
+
+            if (needsFix.length > 0) {
+                Logger.warn(`⚠️  Found ${needsFix.length} connection(s) with missing type field, fixing...`);
+                
+                for (const conn of needsFix) {
+                    let inferredType = 'openai'; // default fallback
+                    
+                    const nameLower = conn.name.toLowerCase();
+                    if (nameLower.includes('deepseek') || nameLower.includes('freeds')) {
+                        inferredType = 'free-deepseek';
+                    } else if (nameLower.includes('anthropic') || nameLower.includes('claude')) {
+                        inferredType = 'anthropic';
+                    } else if (nameLower.includes('openai') || nameLower.includes('gpt')) {
+                        inferredType = 'openai';
+                    } else if (nameLower.includes('google') || nameLower.includes('gemini')) {
+                        inferredType = 'google';
+                    } else if (nameLower.includes('qwen') || nameLower.includes('tongyi')) {
+                        inferredType = 'qwen';
+                    } else if (nameLower.includes('azure')) {
+                        inferredType = 'azure-openai';
+                    } else if (nameLower.includes('ollama')) {
+                        inferredType = 'ollama';
+                    } else if (nameLower.includes('hugging') && nameLower.includes('chat')) {
+                        inferredType = 'hugging-chat';
+                    } else if (nameLower.includes('github') || nameLower.includes('copilot')) {
+                        inferredType = 'github-copilot';
+                    }
+                    
+                    this.db.run('UPDATE connections SET type = ? WHERE id = ?', [inferredType, conn.id]);
+                    Logger.info(`✅ Fixed connection "${conn.name}" - set type to: ${inferredType}`);
+                }
+                
+                // Save immediately after fixing to persist changes
+                this.saveToFileImmediate();
+            }
+        } catch (e) {
+            Logger.error('Failed to fix connection types:', e);
+        }
 
         // Create models table with all fields including embedding support
         this.db.run(`
@@ -118,6 +245,18 @@ export class ConfigDatabase {
                 FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
             )
         `);
+
+        // Migration: Add supports_vision column if it doesn't exist
+        try {
+            const tableInfo = this.db.exec("PRAGMA table_info(models)");
+            const columns = tableInfo[0].values.map(v => v[1]);
+            if (!columns.includes('supports_vision')) {
+                Logger.info('Migrating models table: adding supports_vision column');
+                this.db.run('ALTER TABLE models ADD COLUMN supports_vision INTEGER NOT NULL DEFAULT 0');
+            }
+        } catch (e) {
+            Logger.error('Failed to check/migrate models table for supports_vision:', e);
+        }
 
         // Create indexes for models
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_models_connection ON models(connection_id)`);
@@ -155,6 +294,24 @@ export class ConfigDatabase {
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_order ON prompt_templates(order_index)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_last_used ON prompt_templates(last_used)`);
         
+        // Migration: Add usage_count and pinned columns if they don't exist
+        try {
+            const tableInfo = this.db.exec("PRAGMA table_info(prompt_templates)");
+            if (tableInfo.length > 0) {
+                const columns = tableInfo[0].values.map(v => v[1]);
+                if (!columns.includes('usage_count')) {
+                    this.db.run("ALTER TABLE prompt_templates ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0");
+                    Logger.info("Added usage_count column to prompt_templates table");
+                }
+                if (!columns.includes('pinned')) {
+                    this.db.run("ALTER TABLE prompt_templates ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+                    Logger.info("Added pinned column to prompt_templates table");
+                }
+            }
+        } catch (e) {
+            Logger.error("Failed to migrate prompt_templates table:", e);
+        }
+
         // Create chat_sessions table
         this.db.run(`
             CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -172,7 +329,22 @@ export class ConfigDatabase {
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_session_updated ON chat_sessions(updated DESC)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_session_provider ON chat_sessions(provider)`);
         
-        // Create built_in_tool_permissions table
+        // Create prompt_history table for quick chat history
+        this.db.run(`
+            CREATE TABLE IF NOT EXISTS prompt_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt TEXT NOT NULL UNIQUE,
+                last_used INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+                use_count INTEGER NOT NULL DEFAULT 1
+            )
+        `);
+        
+        // Create indexes for prompt_history
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_history_last_used ON prompt_history(last_used DESC)`);
+        this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_history_prompt ON prompt_history(prompt)`);
+        
+        // DEPRECATED: Create built_in_tool_permissions table (kept for backward compatibility)
+        // New code uses tool_settings table with 'built-in:toolName' format
         this.db.run(`
             CREATE TABLE IF NOT EXISTS built_in_tool_permissions (
                 tool_name TEXT PRIMARY KEY,
@@ -208,42 +380,102 @@ export class ConfigDatabase {
         if (!this.db) return;
         
         try {
-            // Check if built-in prompts already exist
-            const stmt = this.db.prepare(`SELECT COUNT(*) as count FROM prompt_templates WHERE is_built_in = 1`);
-            const result = stmt.getAsObject();
-            stmt.free();
+            // Get built-in prompts with i18n support
+            const builtInPrompts = getBuiltInPrompts();
             
-            const existingCount = (result.count as number) || 0;
+            // Check current count of built-in prompts in database
+            const countResult = this.db.exec('SELECT COUNT(*) as count FROM prompt_templates WHERE is_built_in = 1');
+            const dbCount = countResult.length > 0 && countResult[0].values.length > 0 
+                ? Number(countResult[0].values[0][0]) 
+                : 0;
             
-            // If no built-in prompts exist, insert them
-            if (existingCount === 0) {
-                Logger.debug('Initializing built-in prompts with i18n translations...');
-                
-                // Get built-in prompts with i18n support
-                const builtInPrompts = getBuiltInPrompts();
-                
-                const insertStmt = this.db.prepare(`
-                    INSERT OR IGNORE INTO prompt_templates (id, title, content, description, is_built_in, order_index, last_used)
-                    VALUES (?, ?, ?, ?, 1, ?, 0)
+            const codeCount = builtInPrompts.length;
+            
+            Logger.debug(`Built-in prompts - Database: ${dbCount}, Code: ${codeCount}`);
+            
+            // Check if counts match
+            if (dbCount === codeCount) {
+                Logger.debug('Built-in prompts count matches, updating translations only...');
+                // Only update translations, not full upsert
+                const updateStmt = this.db.prepare(`
+                    UPDATE prompt_templates 
+                    SET title = ?, content = ?, description = ?, updated_at = ?
+                    WHERE id = ? AND is_built_in = 1
                 `);
                 
+                const now = Date.now();
                 for (const prompt of builtInPrompts) {
-                    insertStmt.bind([
+                    updateStmt.bind([
+                        prompt.title,
+                        prompt.content,
+                        prompt.description || '',
+                        now,
+                        prompt.id
+                    ]);
+                    updateStmt.step();
+                    updateStmt.reset();
+                }
+                updateStmt.free();
+                Logger.debug(`Updated translations for ${codeCount} built-in prompts`);
+            } else {
+                // Counts don't match - perform incremental import
+                Logger.debug('Built-in prompts count mismatch - performing incremental import...');
+                
+                // Use INSERT OR REPLACE to handle both new prompts and updates
+                // This ensures new prompts are added while existing ones are updated with current translations
+                const upsertStmt = this.db.prepare(`
+                    INSERT OR REPLACE INTO prompt_templates (id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, created_at, updated_at)
+                    VALUES (
+                        ?,
+                        ?,
+                        ?,
+                        ?,
+                        1,
+                        ?,
+                        COALESCE((SELECT last_used FROM prompt_templates WHERE id = ?), 0),
+                        COALESCE((SELECT usage_count FROM prompt_templates WHERE id = ?), 0),
+                        COALESCE((SELECT pinned FROM prompt_templates WHERE id = ?), 0),
+                        COALESCE((SELECT created_at FROM prompt_templates WHERE id = ?), strftime('%s', 'now') * 1000),
+                        strftime('%s', 'now') * 1000
+                    )
+                `);
+                
+                let newCount = 0;
+                let updatedCount = 0;
+                
+                for (const prompt of builtInPrompts) {
+                    // Check if prompt exists
+                    const existsResult = this.db.exec(`SELECT id FROM prompt_templates WHERE id = '${prompt.id}'`);
+                    const exists = existsResult.length > 0 && existsResult[0].values.length > 0;
+                    
+                    upsertStmt.bind([
                         prompt.id,
                         prompt.title,
                         prompt.content,
                         prompt.description || '',
-                        prompt.order
+                        prompt.order,
+                        prompt.id,  // For COALESCE last_used check
+                        prompt.id,  // For COALESCE usage_count check
+                        prompt.id,  // For COALESCE pinned check
+                        prompt.id   // For COALESCE created_at check
                     ]);
-                    insertStmt.step();
-                    insertStmt.reset();
+                    upsertStmt.step();
+                    upsertStmt.reset();
+                    
+                    if (exists) {
+                        updatedCount++;
+                    } else {
+                        newCount++;
+                    }
                 }
                 
-                insertStmt.free();
-                Logger.debug(`Initialized ${builtInPrompts.length} built-in prompts with translations`);
-            } else {
-                Logger.debug(`Found ${existingCount} existing built-in prompts, skipping initialization`);
+                upsertStmt.free();
+                Logger.debug(`Incremental import complete - New: ${newCount}, Updated: ${updatedCount}, Total: ${codeCount}`);
             }
+            
+            // Save changes to file
+            this.saveToFile();
+            
         } catch (error) {
             Logger.error('Error initializing built-in prompts:', error);
             // Don't throw error, just log it - this shouldn't prevent database initialization
@@ -252,7 +484,7 @@ export class ConfigDatabase {
     
     /**
      * Update built-in prompts translations
-     * Call this method when language is changed to update prompt titles/descriptions
+     * Call this method when language is changed to update prompt titles/descriptions/content
      */
     public updateBuiltInPromptsTranslations(): void {
         if (!this.db) return;
@@ -265,14 +497,17 @@ export class ConfigDatabase {
             
             const updateStmt = this.db.prepare(`
                 UPDATE prompt_templates 
-                SET title = ?, description = ?
+                SET title = ?, content = ?, description = ?, updated_at = ?
                 WHERE id = ? AND is_built_in = 1
             `);
             
+            const now = Date.now();
             for (const prompt of builtInPrompts) {
                 updateStmt.bind([
                     prompt.title,
+                    prompt.content,
                     prompt.description || '',
+                    now,
                     prompt.id
                 ]);
                 updateStmt.step();
@@ -292,12 +527,53 @@ export class ConfigDatabase {
         }
     }
 
+    /**
+     * Debounced save to file - delays actual file write by 500ms
+     * Multiple rapid saves will be merged into a single write operation
+     */
     async saveToFile(): Promise<void> {
         if (!this.db || !this.adapter) return;
+        
+        this.pendingSave = true;
+        
+        // Clear existing timer
+        if (this.saveTimer !== null) {
+            window.clearTimeout(this.saveTimer);
+        }
+        
+        // Set new timer to save after 500ms of inactivity
+        this.saveTimer = window.setTimeout(async () => {
+            if (!this.pendingSave) return;
+            
+            try {
+                const data = this.db!.export();
+                await this.adapter!.writeBinary(this.dbPath, data.buffer as ArrayBuffer);
+                this.pendingSave = false;
+                this.saveTimer = null;
+            } catch (error) {
+                Logger.error('Failed to save database:', error);
+                this.pendingSave = false;
+                this.saveTimer = null;
+            }
+        }, 500); // 500ms debounce delay
+    }
+
+    /**
+     * Force immediate save to file, bypassing debounce
+     */
+    async saveToFileImmediate(): Promise<void> {
+        if (!this.db || !this.adapter) return;
+        
+        // Cancel pending debounced save
+        if (this.saveTimer !== null) {
+            window.clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+        }
         
         try {
             const data = this.db.export();
             await this.adapter.writeBinary(this.dbPath, data.buffer as ArrayBuffer);
+            this.pendingSave = false;
         } catch (error) {
             Logger.error('Failed to save database:', error);
         }
@@ -313,7 +589,7 @@ export class ConfigDatabase {
             stmt.bind([key]);
             
             if (stmt.step()) {
-                const result = stmt.getAsObject();
+                const result = stmt.getAsObject() as SqlRow;
                 stmt.free();
                 return result.value as string;
             }
@@ -340,7 +616,6 @@ export class ConfigDatabase {
             stmt.free();
             
             await this.saveToFile();
-            Logger.debug(`Saved config value: ${key} = ${value}`);
         } catch (error) {
             Logger.error(`Error setting config value for key ${key}:`, error);
         }
@@ -372,7 +647,7 @@ export class ConfigDatabase {
         stmt.bind([key]);
         
         if (stmt.step()) {
-            const row = stmt.getAsObject();
+            const row = stmt.getAsObject() as SqlRow;
             stmt.free();
             return row.value as string;
         }
@@ -451,16 +726,20 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned
             FROM prompt_templates
-            ORDER BY order_index ASC, title ASC
+            ORDER BY pinned DESC, usage_count DESC, order_index ASC, title ASC
         `);
 
-        const rows: any[] = [];
+        const rows: SqlRow[] = [];
         while (stmt.step()) {
-            rows.push(stmt.getAsObject());
+            rows.push(stmt.getAsObject() as SqlRow);
         }
         stmt.free();
+
+        // Get built-in prompts from code to add searchKeywords
+        const builtInPromptsFromCode = getBuiltInPrompts();
+        const keywordsMap = new Map(builtInPromptsFromCode.map(p => [p.id, p.searchKeywords]));
 
         return rows.map(row => ({
             id: row.id as string,
@@ -469,7 +748,10 @@ export class ConfigDatabase {
             description: row.description as string || undefined,
             isBuiltIn: Boolean(row.is_built_in),
             order: row.order_index as number,
-            lastUsed: row.last_used as number
+            lastUsed: row.last_used as number,
+            usageCount: Number(row.usage_count || 0),
+            pinned: Boolean(row.pinned),
+            searchKeywords: keywordsMap.get(row.id as string) || []
         }));
     }
 
@@ -478,15 +760,19 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned
             FROM prompt_templates
             WHERE id = ?
         `);
         stmt.bind([id]);
 
         if (stmt.step()) {
-            const row = stmt.getAsObject();
+            const row = stmt.getAsObject() as SqlRow;
             stmt.free();
+
+            // Get searchKeywords from built-in prompts if applicable
+            const builtInPromptsFromCode = getBuiltInPrompts();
+            const foundPrompt = builtInPromptsFromCode.find(p => p.id === row.id);
 
             return {
                 id: row.id as string,
@@ -495,7 +781,10 @@ export class ConfigDatabase {
                 description: row.description as string || undefined,
                 isBuiltIn: Boolean(row.is_built_in),
                 order: row.order_index as number,
-                lastUsed: row.last_used as number
+                lastUsed: row.last_used as number,
+                usageCount: Number(row.usage_count || 0),
+                pinned: Boolean(row.pinned),
+                searchKeywords: foundPrompt?.searchKeywords || []
             };
         }
 
@@ -530,6 +819,14 @@ export class ConfigDatabase {
             setClause.push('last_used = ?');
             values.push(updates.lastUsed);
         }
+        if (updates.usageCount !== undefined) {
+            setClause.push('usage_count = ?');
+            values.push(updates.usageCount);
+        }
+        if (updates.pinned !== undefined) {
+            setClause.push('pinned = ?');
+            values.push(updates.pinned ? 1 : 0);
+        }
 
         if (setClause.length === 0) {
             return;
@@ -547,6 +844,47 @@ export class ConfigDatabase {
 
         stmt.run(values);
         await this.saveToFile();
+    }
+
+    async incrementPromptUsage(id: string): Promise<void> {
+        await this.ensureInitialized();
+        if (!this.db) throw new Error('Database not initialized');
+
+        const stmt = this.db.prepare(`
+            UPDATE prompt_templates 
+            SET usage_count = usage_count + 1, last_used = ? 
+            WHERE id = ?
+        `);
+        
+        stmt.run([Date.now(), id]);
+        stmt.free();
+        
+        await this.saveToFile();
+    }
+
+    async togglePromptPin(id: string): Promise<boolean> {
+        await this.ensureInitialized();
+        if (!this.db) throw new Error('Database not initialized');
+
+        // First get current state
+        const getStmt = this.db.prepare('SELECT pinned FROM prompt_templates WHERE id = ?');
+        getStmt.bind([id]);
+        
+        let newPinnedState = false;
+        if (getStmt.step()) {
+            const row = getStmt.getAsObject();
+            const currentPinned = Boolean(row.pinned);
+            newPinnedState = !currentPinned;
+        }
+        getStmt.free();
+
+        // Update state
+        const updateStmt = this.db.prepare('UPDATE prompt_templates SET pinned = ? WHERE id = ?');
+        updateStmt.run([newPinnedState ? 1 : 0, id]);
+        updateStmt.free();
+        
+        await this.saveToFile();
+        return newPinnedState;
     }
 
     async deletePrompt(id: string): Promise<void> {
@@ -568,38 +906,49 @@ export class ConfigDatabase {
 
         const searchTerm = `%${query.toLowerCase()}%`;
         
-        const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used
-            FROM prompt_templates
-            WHERE LOWER(title) LIKE ? OR LOWER(description) LIKE ?
-            ORDER BY 
-                CASE 
-                    WHEN LOWER(title) = LOWER(?) THEN 1
-                    WHEN LOWER(title) LIKE ? THEN 2
-                    WHEN LOWER(title) LIKE ? THEN 3
-                    ELSE 4
-                END,
-                last_used DESC,
-                order_index ASC
-        `);
-
-        stmt.bind([searchTerm, searchTerm, query.toLowerCase(), `${query.toLowerCase()}%`, searchTerm]);
-
-        const rows: any[] = [];
-        while (stmt.step()) {
-            rows.push(stmt.getAsObject());
+        // Get all prompts for keyword-based filtering (since SQLite doesn't have the keywords column)
+        const allPrompts = await this.getAllPrompts();
+        
+        if (!allPrompts || allPrompts.length === 0) {
+            return [];
         }
-        stmt.free();
-
-        return rows.map(row => ({
-            id: row.id as string,
-            title: row.title as string,
-            content: row.content as string,
-            description: row.description as string || undefined,
-            isBuiltIn: Boolean(row.is_built_in),
-            order: row.order_index as number,
-            lastUsed: row.last_used as number
-        }));
+        
+        const lowerQuery = query.toLowerCase();
+        const filtered = allPrompts.filter(prompt => {
+            const titleMatch = prompt.title.toLowerCase().includes(lowerQuery);
+            const descMatch = prompt.description?.toLowerCase().includes(lowerQuery) || false;
+            const keywordMatch = prompt.searchKeywords?.some(kw => kw.toLowerCase().includes(lowerQuery)) || false;
+            return titleMatch || descMatch || keywordMatch;
+        });
+        
+        // Sort by relevance
+        return filtered.sort((a, b) => {
+            const aTitle = a.title.toLowerCase();
+            const bTitle = b.title.toLowerCase();
+            
+            // Exact match first
+            if (aTitle === lowerQuery && bTitle !== lowerQuery) return -1;
+            if (bTitle === lowerQuery && aTitle !== lowerQuery) return 1;
+            
+            // Starts with query
+            const aStarts = aTitle.startsWith(lowerQuery);
+            const bStarts = bTitle.startsWith(lowerQuery);
+            if (aStarts && !bStarts) return -1;
+            if (bStarts && !aStarts) return 1;
+            
+            // Contains in title
+            const aContains = aTitle.includes(lowerQuery);
+            const bContains = bTitle.includes(lowerQuery);
+            if (aContains && !bContains) return -1;
+            if (bContains && !aContains) return 1;
+            
+            // Then by last used
+            const lastUsedDiff = (b.lastUsed || 0) - (a.lastUsed || 0);
+            if (lastUsedDiff !== 0) return lastUsedDiff;
+            
+            // Finally by order
+            return (a.order || 999) - (b.order || 999);
+        });
     }
 
     async markPromptAsUsed(id: string): Promise<void> {
@@ -611,17 +960,21 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned
             FROM prompt_templates
             WHERE is_built_in = 1
-            ORDER BY order_index ASC, title ASC
+            ORDER BY pinned DESC, usage_count DESC, order_index ASC, title ASC
         `);
 
-        const rows: any[] = [];
+        const rows: SqlRow[] = [];
         while (stmt.step()) {
-            rows.push(stmt.getAsObject());
+            rows.push(stmt.getAsObject() as SqlRow);
         }
         stmt.free();
+
+        // Get built-in prompts from code to add searchKeywords
+        const builtInPromptsFromCode = getBuiltInPrompts();
+        const keywordsMap = new Map(builtInPromptsFromCode.map(p => [p.id, p.searchKeywords]));
 
         return rows.map(row => ({
             id: row.id as string,
@@ -630,7 +983,10 @@ export class ConfigDatabase {
             description: row.description as string || undefined,
             isBuiltIn: true,
             order: row.order_index as number,
-            lastUsed: row.last_used as number
+            lastUsed: row.last_used as number,
+            usageCount: Number(row.usage_count || 0),
+            pinned: Boolean(row.pinned),
+            searchKeywords: keywordsMap.get(row.id as string) || []
         }));
     }
 
@@ -645,9 +1001,9 @@ export class ConfigDatabase {
             ORDER BY order_index ASC, title ASC
         `);
 
-        const rows: any[] = [];
+        const rows: SqlRow[] = [];
         while (stmt.step()) {
-            rows.push(stmt.getAsObject());
+            rows.push(stmt.getAsObject() as SqlRow);
         }
         stmt.free();
 
@@ -706,7 +1062,7 @@ export class ConfigDatabase {
 
         try {
             // Store MCP config in plugin directory
-            const mcpConfigPath = '.obsidian/plugins/obsidian-llmsider/mcp-config.json';
+            const mcpConfigPath = `${this.vault.configDir}/plugins/obsidian-llmsider/mcp-config.json`;
             if (await this.adapter.exists(mcpConfigPath)) {
                 const configContent = await this.adapter.read(mcpConfigPath);
                 const config = JSON.parse(configContent) as MCPServersConfig;
@@ -725,7 +1081,7 @@ export class ConfigDatabase {
 
         try {
             // Store MCP config in plugin directory
-            const mcpConfigPath = '.obsidian/plugins/obsidian-llmsider/mcp-config.json';
+            const mcpConfigPath = `${this.vault.configDir}/plugins/obsidian-llmsider/mcp-config.json`;
             const configContent = JSON.stringify(config, null, 2);
             await this.adapter.write(mcpConfigPath, configContent);
             Logger.debug('Saved MCP config to file');
@@ -788,17 +1144,17 @@ export class ConfigDatabase {
             SELECT * FROM chat_sessions ORDER BY updated DESC
         `);
 
-        const rows: any[] = [];
+        const rows: ChatSession[] = [];
         while (stmt.step()) {
-            const row = stmt.getAsObject();
+            const row = stmt.getAsObject() as SqlRow;
             rows.push({
-                id: row.id,
-                name: row.name,
+                id: row.id as string,
+                name: row.name as string,
                 messages: JSON.parse(row.messages as string),
-                created: row.created,
-                updated: row.updated,
-                provider: row.provider,
-                mode: row.mode
+                created: row.created as number,
+                updated: row.updated as number,
+                provider: row.provider as string,
+                mode: row.mode as 'ask' | 'action'
             });
         }
         stmt.free();
@@ -814,7 +1170,7 @@ export class ConfigDatabase {
         stmt.bind([id]);
 
         if (stmt.step()) {
-            const row = stmt.getAsObject();
+            const row = stmt.getAsObject() as SqlRow;
             stmt.free();
 
             return {
@@ -876,54 +1232,14 @@ export class ConfigDatabase {
         await this.saveToFile();
     }
 
-    // Built-in Tool Permissions CRUD operations
-    async getBuiltInToolPermissions(): Promise<Record<string, boolean>> {
-        await this.ensureInitialized();
-        if (!this.db) throw new Error('Database not initialized');
-
-        const stmt = this.db.prepare(`SELECT tool_name, enabled FROM built_in_tool_permissions`);
-        const permissions: Record<string, boolean> = {};
-
-        while (stmt.step()) {
-            const row = stmt.getAsObject();
-            permissions[row.tool_name as string] = Boolean(row.enabled);
-        }
-        stmt.free();
-
-        return permissions;
-    }
-
-    async setBuiltInToolPermission(toolName: string, enabled: boolean): Promise<void> {
-        await this.ensureInitialized();
-        if (!this.db) throw new Error('Database not initialized');
-
-        const stmt = this.db.prepare(`
-            INSERT OR REPLACE INTO built_in_tool_permissions (tool_name, enabled, updated_at)
-            VALUES (?, ?, ?)
-        `);
-
-        stmt.run([toolName, enabled ? 1 : 0, Date.now()]);
-        await this.saveToFile();
-    }
-
-    async setBuiltInToolPermissions(permissions: Record<string, boolean>): Promise<void> {
-        await this.ensureInitialized();
-        if (!this.db) throw new Error('Database not initialized');
-
-        const stmt = this.db.prepare(`
-            INSERT OR REPLACE INTO built_in_tool_permissions (tool_name, enabled, updated_at)
-            VALUES (?, ?, ?)
-        `);
-
-        for (const [toolName, enabled] of Object.entries(permissions)) {
-            stmt.bind([toolName, enabled ? 1 : 0, Date.now()]);
-            stmt.step();
-            stmt.reset();
-        }
-        stmt.free();
-
-        await this.saveToFile();
-    }
+    // ============================================================================
+    // DEPRECATED: Built-in Tool Permissions (Old Architecture)
+    // The built_in_tool_permissions table is kept for backward compatibility
+    // but all new code should use tool_settings table via:
+    //   - isBuiltInToolEnabled()
+    //   - setBuiltInToolEnabled()
+    //   - getBuiltInToolSettings()
+    // ============================================================================
 
     // I18n Settings
     async getI18nSettings(): Promise<{ language: 'en' | 'zh'; initialized: boolean }> {
@@ -942,8 +1258,9 @@ export class ConfigDatabase {
     }
 
     // Autocomplete Settings
-    async getAutocompleteSettings(): Promise<any> {
+    async getAutocompleteSettings(): Promise<unknown> {
         const enabled = await this.getConfig('autocomplete.enabled');
+        const modelId = await this.getConfig('autocomplete.modelId');
         const granularity = await this.getConfig('autocomplete.granularity');
         const tone = await this.getConfig('autocomplete.tone');
         const domain = await this.getConfig('autocomplete.domain');
@@ -952,6 +1269,7 @@ export class ConfigDatabase {
 
         return {
             enabled: enabled === null ? true : enabled === 'true',
+            modelId: modelId || undefined,
             granularity: granularity || 'phrase',
             tone: tone || 'professional',
             domain: domain || 'general',
@@ -960,8 +1278,14 @@ export class ConfigDatabase {
         };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async setAutocompleteSettings(settings: any): Promise<void> {
         await this.setConfig('autocomplete.enabled', settings.enabled.toString());
+        if (settings.modelId) {
+            await this.setConfig('autocomplete.modelId', settings.modelId);
+        } else {
+            await this.deleteConfigValue('autocomplete.modelId');
+        }
         await this.setConfig('autocomplete.granularity', settings.granularity);
         await this.setConfig('autocomplete.tone', settings.tone);
         await this.setConfig('autocomplete.domain', settings.domain);
@@ -970,7 +1294,7 @@ export class ConfigDatabase {
     }
 
     // Inline Quick Chat Settings
-    async getInlineQuickChatSettings(): Promise<any> {
+    async getInlineQuickChatSettings(): Promise<unknown> {
         const enabled = await this.getConfig('inlineQuickChat.enabled');
         const triggerKey = await this.getConfig('inlineQuickChat.triggerKey');
         const showOnSelection = await this.getConfig('inlineQuickChat.showOnSelection');
@@ -982,10 +1306,11 @@ export class ConfigDatabase {
             triggerKey: triggerKey || 'Mod+/',
             showOnSelection: showOnSelection === 'true',
             enableDiffPreview: enableDiffPreview === null ? true : enableDiffPreview === 'true',
-            showQuickChatButton: showQuickChatButton === 'true'
+            showQuickChatButton: showQuickChatButton === null ? true : showQuickChatButton === 'true'
         };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async setInlineQuickChatSettings(settings: any): Promise<void> {
         await this.setConfig('inlineQuickChat.enabled', settings.enabled.toString());
         await this.setConfig('inlineQuickChat.triggerKey', settings.triggerKey);
@@ -994,20 +1319,111 @@ export class ConfigDatabase {
         await this.setConfig('inlineQuickChat.showQuickChatButton', settings.showQuickChatButton.toString());
     }
 
+    // ==================== Prompt History Methods ====================
+
+    /**
+     * Add or update a prompt in history
+     */
+    async addPromptHistory(prompt: string): Promise<void> {
+        if (!this.db || !prompt || !prompt.trim()) return;
+        
+        const trimmedPrompt = prompt.trim();
+        const now = Date.now();
+        
+        try {
+            // Check if prompt already exists
+            const existing = this.db.exec(
+                'SELECT id, use_count FROM prompt_history WHERE prompt = ?',
+                [trimmedPrompt]
+            );
+            
+            if (existing.length > 0 && existing[0].values.length > 0) {
+                // Update existing entry
+                const useCount = existing[0].values[0][1] as number;
+                this.db.run(
+                    'UPDATE prompt_history SET last_used = ?, use_count = ? WHERE prompt = ?',
+                    [now, useCount + 1, trimmedPrompt]
+                );
+            } else {
+                // Insert new entry
+                this.db.run(
+                    'INSERT INTO prompt_history (prompt, last_used, use_count) VALUES (?, ?, ?)',
+                    [trimmedPrompt, now, 1]
+                );
+            }
+            
+            this.scheduleSave();
+        } catch (error) {
+            Logger.error('Failed to add prompt history:', error);
+        }
+    }
+
+    /**
+     * Get recent prompt history (most recent first)
+     * @param limit Maximum number of prompts to return
+     */
+    async getPromptHistory(limit: number = 10): Promise<string[]> {
+        if (!this.db) return [];
+        
+        try {
+            const result = this.db.exec(
+                'SELECT prompt FROM prompt_history ORDER BY last_used DESC LIMIT ?',
+                [limit]
+            );
+            
+            if (result.length === 0 || result[0].values.length === 0) {
+                return [];
+            }
+            
+            return result[0].values.map(row => row[0] as string);
+        } catch (error) {
+            Logger.error('Failed to get prompt history:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Check if a prompt exists in built-in prompts (by title)
+     */
+    async isPromptInBuiltIn(prompt: string): Promise<boolean> {
+        const builtInPrompts = await this.getBuiltInPrompts();
+        return builtInPrompts.some(p => p.title === prompt || p.content === prompt);
+    }
+
+    /**
+     * Clear old prompt history entries (keep only the most recent N entries)
+     */
+    async cleanPromptHistory(keepCount: number = 100): Promise<void> {
+        if (!this.db) return;
+        
+        try {
+            this.db.run(
+                `DELETE FROM prompt_history WHERE id NOT IN (
+                    SELECT id FROM prompt_history ORDER BY last_used DESC LIMIT ?
+                )`,
+                [keepCount]
+            );
+            this.scheduleSave();
+        } catch (error) {
+            Logger.error('Failed to clean prompt history:', error);
+        }
+    }
+
     // Selection Popup Settings
-    async getSelectionPopupSettings(): Promise<any> {
+    async getSelectionPopupSettings(): Promise<unknown> {
         const showAddToContext = await this.getConfig('selectionPopup.showAddToContext');
         return {
-            showAddToContext: showAddToContext === 'true'
+            showAddToContext: showAddToContext === null ? true : showAddToContext === 'true'
         };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async setSelectionPopupSettings(settings: any): Promise<void> {
         await this.setConfig('selectionPopup.showAddToContext', settings.showAddToContext.toString());
     }
 
     // Google Search Settings
-    async getGoogleSearchSettings(): Promise<any> {
+    async getGoogleSearchSettings(): Promise<unknown> {
         const searchBackend = await this.getConfig('googleSearch.searchBackend');
         const googleApiKey = await this.getConfig('googleSearch.googleApiKey');
         const googleSearchEngineId = await this.getConfig('googleSearch.googleSearchEngineId');
@@ -1023,6 +1439,7 @@ export class ConfigDatabase {
         };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async setGoogleSearchSettings(settings: any): Promise<void> {
         await this.setConfig('googleSearch.searchBackend', settings.searchBackend);
         if (settings.googleApiKey !== undefined) {
@@ -1040,9 +1457,11 @@ export class ConfigDatabase {
     }
 
     // Vector Database Settings
-    async getVectorSettings(): Promise<any> {
+    async getVectorSettings(): Promise<unknown> {
         const enabled = await this.getConfig('vector.enabled');
         const showSimilarNotes = await this.getConfig('vector.showSimilarNotes');
+        const similarNotesCollapsed = await this.getConfig('vector.similarNotesCollapsed');
+        const similarNotesHideByDefault = await this.getConfig('vector.similarNotesHideByDefault');
         const autoSearchEnabled = await this.getConfig('vector.autoSearchEnabled');
         const indexName = await this.getConfig('vector.indexName');
         const chunkingStrategy = await this.getConfig('vector.chunkingStrategy');
@@ -1052,12 +1471,17 @@ export class ConfigDatabase {
         const embeddingModelId = await this.getConfig('vector.embeddingModelId');
         const suggestRelatedFiles = await this.getConfig('vector.suggestRelatedFiles');
         const suggestionTimeout = await this.getConfig('vector.suggestionTimeout');
+        const contextExcerptLength = await this.getConfig('vector.contextExcerptLength');
+
+        const autoSearchResult = autoSearchEnabled === null ? false : autoSearchEnabled === 'true';
 
         return {
             enabled: enabled === 'true',
             showSimilarNotes: showSimilarNotes === null ? true : showSimilarNotes === 'true',
-            autoSearchEnabled: autoSearchEnabled === 'true',
-            storagePath: '.obsidian/plugins/obsidian-llmsider/vector-data', // Always use default, not stored in DB
+            similarNotesCollapsed: similarNotesCollapsed === 'true',
+            similarNotesHideByDefault: similarNotesHideByDefault === 'true',
+            autoSearchEnabled: autoSearchResult, // Default false if not set
+            storagePath: `${this.vault.configDir}/plugins/obsidian-llmsider/vector-data`, // Always use default, not stored in DB
             indexName: indexName || 'vault-semantic-index',
             chunkingStrategy: chunkingStrategy || 'character',
             chunkSize: chunkSize ? parseInt(chunkSize) : 1000,
@@ -1066,13 +1490,17 @@ export class ConfigDatabase {
             embeddingModelId: embeddingModelId || '',
             suggestRelatedFiles: suggestRelatedFiles === 'true',
             suggestionTimeout: suggestionTimeout ? parseInt(suggestionTimeout) : 5000,
-            localModelPath: '.obsidian/plugins/obsidian-llmsider/models' // Always use default, not stored in DB
+            contextExcerptLength: contextExcerptLength ? parseInt(contextExcerptLength) : 500,
+            localModelPath: `${this.vault.configDir}/plugins/obsidian-llmsider/models` // Always use default, not stored in DB
         };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async setVectorSettings(settings: any): Promise<void> {
         await this.setConfig('vector.enabled', settings.enabled.toString());
         await this.setConfig('vector.showSimilarNotes', settings.showSimilarNotes?.toString() || 'true');
+        await this.setConfig('vector.similarNotesCollapsed', settings.similarNotesCollapsed?.toString() || 'false');
+        await this.setConfig('vector.similarNotesHideByDefault', settings.similarNotesHideByDefault?.toString() || 'false');
         await this.setConfig('vector.autoSearchEnabled', settings.autoSearchEnabled?.toString() || 'false');
         // storagePath and localModelPath are not stored in DB - always use defaults
         await this.setConfig('vector.indexName', settings.indexName);
@@ -1083,6 +1511,7 @@ export class ConfigDatabase {
         await this.setConfig('vector.embeddingModelId', settings.embeddingModelId);
         await this.setConfig('vector.suggestRelatedFiles', settings.suggestRelatedFiles?.toString() || 'false');
         await this.setConfig('vector.suggestionTimeout', settings.suggestionTimeout?.toString() || '5000');
+        await this.setConfig('vector.contextExcerptLength', settings.contextExcerptLength?.toString() || '500');
     }
 
     // Other Settings
@@ -1141,7 +1570,7 @@ export class ConfigDatabase {
     }
 
     // MCP Settings (serverPermissions only, serversConfig stays in mcp-config.json)
-    async getMCPServerPermissions(): Promise<Record<string, any>> {
+    async getMCPServerPermissions(): Promise<Record<string, unknown>> {
         const value = await this.getConfig('mcpServerPermissions');
         if (!value) return {};
         try {
@@ -1151,7 +1580,7 @@ export class ConfigDatabase {
         }
     }
 
-    async setMCPServerPermissions(permissions: Record<string, any>): Promise<void> {
+    async setMCPServerPermissions(permissions: Record<string, unknown>): Promise<void> {
         await this.setConfig('mcpServerPermissions', JSON.stringify(permissions));
     }
 
@@ -1173,16 +1602,36 @@ export class ConfigDatabase {
         await this.setConfig('mcpEnableResourceBrowsing', enabled.toString());
     }
 
-    async getMCPRequireConfirmationForTools(): Promise<boolean> {
-        const value = await this.getConfig('mcpRequireConfirmationForTools');
-        return value === 'true';
+    // Tool Selection Limit Settings
+    async getMaxBuiltInToolsSelection(): Promise<number> {
+        const value = await this.getConfig('maxBuiltInToolsSelection');
+        return value ? parseInt(value) : 64; // Default: 64
     }
 
-    async setMCPRequireConfirmationForTools(enabled: boolean): Promise<void> {
-        await this.setConfig('mcpRequireConfirmationForTools', enabled.toString());
+    async setMaxBuiltInToolsSelection(limit: number): Promise<void> {
+        await this.setConfig('maxBuiltInToolsSelection', limit.toString());
     }
 
-    // ============================================================================
+    async getMaxMCPToolsSelection(): Promise<number> {
+        const value = await this.getConfig('maxMCPToolsSelection');
+        return value ? parseInt(value) : 64; // Default: 64
+    }
+
+    async setMaxMCPToolsSelection(limit: number): Promise<void> {
+        await this.setConfig('maxMCPToolsSelection', limit.toString());
+    }
+
+	// Plan Execution Mode Settings
+	async getPlanExecutionMode(): Promise<'sequential' | 'dag'> {
+		const value = await this.getConfig('planExecutionMode');
+		return (value as 'sequential' | 'dag') || 'sequential'; // Default: sequential
+	}
+
+	async setPlanExecutionMode(mode: 'sequential' | 'dag'): Promise<void> {
+		await this.setConfig('planExecutionMode', mode);
+	}
+
+	// ============================================================================
     // Tool Auto-Execute Settings
     // ============================================================================
 
@@ -1243,7 +1692,7 @@ export class ConfigDatabase {
             stmt.bind([toolId]);
             
             if (stmt.step()) {
-                const row = stmt.getAsObject();
+                const row = stmt.getAsObject() as SqlRow;
                 stmt.free();
                 return {
                     enabled: row.enabled === 1,
@@ -1280,6 +1729,9 @@ export class ConfigDatabase {
             ]);
             stmt.step();
             stmt.free();
+            
+            // Persist changes to file
+            this.saveToFile();
         } catch (error) {
             Logger.error('Failed to set tool settings:', error);
         }
@@ -1350,7 +1802,7 @@ export class ConfigDatabase {
             stmt.bind([serverId]);
             
             while (stmt.step()) {
-                const row = stmt.getAsObject();
+                const row = stmt.getAsObject() as SqlRow;
                 result.set(row.tool_id as string, {
                     enabled: row.enabled === 1,
                     requireConfirmation: row.require_confirmation === 1
@@ -1367,28 +1819,40 @@ export class ConfigDatabase {
 
     /**
      * Remove tool settings for tools that no longer exist
+     * WARNING: This method is deprecated and should not be used.
+     * Use cleanupMCPToolSettings or removeToolSettingsByServer instead.
      */
     cleanupToolSettings(validToolIds: string[]): void {
+        // This method is intentionally disabled to prevent bugs where MCP tool cleanup
+        // accidentally deletes built-in tool settings
+    }
+
+    /**
+     * Remove MCP tool settings for tools that no longer exist on specific servers
+     * Only affects MCP tools (server_id != 'built-in')
+     */
+    cleanupMCPToolSettings(validMCPToolIds: string[]): void {
         if (!this.db) return;
         
         try {
-            if (validToolIds.length === 0) {
-                // If no valid tools, clear all
-                this.db.run(`DELETE FROM tool_settings`);
+            if (validMCPToolIds.length === 0) {
+                // If no valid MCP tools, clear all MCP tool settings (keep built-in)
+                this.db.run(`DELETE FROM tool_settings WHERE server_id != 'built-in'`);
                 return;
             }
             
-            const placeholders = validToolIds.map(() => '?').join(',');
+            const placeholders = validMCPToolIds.map(() => '?').join(',');
             const stmt = this.db.prepare(`
                 DELETE FROM tool_settings 
-                WHERE tool_id NOT IN (${placeholders})
+                WHERE server_id != 'built-in'
+                AND tool_id NOT IN (${placeholders})
             `);
             
-            stmt.bind(validToolIds);
+            stmt.bind(validMCPToolIds);
             stmt.step();
             stmt.free();
         } catch (error) {
-            Logger.error('Failed to cleanup tool settings:', error);
+            Logger.error('Failed to cleanup MCP tool settings:', error);
         }
     }
 
@@ -1455,8 +1919,24 @@ export class ConfigDatabase {
      * Returns true if not set (default enabled)
      */
     isBuiltInToolEnabled(toolName: string): boolean {
+        // System tools are ALWAYS enabled
+        const SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each'];
+        if (SYSTEM_TOOLS.includes(toolName)) {
+            return true;
+        }
+
         const settings = this.getBuiltInToolSettings(toolName);
-        return settings ? settings.enabled : true;
+        
+        // CRITICAL DEBUG: Log the exact settings retrieval
+        if (!settings) {
+            Logger.debug(`[ConfigDB] Tool ${toolName} has NO settings record in database - defaulting to DISABLED`);
+        } else {
+            Logger.debug(`[ConfigDB] Tool ${toolName} settings found: enabled=${settings.enabled}, requireConfirmation=${settings.requireConfirmation}`);
+        }
+        
+        // Default to FALSE (disabled) if not explicitly set - CONSERVATIVE APPROACH
+        // This prevents accidentally enabling all tools
+        return settings ? settings.enabled : false;
     }
 
     /**
@@ -1475,22 +1955,55 @@ export class ConfigDatabase {
     /**
      * Get all connections
      */
-    async getConnections(): Promise<any[]> {
+    async getConnections(): Promise<unknown[]> {
         if (!this.db) return [];
         try {
             const stmt = this.db.prepare(`
                 SELECT id, name, type, api_key as apiKey, base_url as baseUrl, 
-                       organization_id as organizationId, enabled, created, updated
+                       organization_id as organizationId, region,
+                       proxy_enabled as proxyEnabled, proxy_type as proxyType,
+                       proxy_host as proxyHost, proxy_port as proxyPort,
+                       proxy_auth as proxyAuth, proxy_username as proxyUsername,
+                       proxy_password as proxyPassword,
+                       enabled, created, updated
                 FROM connections
                 ORDER BY created DESC
             `);
             const connections = [];
+            const connectionsNeedingFix = [];
+            
             while (stmt.step()) {
-                const row = stmt.getAsObject();
+                const row = stmt.getAsObject() as SqlRow;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const connection: any = {
                     ...row,
-                    enabled: row.enabled === 1
+                    enabled: row.enabled === 1,
+                    proxyEnabled: row.proxyEnabled === 1,
+                    proxyAuth: row.proxyAuth === 1
                 };
+                
+                // Fix missing type field from old data
+                if (!connection.type || connection.type === '') {
+                    // Try to infer type from connection name
+                    const nameLower = connection.name?.toLowerCase() || '';
+                    if (nameLower.includes('deepseek')) {
+                        connection.type = 'free-deepseek';
+                    } else if (nameLower.includes('openai')) {
+                        connection.type = 'openai';
+                    } else if (nameLower.includes('anthropic') || nameLower.includes('claude')) {
+                        connection.type = 'anthropic';
+                    } else if (nameLower.includes('azure')) {
+                        connection.type = 'azure-openai';
+                    } else if (nameLower.includes('ollama')) {
+                        connection.type = 'ollama';
+                    } else if (nameLower.includes('gemini') || nameLower.includes('google')) {
+                        connection.type = 'google';
+                    } else {
+                        connection.type = 'openai'; // Default fallback
+                    }
+                    Logger.warn(`Fixed missing type for connection ${connection.id}: ${connection.name} -> ${connection.type}`);
+                    connectionsNeedingFix.push(connection);
+                }
                 
                 // For GitHub Copilot, decode tokens from apiKey JSON
                 if (connection.type === 'github-copilot' && connection.apiKey) {
@@ -1508,6 +2021,17 @@ export class ConfigDatabase {
                 connections.push(connection);
             }
             stmt.free();
+            
+            // Save fixed connections back to database
+            for (const connection of connectionsNeedingFix) {
+                try {
+                    await this.saveConnection(connection);
+                    Logger.debug(`Saved fixed connection: ${connection.id}`);
+                } catch (error) {
+                    Logger.error(`Failed to save fixed connection ${connection.id}:`, error);
+                }
+            }
+            
             return connections;
         } catch (error) {
             Logger.error('Error getting connections:', error);
@@ -1518,6 +2042,7 @@ export class ConfigDatabase {
     /**
      * Save or update a connection
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async saveConnection(connection: any): Promise<void> {
         if (!this.db) return;
         try {
@@ -1533,8 +2058,10 @@ export class ConfigDatabase {
             
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO connections 
-                (id, name, type, api_key, base_url, organization_id, enabled, created, updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, name, type, api_key, base_url, organization_id, region,
+                 proxy_enabled, proxy_type, proxy_host, proxy_port, proxy_auth, proxy_username, proxy_password,
+                 enabled, created, updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
             stmt.bind([
                 connection.id,
@@ -1543,6 +2070,14 @@ export class ConfigDatabase {
                 apiKeyValue,
                 connection.baseUrl || null,
                 connection.organizationId || null,
+                connection.region || null,
+                connection.proxyEnabled ? 1 : 0,
+                connection.proxyType || null,
+                connection.proxyHost || null,
+                connection.proxyPort || null,
+                connection.proxyAuth ? 1 : 0,
+                connection.proxyUsername || null,
+                connection.proxyPassword || null,
                 connection.enabled ? 1 : 0,
                 connection.created,
                 connection.updated
@@ -1577,7 +2112,7 @@ export class ConfigDatabase {
     /**
      * Get all models
      */
-    async getModels(): Promise<any[]> {
+    async getModels(): Promise<unknown[]> {
         if (!this.db) return [];
         try {
             const stmt = this.db.prepare(`
@@ -1591,7 +2126,7 @@ export class ConfigDatabase {
             `);
             const models = [];
             while (stmt.step()) {
-                const row = stmt.getAsObject();
+                const row = stmt.getAsObject() as SqlRow;
                 models.push({
                     ...row,
                     enabled: row.enabled === 1,
@@ -1612,7 +2147,7 @@ export class ConfigDatabase {
     /**
      * Get models for a specific connection
      */
-    async getModelsForConnection(connectionId: string): Promise<any[]> {
+    async getModelsForConnection(connectionId: string): Promise<unknown[]> {
         if (!this.db) return [];
         try {
             const stmt = this.db.prepare(`
@@ -1628,7 +2163,7 @@ export class ConfigDatabase {
             stmt.bind([connectionId]);
             const models = [];
             while (stmt.step()) {
-                const row = stmt.getAsObject();
+                const row = stmt.getAsObject() as SqlRow;
                 models.push({
                     ...row,
                     enabled: row.enabled === 1,
@@ -1649,20 +2184,10 @@ export class ConfigDatabase {
     /**
      * Save or update a model
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async saveModel(model: any): Promise<void> {
         if (!this.db) return;
         try {
-            // Debug log for embedding models
-            if (model.isEmbedding) {
-                Logger.debug('Saving embedding model to database:', {
-                    id: model.id,
-                    name: model.name,
-                    modelName: model.modelName,
-                    isEmbedding: model.isEmbedding,
-                    embeddingDimension: model.embeddingDimension
-                });
-            }
-
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO models
                 (id, name, connection_id, model_name, max_tokens, temperature, top_p,
@@ -1688,21 +2213,6 @@ export class ConfigDatabase {
             stmt.step();
             stmt.free();
             await this.saveToFile();
-
-            // Verify save for embedding models
-            if (model.isEmbedding) {
-                const verifyStmt = this.db.prepare('SELECT is_embedding, embedding_dimension FROM models WHERE id = ?');
-                verifyStmt.bind([model.id]);
-                if (verifyStmt.step()) {
-                    const row = verifyStmt.getAsObject();
-                    Logger.debug('Verified saved model in DB:', {
-                        id: model.id,
-                        is_embedding: row.is_embedding,
-                        embedding_dimension: row.embedding_dimension
-                    });
-                }
-                verifyStmt.free();
-            }
         } catch (error) {
             Logger.error('Error saving model:', error);
             throw error;
@@ -1754,4 +2264,97 @@ export class ConfigDatabase {
         await this.setConfig('activeModelId', modelId);
     }
 
+    // ============================================================================
+    // Memory Settings
+    // ============================================================================
+
+    async getMemorySettings(): Promise<unknown> {
+        const enableWorkingMemory = await this.getConfig('memory_enableWorkingMemory');
+        const workingMemoryScope = await this.getConfig('memory_workingMemoryScope');
+        const enableConversationHistory = await this.getConfig('memory_enableConversationHistory');
+        const conversationHistoryLimit = await this.getConfig('memory_conversationHistoryLimit');
+        const enableSemanticRecall = await this.getConfig('memory_enableSemanticRecall');
+        const semanticRecallLimit = await this.getConfig('memory_semanticRecallLimit');
+        const embeddingModelId = await this.getConfig('memory_embeddingModelId');
+        const enableCompaction = await this.getConfig('memory_enableCompaction');
+        const compactionThreshold = await this.getConfig('memory_compactionThreshold');
+        const compactionTarget = await this.getConfig('memory_compactionTarget');
+        const compactionPreserveCount = await this.getConfig('memory_compactionPreserveCount');
+        const compactionModel = await this.getConfig('memory_compactionModel');
+
+        return {
+            enableWorkingMemory: enableWorkingMemory === 'true',
+            workingMemoryScope: (workingMemoryScope || 'resource') as 'resource' | 'thread',
+            enableConversationHistory: enableConversationHistory === null ? true : enableConversationHistory === 'true',
+            conversationHistoryLimit: conversationHistoryLimit ? parseInt(conversationHistoryLimit) : 10,
+            enableSemanticRecall: enableSemanticRecall === 'true',
+            semanticRecallLimit: semanticRecallLimit ? parseInt(semanticRecallLimit) : 5,
+            embeddingModelId: embeddingModelId || '',
+            enableCompaction: enableCompaction === null ? true : enableCompaction === 'true',
+            compactionThreshold: compactionThreshold ? parseInt(compactionThreshold) : 65536,
+            compactionTarget: compactionTarget ? parseInt(compactionTarget) : 4000,
+            compactionPreserveCount: compactionPreserveCount ? parseInt(compactionPreserveCount) : 4,
+            compactionModel: compactionModel || '',
+        };
+    }
+
+    async setMemorySettings(settings: any): Promise<void> {
+        await this.setConfig('memory_enableWorkingMemory', settings.enableWorkingMemory?.toString() || 'true');
+        await this.setConfig('memory_workingMemoryScope', settings.workingMemoryScope || 'resource');
+        await this.setConfig('memory_enableConversationHistory', settings.enableConversationHistory?.toString() || 'true');
+        await this.setConfig('memory_conversationHistoryLimit', settings.conversationHistoryLimit?.toString() || '10');
+        await this.setConfig('memory_enableSemanticRecall', settings.enableSemanticRecall?.toString() || 'false');
+        await this.setConfig('memory_semanticRecallLimit', settings.semanticRecallLimit?.toString() || '5');
+        await this.setConfig('memory_embeddingModelId', settings.embeddingModelId || '');
+        await this.setConfig('memory_enableCompaction', settings.enableCompaction?.toString() || 'true');
+        await this.setConfig('memory_compactionThreshold', settings.compactionThreshold?.toString() || '65536');
+        await this.setConfig('memory_compactionTarget', settings.compactionTarget?.toString() || '4000');
+        await this.setConfig('memory_compactionPreserveCount', settings.compactionPreserveCount?.toString() || '4');
+        await this.setConfig('memory_compactionModel', settings.compactionModel || '');
+    }
+
+    // ============================================================================
+    // Conversation Mode Settings
+    // ============================================================================
+
+    async getConversationMode(): Promise<'normal' | 'guided' | 'agent'> {
+        const value = await this.getConfig('conversationMode');
+        return (value as 'normal' | 'guided' | 'agent') || 'normal';
+    }
+
+    async setConversationMode(mode: 'normal' | 'guided' | 'agent'): Promise<void> {
+        await this.setConfig('conversationMode', mode);
+    }
+
+    async getDefaultConversationMode(): Promise<'normal' | 'guided' | 'agent'> {
+        const value = await this.getConfig('defaultConversationMode');
+        return (value as 'normal' | 'guided' | 'agent') || 'normal';
+    }
+
+    async setDefaultConversationMode(mode: 'normal' | 'guided' | 'agent'): Promise<void> {
+        await this.setConfig('defaultConversationMode', mode);
+    }
+
+    // ============================================================================
+    // Advanced Settings
+    // ============================================================================
+
+    async getEnableDebugLogging(): Promise<boolean> {
+        const value = await this.getConfig('enableDebugLogging');
+        return value === 'true';
+    }
+
+    async setEnableDebugLogging(enabled: boolean): Promise<void> {
+        await this.setConfig('enableDebugLogging', enabled.toString());
+    }
+
+    async getIsFirstLaunch(): Promise<boolean> {
+        const value = await this.getConfig('isFirstLaunch');
+        return value === null ? true : value === 'true'; // Default to true if not set
+    }
+
+    async setIsFirstLaunch(isFirst: boolean): Promise<void> {
+        await this.setConfig('isFirstLaunch', isFirst.toString());
+    }
 }
+

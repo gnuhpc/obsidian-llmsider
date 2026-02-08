@@ -8,8 +8,14 @@ import { BaseLLMProvider } from '../providers/base-provider';
 import { OpenAIProviderImpl } from '../providers/openai-provider';
 import { AnthropicProviderImpl } from '../providers/anthropic-provider';
 import { QwenProviderImpl } from '../providers/qwen-provider';
+import { FreeQwenProviderImpl } from '../providers/free-qwen-provider-impl';
+import { FreeGeminiProviderImpl } from '../providers/free-gemini-provider-impl';
+import { FreeDeepseekProviderImpl } from '../providers/free-deepseek-provider-impl';
 import { OpenAICompatibleProviderImpl } from '../providers/openai-compatible-provider';
 import { GitHubCopilotProviderImpl } from '../providers/github-copilot-provider';
+import { HuggingChatProviderImpl } from '../providers/hugging-chat-provider';
+import { OpenCodeProviderImpl } from '../providers/opencode-provider';
+
 import { UnifiedToolManager } from '../tools/unified-tool-manager';
 
 export class ProviderFactory {
@@ -46,12 +52,24 @@ export class ProviderFactory {
 			enabled: connection.enabled && model.enabled,
 			organizationId: connection.organizationId,
 			supportsVision: model.supportsVision,
+			outputModalities: model.outputModalities,
 			// GitHub Copilot specific fields
 			githubToken: connection.githubToken,
 			copilotToken: connection.copilotToken,
 			tokenExpiry: connection.tokenExpiry,
+			// Proxy configuration
+			proxyEnabled: connection.proxyEnabled,
+			proxyType: connection.proxyType,
+			proxyHost: connection.proxyHost,
+			proxyPort: connection.proxyPort,
+			proxyAuth: connection.proxyAuth,
+			proxyUsername: connection.proxyUsername,
+			proxyPassword: connection.proxyPassword,
 			toolManager: toolManager
 		};
+
+		Logger.debug(`[ProviderFactory] Creating provider ${connection.type} for model ${model.modelName} with supportsVision: ${model.supportsVision}`);
+
 
 		// Create appropriate provider instance based on type
 		switch (connection.type) {
@@ -61,10 +79,22 @@ export class ProviderFactory {
 			case 'anthropic':
 				return new AnthropicProviderImpl(providerConfig);
 
-			case 'qwen':
-				return new QwenProviderImpl(providerConfig);
+		case 'qwen':
+			return new QwenProviderImpl(providerConfig);
 
-			case 'github-copilot':
+		case 'free-qwen':
+			return new FreeQwenProviderImpl(providerConfig);
+
+		case 'free-gemini':
+			return new FreeGeminiProviderImpl(providerConfig);
+
+		case 'free-deepseek':
+			return new FreeDeepseekProviderImpl(providerConfig);
+
+		case 'hugging-chat':
+			return new HuggingChatProviderImpl(providerConfig);
+
+		case 'github-copilot':
 				Logger.debug('Creating GitHub Copilot provider:', {
 					hasGithubToken: !!connection.githubToken,
 					hasCopilotToken: !!connection.copilotToken,
@@ -88,22 +118,47 @@ export class ProviderFactory {
 				// Ollama uses OpenAI-compatible API
 				return new OpenAICompatibleProviderImpl(providerConfig);
 
-			case 'huggingface':
-				// Hugging Face connections are for local embedding models only
-				// They should not be used for chat providers
-				throw new Error(
-					'Hugging Face connections are designed for embedding models only. ' +
-					'Please mark this model as an embedding model or use a different connection type for chat.'
-				);
+			case 'groq':
+				// Groq uses OpenAI-compatible API
+				// Set default baseUrl if not provided
+				if (!connection.baseUrl) {
+					providerConfig.baseUrl = 'https://api.groq.com/openai/v1';
+				}
+				return new OpenAICompatibleProviderImpl(providerConfig);
 
-			case 'local':
-				throw new Error(
-					'Local connections are designed for embedding models only. ' +
-					'Please use a cloud provider for chat models.'
-				);
+			case 'gemini':
+				// Gemini uses OpenAI-compatible API (via Google AI Studio)
+				// Set default baseUrl if not provided
+				if (!connection.baseUrl) {
+					providerConfig.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+				}
+				return new OpenAICompatibleProviderImpl(providerConfig);
 
-			default:
-				throw new Error(`Unknown provider type: ${connection.type}`);
+			case 'xai':
+				// X.AI (Grok) uses OpenAI-compatible API
+				// Set default baseUrl if not provided
+				if (!connection.baseUrl) {
+					providerConfig.baseUrl = 'https://api.x.ai/v1';
+				}
+				return new OpenAICompatibleProviderImpl(providerConfig);
+
+		case 'openrouter':
+			if (!connection.baseUrl) {
+				providerConfig.baseUrl = 'https://openrouter.ai/api/v1';
+			}
+			return new OpenAICompatibleProviderImpl(providerConfig);
+
+		case 'opencode':
+			return new OpenCodeProviderImpl(providerConfig);
+
+		case 'local':
+			throw new Error(
+				'Local connections are designed for embedding models only. ' +
+				'Please use a cloud provider for chat models.'
+			);
+
+		default:
+			throw new Error(`Unknown provider type: ${connection.type}`);
 		}
 	}
 
@@ -186,8 +241,8 @@ export class ProviderFactory {
 					continue;
 				}
 
-			// Skip embedding-only connection types (huggingface, local) for chat models
-			if (['huggingface', 'local'].includes(connection.type)) {
+			// Skip embedding-only connection types (local) for chat models
+			if (connection.type === 'local') {
 				Logger.warn(
 					`[ProviderFactory] Skipping model ${model.id} from ${connection.type} connection - ` +
 					'only embedding models are supported for this connection type'
@@ -227,8 +282,11 @@ export class ProviderFactory {
 		if (!connection.type) {
 			throw new Error('Connection must have a type');
 		}
-		// API key is not required for local providers (huggingface, ollama, local) and github-copilot (uses OAuth tokens)
-		if (!connection.apiKey && !['huggingface', 'ollama', 'local', 'github-copilot'].includes(connection.type)) {
+		// API key/token is required for most providers, except:
+		// - ollama, local: local providers without auth
+		// - github-copilot: uses OAuth tokens (githubToken/copilotToken)
+		// Note: free-qwen and free-deepseek DO require tokens (stored in apiKey field)
+		if (!connection.apiKey && !['ollama', 'local', 'github-copilot', 'opencode'].includes(connection.type)) {
 			throw new Error('Connection must have an API key');
 		}
 		// GitHub Copilot specific validation - check if we have at least githubToken or copilotToken

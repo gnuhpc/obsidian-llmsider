@@ -7,20 +7,82 @@ import { UnifiedTool } from '../tools/unified-tool-manager';
 
 export class OpenAIProviderImpl extends BaseLLMProvider {
 	private organizationId?: string;
+	private supportsVisionOverride?: boolean;
 
 	constructor(config: OpenAIProvider) {
 		super(config);
 		this.organizationId = config.organizationId;
+		this.supportsVisionOverride = config.supportsVision;
 		this.initializeModelConfig();
 	}
 
 	protected initializeModelConfig(): void {
 		this.model_config = createOpenAI({
-			apiKey: this.apiKey
+			apiKey: this.apiKey,
+			fetch: this.createCustomFetch()
 		});
 	}
+	
+	/**
+	 * Create a custom fetch wrapper with timeout and Keep-Alive support
+	 */
+	private createCustomFetch() {
+		const originalFetch = global.fetch || fetch;
+		
+		return async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+			// Clone init to avoid mutation
+			const fetchInit = { ...init };
+			
+			// Add timeout control
+			const isStreaming = fetchInit.body?.toString().includes('"stream":true');
+			const timeoutMs = isStreaming ? 120000 : 60000;
+			
+			// Add Keep-Alive header
+			fetchInit.headers = {
+				...fetchInit.headers,
+				'Connection': 'keep-alive',
+				'Keep-Alive': 'timeout=120, max=100'
+			};
+			
+			// Create AbortController for timeout
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => {
+				Logger.warn(`[OpenAI] Request timeout after ${timeoutMs}ms for ${url}`);
+				controller.abort();
+			}, timeoutMs);
+			
+			// Merge abort signals
+			if (fetchInit.signal) {
+				const originalSignal = fetchInit.signal;
+				originalSignal.addEventListener('abort', () => {
+					controller.abort();
+				});
+			}
+			fetchInit.signal = controller.signal;
+			
+			try {
+				const response = await originalFetch(url, fetchInit);
+				clearTimeout(timeoutId);
+				return response;
+			} catch (error) {
+				clearTimeout(timeoutId);
+				
+				Logger.error('[OpenAI] Fetch error:', {
+					url: url.toString(),
+					error: error.message,
+					code: error.code,
+					name: error.name
+				});
+				
+				if (error.name === 'AbortError') {
+					throw new Error(`Request timeout after ${timeoutMs}ms for ${url}`);
+				}
+				throw error;
+			}
+		};
+	}
 
-	protected getAISDKModel(): any {
+	protected getAISDKModel(): unknown {
 		return this.model_config.chat(this.model);
 	}
 
@@ -47,15 +109,15 @@ export class OpenAIProviderImpl extends BaseLLMProvider {
 	}
 
 	supportsVision(): boolean {
-		// Check if the current model supports vision/multimodal input
-		// OpenAI vision models
-		const visionModels = [
-			'gpt-4-vision-preview', 'gpt-4-turbo', 'gpt-4-turbo-preview',
-			'gpt-4o', 'gpt-4o-mini', 'gpt-4-1106-vision-preview'
-		];
+		// Only use user's explicit configuration
+		if (this.supportsVisionOverride !== undefined) {
+			Logger.debug(`[OpenAI] Using user vision configuration for ${this.model}:`, this.supportsVisionOverride);
+			return this.supportsVisionOverride;
+		}
 
-		const modelName = this.model.toLowerCase();
-		return visionModels.some(visionModel => modelName.includes(visionModel));
+		// Default to false if not configured
+		Logger.debug(`[OpenAI] No vision configuration set for ${this.model}, defaulting to false`);
+		return false;
 	}
 
 	// OpenAI-specific methods using AI SDK
@@ -92,8 +154,8 @@ export class OpenAIProviderImpl extends BaseLLMProvider {
 			
 			// Filter GPT models and extract model IDs
 			const models = (data.data || [])
-				.filter((model: any) => model.id && model.id.startsWith('gpt-'))
-				.map((model: any) => model.id)
+				.filter((model: unknown) => model.id && model.id.startsWith('gpt-'))
+				.map((model: unknown) => model.id)
 				.sort();
 
 			Logger.debug('Available GPT models count:', models.length);
@@ -113,6 +175,9 @@ export class OpenAIProviderImpl extends BaseLLMProvider {
 		super.updateConfig(config);
 		if (config.organizationId !== undefined) {
 			this.organizationId = config.organizationId;
+		}
+		if (config.supportsVision !== undefined) {
+			this.supportsVisionOverride = config.supportsVision;
 		}
 
 		// Reinitialize the client with new config

@@ -48,7 +48,10 @@
    启用快速聊天: ✓
    触发键: Cmd+/
    模型: GPT-4
+   选中文本时显示: ✓ (可选)
    ```
+
+   > 💡 **提示**: 启用"选中文本时显示"后，当你选中任何文本时，会自动显示一个浮动按钮，点击可直接针对选中内容进行快速聊天。
 
 3. **配置快捷键**(可选)
    - 设置 → 快捷键
@@ -347,4 +350,4 @@ function processData(data: number[]): number[] {
 
 ---
 
-**有疑问?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [Discord](https://discord.gg/llmsider)
+**有疑问?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)

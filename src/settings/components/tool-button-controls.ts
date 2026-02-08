@@ -1,4 +1,5 @@
 import { I18nManager } from '../../i18n/i18n-manager';
+import { Logger } from '../../utils/logger';
 
 /**
  * ToolButtonControls Component
@@ -15,7 +16,7 @@ export class ToolButtonControls {
 		container: HTMLElement,
 		isToolEnabled: boolean,
 		requireConfirmation: boolean,
-		onEnableChange: (enabled: boolean) => Promise<void>,
+		onEnableChange: (enabled: boolean) => Promise<boolean>,
 		onConfirmationChange: (requireConfirm: boolean) => Promise<void>
 	): void {
 		const buttonGroup = container.createDiv({ cls: 'llmsider-tool-button-group' });
@@ -60,9 +61,38 @@ export class ToolButtonControls {
 		`;
 		updateEnableIcon(isToolEnabled);
 		
-		enableBtn.addEventListener('click', async () => {
-			const newState = !isToolEnabled;
-			await onEnableChange(newState);
+	enableBtn.addEventListener('click', async (e) => {
+		Logger.debug('[ToolButtonControls] Enable button clicked, current state:', isToolEnabled);
+		
+		// Aggressively remove tooltip on click
+		enableBtn.removeAttribute('data-tooltip');
+		enableBtn.removeAttribute('aria-label');
+		enableBtn.blur();
+		
+		// Trigger mouseout event to force tooltip to hide
+		const mouseOutEvent = new MouseEvent('mouseout', {
+			bubbles: true,
+			cancelable: true,
+			view: window
+		});
+		enableBtn.dispatchEvent(mouseOutEvent);
+		
+		// Also trigger mouseleave
+		const mouseLeaveEvent = new MouseEvent('mouseleave', {
+			bubbles: true,
+			cancelable: true,
+			view: window
+		});
+		enableBtn.dispatchEvent(mouseLeaveEvent);
+		
+		Logger.debug('[ToolButtonControls] Tooltip attributes removed and mouse events triggered');
+		
+		const newState = !isToolEnabled;
+		const result = await onEnableChange(newState);
+		
+		// Only update state if callback returned true (success)
+		if (result) {
+			Logger.debug('[ToolButtonControls] State change successful, new state:', newState);
 			isToolEnabled = newState;
 			updateEnableIcon(newState);
 			// Update confirmation button state
@@ -75,9 +105,12 @@ export class ToolButtonControls {
 				confirmBtn.style.cursor = 'pointer';
 				confirmBtn.disabled = false;
 			}
-		});
-		
-		// Confirmation/Auto toggle button (single square icon button)
+		} else {
+			Logger.debug('[ToolButtonControls] State change failed or cancelled');
+			// Restore tooltip even if change failed
+			enableBtn.setAttribute('data-tooltip', isToolEnabled ? this.i18n.t('settingsPage.toolEnabledTooltip') : this.i18n.t('settingsPage.toolDisabledTooltip'));
+		}
+	});		// Confirmation/Auto toggle button (single square icon button)
 		const confirmBtn = buttonGroup.createEl('button', {
 			cls: 'llmsider-tool-icon-btn',
 			attr: { 

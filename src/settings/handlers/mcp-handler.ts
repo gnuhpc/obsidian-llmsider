@@ -232,7 +232,7 @@ export class MCPHandler {
 			const tools = await mcpManager.getToolsByServer(serverId);
 			
 			if (tools.length === 0) {
-				new Notice(`No tools available from ${serverId}`);
+				new Notice(this.i18n.t('notifications.settingsHandlers.noToolsAvailable', { server: serverId }) || `No tools available from ${serverId}`);
 				return;
 			}
 
@@ -240,7 +240,7 @@ export class MCPHandler {
 			// This method contains extensive UI code that should remain in the main class
 			// for now, as it's tightly coupled with the modal rendering logic
 		} catch (error) {
-			new Notice(`Failed to get tools: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			new Notice(this.i18n.t('notifications.settingsHandlers.failedToGetTools', { error: error instanceof Error ? error.message : 'Unknown error' }) || `Failed to get tools: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}
 
@@ -336,7 +336,7 @@ export class MCPHandler {
 			// Update all cards without full page refresh
 			await this.onUpdateCards();
 		} catch (error) {
-			new Notice(`Failed to disconnect from servers: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			new Notice(this.i18n.t('notifications.settingsHandlers.failedToDisconnect', { error: error instanceof Error ? error.message : 'Unknown error' }) || `Failed to disconnect from servers: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}
 }

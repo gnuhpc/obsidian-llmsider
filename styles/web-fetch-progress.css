@@ -1,0 +1,63 @@
+
+/* Web Fetch Progress Styles */
+.web-fetch-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.web-fetch-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-wrap: wrap;
+}
+
+.web-fetch-item:last-child {
+    border-bottom: none;
+}
+
+.web-fetch-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+}
+
+.web-fetch-icon.is-loading {
+    color: var(--text-muted);
+    animation: spin 1s linear infinite;
+}
+
+.web-fetch-icon.is-success {
+    color: var(--text-success);
+}
+
+.web-fetch-icon.is-error {
+    color: var(--text-error);
+}
+
+.web-fetch-url {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--font-monospace);
+    font-size: 12px;
+}
+
+.web-fetch-error {
+    width: 100%;
+    margin-left: 28px;
+    font-size: 11px;
+    color: var(--text-error);
+    margin-top: 2px;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}

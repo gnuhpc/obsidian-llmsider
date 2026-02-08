@@ -13,7 +13,7 @@ export class PromptDatabase {
     constructor(app: App) {
         this.app = app;
         // Use ConfigDatabase for unified storage
-        this.configDb = new ConfigDatabase((app.vault.adapter as any).basePath || '', app.vault.adapter);
+        this.configDb = new ConfigDatabase((app.vault.adapter as unknown).basePath || '', app.vault.adapter, app.vault);
     }
 
     /**

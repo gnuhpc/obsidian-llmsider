@@ -577,7 +577,7 @@ Tools: 5 available
 - [Best Practices Guide](https://modelcontextprotocol.io/best-practices)
 
 ### Community
-- [MCP Discord](https://discord.gg/mcp)
+
 - [GitHub Discussions](https://github.com/modelcontextprotocol/discussions)
 - [Example Servers](https://github.com/modelcontextprotocol/examples)
 
@@ -634,4 +634,4 @@ Enable MCP debug logging:
 
 ---
 
-**Questions?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [MCP Discord](https://discord.gg/mcp)
+**Questions?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)

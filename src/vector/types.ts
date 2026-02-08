@@ -13,6 +13,7 @@ export interface IVectorDatabase {
   update(chunks: ChunkMetadata[]): Promise<void>;
   delete(chunkIds: string[]): Promise<void>;
   query(queryText: string, topK: number): Promise<DocItem[]>;
+  searchByVector(queryVector: number[], topK: number, term?: string): Promise<DocItem[]>;
   count(): Promise<number>;
   clear(): Promise<void>;
   rebuild(): Promise<void>;
@@ -38,6 +39,8 @@ export interface ChunkMetadata {
   content: string;
   /** Timestamp when chunk was created/updated */
   timestamp: number;
+  /** Optional precomputed embedding vector (if provided, skips embedding generation) */
+  embedding?: number[];
 }
 
 /**
@@ -56,7 +59,7 @@ export interface DocItem {
   /** Similarity score (0-1) */
   score: number;
   /** Metadata */
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -105,7 +108,7 @@ export const DEFAULT_VECTOR_SETTINGS: VectorSettings = {
   autoSearchEnabled: false,
   suggestRelatedFiles: false,
   suggestionTimeout: 5000,
-  storagePath: '.obsidian/plugins/obsidian-llmsider/vector-data',
+  storagePath: 'plugins/obsidian-llmsider/vector-data', // Will be prefixed with vault.configDir
   indexName: 'vault-semantic-index',
   chunkingStrategy: 'character',
   chunkSize: 1000,

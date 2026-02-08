@@ -101,9 +101,10 @@ export class IndexSyncManager {
    * Perform full diff and sync
    */
   async diffAndSync(onProgress?: ProgressCallback): Promise<SyncResult> {
-    if (this.isSyncing) {
-      throw new Error('Sync already in progress');
-    }
+    // Allow stopping and restarting - don't throw error if already syncing
+    // if (this.isSyncing) {
+    //   throw new Error('Sync already in progress');
+    // }
 
     this.isSyncing = true;
     const startTime = Date.now();
@@ -237,9 +238,10 @@ export class IndexSyncManager {
    * Rebuild entire index from scratch
    */
   async rebuildIndex(onProgress?: ProgressCallback): Promise<SyncResult> {
-    if (this.isSyncing) {
-      throw new Error('Sync already in progress');
-    }
+    // Allow stopping and restarting - don't throw error if already syncing
+    // if (this.isSyncing) {
+    //   throw new Error('Sync already in progress');
+    // }
 
     this.isSyncing = true;
     const startTime = Date.now();
@@ -253,6 +255,12 @@ export class IndexSyncManager {
 
     try {
       Logger.debug('Starting full rebuild...');
+
+      // Enable batch mode to reduce persistence frequency (critical for performance)
+      if (this.vectorDB && 'setBatchMode' in this.vectorDB) {
+        (this.vectorDB as unknown).setBatchMode(true);
+        Logger.debug('Batch mode enabled for rebuild - will reduce persistence frequency');
+      }
 
       // Step 1: Clear ChromaDB collection
       onProgress?.({ currentFile: this.i18n.t('notifications.vectorDatabase.clearingDatabase'), currentFileIndex: 0, totalFiles: 0, phase: 'scanning' });
@@ -315,7 +323,7 @@ export class IndexSyncManager {
           
           // Set up embedding progress callback for this batch
           if (this.vectorDB && 'setEmbeddingProgressCallback' in this.vectorDB) {
-            (this.vectorDB as any).setEmbeddingProgressCallback((embBatchCurrent: number, embBatchTotal: number) => {
+            (this.vectorDB as unknown).setEmbeddingProgressCallback((embBatchCurrent: number, embBatchTotal: number) => {
               // Calculate overall progress including embedding batches
               // Each chunk batch may have multiple embedding batches
               const chunksProcessedSoFar = batchStartIndex;
@@ -343,7 +351,7 @@ export class IndexSyncManager {
           
           // Clear the callback after batch is done
           if (this.vectorDB && 'setEmbeddingProgressCallback' in this.vectorDB) {
-            (this.vectorDB as any).setEmbeddingProgressCallback(null);
+            (this.vectorDB as unknown).setEmbeddingProgressCallback(null);
           }
           
           Logger.debug(`Batch ${Math.floor(i/batchSize) + 1} added successfully`);
@@ -376,10 +384,28 @@ export class IndexSyncManager {
       
       await this.metaStore.save();
       
-      // Step 6: Clean up backup file (rebuild completed successfully)
+      // Step 6: Flush any pending persistence from batch mode
+      if (this.vectorDB && 'flushPendingPersist' in this.vectorDB) {
+        onProgress?.({
+          currentFile: this.i18n.t('notifications.vectorDatabase.savingDatabase'),
+          currentFileIndex: files.length,
+          totalFiles: files.length,
+          phase: 'finalizing'
+        });
+        await (this.vectorDB as unknown).flushPendingPersist();
+        Logger.debug('Flushed pending database persistence');
+      }
+
+      // Disable batch mode
+      if (this.vectorDB && 'setBatchMode' in this.vectorDB) {
+        (this.vectorDB as unknown).setBatchMode(false);
+        Logger.debug('Batch mode disabled');
+      }
+
+      // Step 7: Clean up backup file (rebuild completed successfully)
       if (this.vectorDB && 'cleanupBackup' in this.vectorDB) {
         try {
-          await (this.vectorDB as any).cleanupBackup();
+          await (this.vectorDB as unknown).cleanupBackup();
         } catch (error) {
           Logger.warn('Failed to cleanup backup file:', error);
         }
@@ -396,11 +422,23 @@ export class IndexSyncManager {
       Logger.error('[IndexSync]', errorMsg);
       result.errors.push(errorMsg);
       
+      // Make sure to disable batch mode and flush any pending data on error
+      if (this.vectorDB && 'setBatchMode' in this.vectorDB) {
+        (this.vectorDB as unknown).setBatchMode(false);
+      }
+      if (this.vectorDB && 'flushPendingPersist' in this.vectorDB) {
+        try {
+          await (this.vectorDB as unknown).flushPendingPersist();
+        } catch (flushError) {
+          Logger.error('Failed to flush pending persistence:', flushError);
+        }
+      }
+      
       // Try to restore backup if rebuild failed
       if (this.vectorDB && 'restoreBackup' in this.vectorDB) {
         try {
           Logger.debug('Attempting to restore backup after rebuild failure...');
-          await (this.vectorDB as any).restoreBackup();
+          await (this.vectorDB as unknown).restoreBackup();
         } catch (restoreError) {
           Logger.error('Failed to restore backup:', restoreError);
         }
@@ -542,13 +580,39 @@ export class IndexSyncManager {
     try {
       // Remove old chunks for this file
       const oldChunks = this.metaStore.getByFile(file.path);
+      
+      // Create a map of hash -> embedding from old chunks to reuse embeddings
+      const oldEmbeddings = new Map<string, number[]>();
+      for (const chunk of oldChunks) {
+        if (chunk.embedding && chunk.embedding.length > 0) {
+          oldEmbeddings.set(chunk.contentHash, chunk.embedding);
+        }
+      }
+
       if (oldChunks.length > 0) {
         await this.vectorDB.delete(oldChunks.map(c => c.id));
         this.metaStore.deleteByFile(file.path);
       }
+      
+      // Yield to main thread to prevent UI freeze
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       // Process and add new chunks
       const newChunks = await this.processFile(file);
+      
+      // Try to reuse embeddings for new chunks
+      let reusedCount = 0;
+      for (const chunk of newChunks) {
+        if (oldEmbeddings.has(chunk.contentHash)) {
+          chunk.embedding = oldEmbeddings.get(chunk.contentHash);
+          reusedCount++;
+        }
+      }
+      
+      if (reusedCount > 0) {
+        Logger.debug(`Reusing embeddings for ${reusedCount}/${newChunks.length} chunks in ${file.path}`);
+      }
+
       if (newChunks.length > 0) {
         await this.vectorDB.add(newChunks);
         newChunks.forEach(chunk => {

@@ -1,0 +1,39 @@
+/* Thinking Process Styles for AI Models (DeepSeek, HuggingChat, etc.) */
+
+/* Enhance callout styling for thinking content */
+.llmsider-message-content .callout[data-callout="note"] {
+    background: var(--background-secondary);
+    border-left-color: var(--text-accent);
+}
+
+/* Thinking callout title styling */
+.llmsider-message-content .callout[data-callout="note"] .callout-title {
+    color: var(--text-accent);
+    font-weight: 600;
+}
+
+/* Thinking callout content - lighter text to distinguish from answer */
+.llmsider-message-content .callout[data-callout="note"] .callout-content {
+    color: var(--text-muted);
+    font-size: 0.92em;
+    line-height: 1.6;
+}
+
+/* Ensure proper spacing after thinking callout */
+.llmsider-message-content .callout[data-callout="note"] {
+    margin-bottom: 20px;
+}
+
+/* Style regular answer content to stand out */
+.llmsider-message-content > p:not(.callout-content p),
+.llmsider-message-content > div:not(.callout):not(.callout-content div) {
+    color: var(--text-normal);
+    line-height: 1.6;
+}
+
+/* Collapsed thinking callout - more compact */
+.llmsider-message-content .callout.is-collapsed {
+    background: var(--background-primary-alt);
+    padding: 8px 12px;
+    margin: 8px 0 16px 0;
+}

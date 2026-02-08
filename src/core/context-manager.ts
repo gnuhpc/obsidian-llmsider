@@ -1,9 +1,63 @@
-import { App, TFile, MarkdownView, Notice, TFolder } from 'obsidian';
+import { App, TFile, MarkdownView, Notice, TFolder, requestUrl } from 'obsidian';
 import { Logger } from './../utils/logger';
 import { FileParser } from '../utils/file-parser';
 import { TokenManager } from '../utils/token-manager';
 import { MCPManager } from '../mcp/mcp-manager';
 import type { I18nManager } from '../i18n/i18n-manager';
+
+/**
+ * Extract video ID from various YouTube URL formats
+ */
+function extractVideoId(url: string | undefined): string | null {
+	if (!url || typeof url !== 'string' || url.trim() === '') {
+		return null;
+	}
+	
+	const patterns = [
+		/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})(?:[?&#]|$)/,
+		/^([a-zA-Z0-9_-]{11})$/ // Direct video ID
+	];
+
+	for (const pattern of patterns) {
+		const match = url.match(pattern);
+		if (match) {
+			return match[1];
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Parse XML subtitle format to extract text segments
+ */
+function parseSubtitleXml(xmlContent: string): Array<{text: string; start?: number; duration?: number}> {
+	const segments: Array<{text: string; start?: number; duration?: number}> = [];
+	
+	const textPattern = /<text[^>]*start="([^"]*)"[^>]*dur="([^"]*)"[^>]*>(.*?)<\/text>/g;
+	let match;
+
+	while ((match = textPattern.exec(xmlContent)) !== null) {
+		const start = parseFloat(match[1]);
+		const duration = parseFloat(match[2]);
+		let text = match[3];
+
+		text = text
+			.replace(/&amp;/g, '&')
+			.replace(/&lt;/g, '<')
+			.replace(/&gt;/g, '>')
+			.replace(/&quot;/g, '"')
+			.replace(/&#39;/g, "'")
+			.replace(/<[^>]*>/g, '')
+			.trim();
+
+		if (text) {
+			segments.push({ text, start, duration });
+		}
+	}
+
+	return segments;
+}
 
 export interface ExtractedImage {
 	filename: string;
@@ -113,9 +167,9 @@ export class ContextManager {
 		
 		// Method 3: Try to get from active leaf
 		if (!activeFile) {
-			const activeLeaf = this.app.workspace.activeLeaf;
-			if (activeLeaf && activeLeaf.view && (activeLeaf.view as any).file) {
-				activeFile = (activeLeaf.view as any).file;
+			const activeLeaf = this.app.workspace.getLeaf();
+			if (activeLeaf && activeLeaf.view && (activeLeaf.view as unknown).file) {
+				activeFile = (activeLeaf.view as unknown).file;
 			}
 		}
 
@@ -123,14 +177,14 @@ export class ContextManager {
 			activeView: !!activeView,
 			activeViewFile: activeView?.file?.path,
 			workspaceActiveFile: this.app.workspace.getActiveFile()?.path,
-			activeLeaf: !!this.app.workspace.activeLeaf,
+			activeLeaf: !!this.app.workspace.getLeaf(),
 			foundFile: activeFile?.path
 		});
 
 		if (!activeFile) {
 			return {
 				success: false,
-				message: 'No active note found. Please make sure a note is open and active.'
+				message: this.i18n?.t('notifications.context.noActiveNote') || 'No active note found. Please make sure a note is open and active.'
 			};
 		}
 
@@ -173,7 +227,7 @@ export class ContextManager {
 			Logger.debug('No text selected or found');
 			return {
 				success: false,
-				message: 'No text selected. Please select some text first and try again.'
+				message: this.i18n?.t('notifications.context.noTextSelected') || 'No text selected. Please select some text first and try again.'
 			};
 		}
 	}
@@ -181,20 +235,20 @@ export class ContextManager {
 	/**
 	 * Add specific text to context (for context menu integration)
 	 */
-	async addTextToContext(text: string): Promise<{ success: boolean; message: string; context?: SelectedTextContext }> {
+	async addTextToContext(text: string, title?: string): Promise<{ success: boolean; message: string; context?: SelectedTextContext }> {
 		if (!text || !text.trim()) {
 			return {
 				success: false,
-				message: 'No text provided to add to context'
+				message: this.i18n?.t('notifications.context.noTextProvided') || 'No text provided to add to context'
 			};
 		}
 
 		const trimmedText = text.trim();
 		
-		// Create preview (first 50 characters)
-		const preview = trimmedText.length > 50 
+		// Create preview (use title if provided, otherwise first 50 characters)
+		const preview = title || (trimmedText.length > 50 
 			? trimmedText.substring(0, 50) + '...' 
-			: trimmedText;
+			: trimmedText);
 		
 		const context: SelectedTextContext = {
 			text: trimmedText,
@@ -206,12 +260,15 @@ export class ContextManager {
 		Logger.debug('Added specific text to context:', {
 			length: trimmedText.length,
 			preview: preview,
+			title: title,
 			totalSelections: this.selectedTextContexts.length
 		});
 		
 		return {
 			success: true,
-			message: `Added ${trimmedText.length} characters to context`,
+			message: title 
+				? `Added ${title} (${trimmedText.length} characters) to context`
+				: `Added ${trimmedText.length} characters to context`,
 			context: context
 		};
 	}
@@ -313,12 +370,13 @@ export class ContextManager {
 
 	/**
 	 * Add file to context by TFile
+	 * @param providerName - Optional provider name to determine if local parsing is needed
 	 */
-	async addFileToContext(file: TFile): Promise<{ success: boolean; message: string; note?: NoteContext }> {
+	async addFileToContext(file: TFile, modelName?: string, providerName?: string): Promise<{ success: boolean; message: string; note?: NoteContext }> {
 		try {
 			let content: string;
 			let type: 'markdown' | 'document' | 'spreadsheet' | 'presentation' | 'text' | 'image' | 'other' = 'other';
-			let metadata: any = {};
+			let metadata: unknown = {};
 
 			// Check if file is supported by extract-text
 			if (FileParser.isSupportedFile(file.name)) {
@@ -387,9 +445,73 @@ export class ContextManager {
 							imageFiles: extractedImages.map((img: ExtractedImage) => img.filename),
 							extractedImages: extractedImages
 						});
+				} else {
+					// For non-image files, decide between local parsing and base64 upload
+					// free-deepseek and free-qwen: upload base64 directly (no local parsing)
+					// Other providers: parse locally for better token efficiency
+					
+					Logger.debug('File processing decision:', {
+						filename: file.name,
+						providerName: providerName,
+						hasProvider: !!providerName,
+						includesFreeDeepseek: providerName?.includes('free-deepseek'),
+						includesFreeQwen: providerName?.includes('free-qwen')
+					});
+					
+					const shouldUploadDirectly = providerName && 
+						(providerName.includes('free-deepseek') || providerName.includes('free-qwen'));
+					
+					if (shouldUploadDirectly) {
+						// Upload as base64 for providers that support file upload
+						const uint8Array = new Uint8Array(arrayBuffer);
+						let binaryString = '';
+						
+						// Process in chunks to avoid stack overflow
+						const chunkSize = 8192; // 8KB chunks
+						for (let i = 0; i < uint8Array.length; i += chunkSize) {
+							const chunk = uint8Array.slice(i, i + chunkSize);
+							binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+						}
+						
+						const base64Data = btoa(binaryString);
+						
+					// Determine media type based on extension
+					const ext = file.name.toLowerCase().split('.').pop() || '';
+					let mediaType = 'application/octet-stream';
+					if (ext === 'pdf') mediaType = 'application/pdf';
+					else if (ext === 'doc') mediaType = 'application/msword';
+					else if (ext === 'docx') mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+					else if (ext === 'xls') mediaType = 'application/vnd.ms-excel';
+					else if (ext === 'xlsx') mediaType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+					else if (ext === 'ppt') mediaType = 'application/vnd.ms-powerpoint';
+					else if (ext === 'pptx') mediaType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';						content = `[FILE: ${file.name}]`;
+						type = 'image'; // Use 'image' type to trigger multimodal handling
+						metadata = {
+							originalLength: arrayBuffer.byteLength,
+							truncated: false,
+							fileType: 'document',
+							isImage: false,
+							imageData: {
+								base64: base64Data,
+								mediaType: mediaType
+							},
+							buffer: arrayBuffer
+						};
+						
+						Logger.debug('File prepared for direct upload:', {
+							provider: providerName,
+							filename: file.name,
+							size: arrayBuffer.byteLength,
+							base64Length: base64Data.length,
+							mediaType: mediaType
+						});
 					} else {
-						// Handle other supported files
-						const result = await FileParser.extractTextWithLimit(arrayBuffer, file.name, 128000);
+						// Parse locally for other providers
+						const characterLimit = modelName 
+							? TokenManager.getModelCharacterLimit(modelName)
+							: TokenManager.tokenLimitToCharacterLimit(TokenManager.MAX_CONTEXT_TOKENS);
+						
+						const result = await FileParser.extractTextWithLimit(arrayBuffer, file.name, characterLimit);
 						
 						content = result.text;
 						type = result.fileType as any;
@@ -398,16 +520,19 @@ export class ContextManager {
 							truncated: result.truncated,
 							fileType: result.fileType
 						};
-
-						Logger.debug('Extracted text from file:', {
+						
+						Logger.debug('File parsed locally:', {
+							provider: providerName || 'default',
 							filename: file.name,
 							fileType: result.fileType,
 							originalLength: result.originalLength,
 							extractedLength: content.length,
-							truncated: result.truncated
+							truncated: result.truncated,
+							characterLimit: characterLimit
 						});
 					}
-				} catch (extractError) {
+				}
+			} catch (extractError) {
 					Logger.warn('Failed to extract text from file, trying as text file:', extractError);
 					
 					// Fallback: try to read as regular text file
@@ -436,18 +561,16 @@ export class ContextManager {
 				}
 			}
 			
-			// Check if this file is already in context
-			const existingIndex = this.currentNoteContext.findIndex(ctx => ctx.name === file.basename);
-			
-			const noteContext: NoteContext = {
-				name: file.basename,
-				content: content,
-				filePath: file.path, // Store file path for live content updates
-				type: type,
-				metadata: metadata
-			};
-
-			if (existingIndex >= 0) {
+		// Check if this file is already in context
+		const existingIndex = this.currentNoteContext.findIndex(ctx => ctx.name === file.name);
+		
+		const noteContext: NoteContext = {
+			name: file.name,  // Use file.name to include extension for proper MIME type detection
+			content: content,
+			filePath: file.path, // Store file path for live content updates
+			type: type,
+			metadata: metadata
+		};			if (existingIndex >= 0) {
 				// Update existing file content
 				this.currentNoteContext[existingIndex] = noteContext;
 				
@@ -485,7 +608,9 @@ export class ContextManager {
 	 * Get file type label for display
 	 */
 	private getFileTypeLabel(type: string): string {
-		if (!this.i18n) {
+		const t = this.i18n?.t.bind(this.i18n);
+		
+		if (!t) {
 			// Fallback to English if i18n is not available
 			switch (type) {
 				case 'document': return 'Document';
@@ -499,13 +624,14 @@ export class ContextManager {
 		}
 		
 		switch (type) {
-			case 'document': return this.i18n.t('ui.fileTypeDocument');
-			case 'spreadsheet': return this.i18n.t('ui.fileTypeSpreadsheet');
-			case 'presentation': return this.i18n.t('ui.fileTypePresentation');
-			case 'text': return this.i18n.t('ui.fileTypeText');
-			case 'markdown': return this.i18n.t('ui.fileTypeMarkdown');
-			case 'image': return this.i18n.t('ui.fileTypeImage');
-			default: return this.i18n.t('ui.fileTypeFile');
+			case 'document': return t('common.contextPrompt.document') || 'Document';
+			case 'spreadsheet': return t('common.contextPrompt.spreadsheet') || 'Spreadsheet';
+			case 'presentation': return t('common.contextPrompt.presentation') || 'Presentation';
+			case 'text': return t('common.contextPrompt.document') || 'Text File';
+			case 'markdown': return t('common.contextPrompt.markdown') || 'Markdown';
+			case 'image': return t('common.contextPrompt.image') || 'Image';
+			case 'pdf': return t('common.contextPrompt.pdf') || 'PDF';
+			default: return t('common.contextPrompt.other') || 'File';
 		}
 	}
 
@@ -588,8 +714,8 @@ export class ContextManager {
 	/**
 	 * Refresh content of all referenced files to get the latest version
 	 */
-	async refreshReferencedFilesContent(): Promise<void> {
-		Logger.debug('Refreshing referenced files content...');
+	async refreshReferencedFilesContent(modelName?: string, providerName?: string): Promise<void> {
+		Logger.debug('Refreshing referenced files content...', { provider: providerName });
 		
 		const refreshPromises = this.currentNoteContext.map(async (noteContext) => {
 			// Only refresh if we have a file path stored
@@ -600,15 +726,16 @@ export class ContextManager {
 			
 			try {
 				// Get the file by path
-				const file = this.app.vault.getAbstractFileByPath(noteContext.filePath) as TFile;
-				if (!file) {
+				const abstractFile = this.app.vault.getAbstractFileByPath(noteContext.filePath);
+				if (!abstractFile || !(abstractFile instanceof TFile)) {
 					Logger.warn('File not found for refresh:', noteContext.filePath);
 					return;
 				}
+				const file = abstractFile;
 				
 				// Re-read the file content
 				let content: string;
-				let metadata: any = noteContext.metadata || {};
+				let metadata: unknown = noteContext.metadata || {};
 				
 				// Handle different file types
 				if (noteContext.metadata?.isImage) {
@@ -649,23 +776,92 @@ export class ContextManager {
 						imageCount: extractedImages.length
 					});
 				} else if (FileParser.isSupportedFile(file.name)) {
-					// Handle other supported files
+					// Handle other supported files (Office docs, PDFs, etc.)
 					const arrayBuffer = await this.app.vault.readBinary(file);
-					const result = await FileParser.extractTextWithLimit(arrayBuffer, file.name, 128000);
+					const ext = file.name.toLowerCase().split('.').pop() || '';
 					
-					content = result.text;
-					metadata = {
-						...metadata,
-						originalLength: result.originalLength,
-						truncated: result.truncated,
-						fileType: result.fileType
-					};
-					
-					Logger.debug('Refreshed document:', {
-						filename: file.name,
-						fileType: result.fileType,
-						contentLength: content.length
-					});
+					// Check if this is an image file type
+					if (FileParser.isImageFile(ext)) {
+						// Shouldn't reach here as images are handled above, but just in case
+						const imageData = FileParser.extractImageData(arrayBuffer, file.name);
+						content = `[IMAGE: ${file.name}] - This image will be sent to the AI for visual understanding.`;
+						metadata = {
+							...metadata,
+							isImage: true,
+							imageData: {
+								base64: imageData.base64Data,
+								mediaType: imageData.mediaType
+							},
+							buffer: arrayBuffer
+						};
+						Logger.debug('Refreshed image:', file.name);
+					} else {
+						// Decide between base64 upload and local parsing based on provider
+						const shouldUploadDirectly = providerName && 
+							(providerName.includes('free-deepseek') || providerName.includes('free-qwen'));
+						
+						if (shouldUploadDirectly) {
+							// For free-deepseek/free-qwen: keep base64 for provider upload
+							const uint8Array = new Uint8Array(arrayBuffer);
+							let binaryString = '';
+							const chunkSize = 8192;
+							for (let i = 0; i < uint8Array.length; i += chunkSize) {
+								const chunk = uint8Array.slice(i, i + chunkSize);
+								binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+							}
+							const base64Data = btoa(binaryString);
+							
+							// Determine media type
+							let mediaType = 'application/octet-stream';
+							if (ext === 'pdf') mediaType = 'application/pdf';
+							else if (ext === 'doc' || ext === 'docx') mediaType = 'application/msword';
+							else if (ext === 'xls' || ext === 'xlsx') mediaType = 'application/vnd.ms-excel';
+							else if (ext === 'ppt' || ext === 'pptx') mediaType = 'application/vnd.ms-powerpoint';
+							
+							content = `[FILE: ${file.name}]`;
+							metadata = {
+								originalLength: arrayBuffer.byteLength,
+								truncated: false,
+								fileType: 'document',
+								isImage: false,
+								imageData: {
+									base64: base64Data,
+									mediaType: mediaType
+								},
+								buffer: arrayBuffer
+							};
+							
+							Logger.debug('Refreshed document (as base64 for direct upload):', {
+								provider: providerName,
+								filename: file.name,
+								size: arrayBuffer.byteLength,
+								mediaType: mediaType
+							});
+						} else {
+							// For other providers: parse locally
+							const characterLimit = modelName 
+								? TokenManager.getModelCharacterLimit(modelName)
+								: TokenManager.tokenLimitToCharacterLimit(TokenManager.MAX_CONTEXT_TOKENS);
+							
+							const result = await FileParser.extractTextWithLimit(arrayBuffer, file.name, characterLimit);
+							
+							content = result.text;
+							metadata = {
+								...metadata,
+								originalLength: result.originalLength,
+								truncated: result.truncated,
+								fileType: result.fileType
+							};
+							
+							Logger.debug('Refreshed document (parsed locally):', {
+								provider: providerName || 'default',
+								filename: file.name,
+								fileType: result.fileType,
+								contentLength: content.length,
+								characterLimit: characterLimit
+							});
+						}
+					}
 				} else {
 					// Regular text file
 					content = await this.app.vault.read(file);
@@ -728,11 +924,73 @@ export class ContextManager {
 		return imageData;
 	}
 
-	async generateContextPrompt(maxTokens?: number): Promise<string> {
+	/**
+	 * Clear image data from context (used when model doesn't support vision)
+	 */
+	clearImageData(): void {
+		Logger.info('Clearing image data from context manager');
+		
+		// Remove direct image files
+		this.currentNoteContext = this.currentNoteContext.filter((noteContext) => {
+			if (noteContext.metadata?.isImage) {
+				Logger.debug('Removing direct image from context:', noteContext.name);
+				return false;
+			}
+			return true;
+		});
+		
+		// Remove extracted images from markdown files
+		this.currentNoteContext.forEach((noteContext) => {
+			if (noteContext.metadata?.extractedImages) {
+				const count = noteContext.metadata.extractedImages.length;
+				if (count > 0) {
+					Logger.debug(`Removing ${count} extracted images from:`, noteContext.name);
+					noteContext.metadata.extractedImages = [];
+				}
+			}
+		});
+		
+		Logger.info('Image data cleared from context');
+	}
+
+	/**
+	 * Get file data for providers that handle parsing remotely (e.g., Free Qwen)
+	 * Returns file metadata and buffer without local text extraction
+	 */
+	async getFileDataForRemoteParsing(): Promise<Array<{filename: string, buffer: ArrayBuffer, mimeType: string}>> {
+		const fileData: Array<{filename: string, buffer: ArrayBuffer, mimeType: string}> = [];
+		
+		for (const ctx of this.currentNoteContext) {
+			if (ctx.metadata?.buffer) {
+				// 获取文件的 MIME 类型
+				const ext = ctx.name.toLowerCase().split('.').pop() || '';
+				let mimeType = 'application/octet-stream';
+				
+				// 根据扩展名确定 MIME 类型
+				if (ext === 'pdf') mimeType = 'application/pdf';
+				else if (ext === 'docx') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+				else if (ext === 'xlsx') mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+				else if (ext === 'pptx') mimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+				else if (ext === 'txt') mimeType = 'text/plain';
+				else if (ext === 'md') mimeType = 'text/markdown';
+				
+				fileData.push({
+					filename: ctx.name,
+					buffer: ctx.metadata.buffer as ArrayBuffer,
+					mimeType: mimeType
+				});
+			}
+		}
+		
+		return fileData;
+	}
+
+	async generateContextPrompt(maxTokens?: number, modelName?: string, skipFileContent = false, providerName?: string): Promise<string> {
 		// Refresh referenced files to get the latest content
-		await this.refreshReferencedFilesContent();
+		await this.refreshReferencedFilesContent(modelName, providerName);
 		
 		let contextPrompt = '';
+		const t = this.i18n?.t.bind(this.i18n);
 
 		// Add note context (skip images as they will be in user message)
 		this.currentNoteContext.forEach((noteContext) => {
@@ -744,18 +1002,26 @@ export class ContextManager {
 
 			const fileTypeLabel = this.getFileTypeLabel(noteContext.type || 'other');
 
-			let contextHeader = `\n\nCONTEXT - ${fileTypeLabel} "${noteContext.name}":`;
+			let contextHeader = `\n\n${t?.('common.contextPrompt.contextLabel') || 'CONTEXT'} - ${fileTypeLabel} "${noteContext.name}":`;
 
 			// Add metadata for extracted files
 			if (noteContext.metadata && noteContext.metadata.fileType && noteContext.metadata.fileType !== 'markdown') {
 				const meta = noteContext.metadata;
-				contextHeader += `\n[File Info: Type: ${meta.fileType}, Original length: ${meta.originalLength} chars${meta.truncated ? ', Content truncated for context' : ''}]`;
+				const fileInfoLabel = t?.('common.contextPrompt.fileInfo') || 'File Info';
+				const typeLabel = t?.('common.contextPrompt.fileType') || 'Type';
+				const lengthLabel = t?.('common.contextPrompt.originalLength') || 'Original length';
+				const truncatedLabel = t?.('common.contextPrompt.contentTruncated') || 'Content truncated for context';
+				
+				contextHeader += `\n[${fileInfoLabel}: ${typeLabel}: ${meta.fileType}, ${lengthLabel}: ${meta.originalLength} chars${meta.truncated ? ', ' + truncatedLabel : ''}]`;
 			}
 
 			// Add information about extracted images if any
 			if (noteContext.metadata?.extractedImages && noteContext.metadata.extractedImages.length > 0) {
 				const imageList = noteContext.metadata.extractedImages.map((img: ExtractedImage) => img.filename).join(', ');
-				contextHeader += `\n[Images in this markdown: ${imageList} - These images are included in the user message for visual analysis]`;
+				const imagesLabel = t?.('common.contextPrompt.imagesInMarkdown') || 'Images in this markdown';
+				const analysisNote = t?.('common.contextPrompt.imagesIncludedForAnalysis') || 'These images are included in the user message. Please analyze both the text content above and these images together. Do not ignore either unless explicitly instructed.';
+				
+				contextHeader += `\n[${imagesLabel}: ${imageList} - ${analysisNote}]`;
 			}
 
 			contextPrompt += `${contextHeader}\n---\n${noteContext.content}\n---`;
@@ -771,10 +1037,12 @@ export class ContextManager {
 
 		// Add selected text contexts
 		this.selectedTextContexts.forEach((selectedTextContext, index) => {
-			const label = this.selectedTextContexts.length > 1 
-				? `Selected Text ${index + 1}` 
-				: 'Selected Text';
-			contextPrompt += `\n\nCONTEXT - ${label}:\n---\n${selectedTextContext.text}\n---`;
+			const contextLabel = t?.('common.contextPrompt.contextLabel') || 'CONTEXT';
+			const selectedTextLabel = t?.('common.contextPrompt.selectedText') || 'Selected Text';
+			const selectedTextMultiple = t?.('common.contextPrompt.selectedTextMultiple')?.replace('{index}', String(index + 1)) || `Selected Text ${index + 1}`;
+			
+			const label = this.selectedTextContexts.length > 1 ? selectedTextMultiple : selectedTextLabel;
+			contextPrompt += `\n\n${contextLabel} - ${label}:\n---\n${selectedTextContext.text}\n---`;
 
 			Logger.debug('Including selected text in system prompt:', {
 				index,
@@ -796,7 +1064,7 @@ export class ContextManager {
 				const truncatedPrompt = TokenManager.truncateContextPrompt(contextPrompt, maxTokens);
 
 				// Show notice to user
-				new Notice('Context files are too large and have been truncated to fit token limits.', 4000);
+				new Notice(this.plugin.getI18nManager()?.t('notifications.context.filesToolarge') || 'Context files are too large and have been truncated to fit token limits.', 4000);
 
 				return truncatedPrompt;
 			}
@@ -1013,13 +1281,17 @@ export class ContextManager {
 		// Try different resolution strategies
 		const strategies = [
 			// 1. Direct path from vault root
-			() => this.app.vault.getAbstractFileByPath(imagePath) as TFile,
+			() => {
+				const abstractFile = this.app.vault.getAbstractFileByPath(imagePath);
+				return (abstractFile instanceof TFile) ? abstractFile : null;
+			},
 			
 			// 2. Relative to source file's directory
 			() => {
 				const sourceDir = sourceFile.parent?.path || '';
 				const fullPath = sourceDir ? `${sourceDir}/${imagePath}` : imagePath;
-				return this.app.vault.getAbstractFileByPath(fullPath) as TFile;
+				const abstractFile = this.app.vault.getAbstractFileByPath(fullPath);
+				return (abstractFile instanceof TFile) ? abstractFile : null;
 			},
 			
 			// 3. Search by filename only (for wiki-style links)
@@ -1063,14 +1335,17 @@ export class ContextManager {
 		try {
 			Logger.debug('Downloading external image:', imageUrl);
 			
-			// Use fetch to download the image
-			const response = await fetch(imageUrl);
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+			// Use requestUrl to download the image
+			const response = await requestUrl({
+				url: imageUrl,
+				method: 'GET'
+			});
+			if (response.status !== 200) {
+				throw new Error(`HTTP ${response.status}`);
 			}
 			
 			// Check content type - reject GIFs early
-			const contentType = response.headers.get('content-type') || '';
+			const contentType = response.headers['content-type'] || '';
 			if (!contentType.startsWith('image/')) {
 				throw new Error(`Not an image: ${contentType}`);
 			}
@@ -1318,11 +1593,12 @@ export class ContextManager {
 	async debugImageExtraction(filePath: string): Promise<void> {
 		Logger.debug('DEBUG: Manual image extraction test for:', filePath);
 		
-		const file = this.app.vault.getAbstractFileByPath(filePath) as TFile;
-		if (!file) {
+		const abstractFile = this.app.vault.getAbstractFileByPath(filePath);
+		if (!abstractFile || !(abstractFile instanceof TFile)) {
 			Logger.error('DEBUG: File not found:', filePath);
 			return;
 		}
+		const file = abstractFile;
 		
 		if (file.extension !== 'md') {
 			Logger.error('DEBUG: Not a markdown file:', filePath);
@@ -1357,14 +1633,76 @@ export class ContextManager {
 		// Method 1: Try from active markdown view editor
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView) {
-			const editor = (activeView as any).editor;
+			const editor = (activeView as unknown).editor;
 			if (editor && editor.getSelection) {
 				selectedText = editor.getSelection();
 				Logger.debug('From MarkdownView editor:', selectedText.length);
 			}
 		}
 		
-		// Method 2: Try from global window selection (for any text)
+		// Method 2: Try from PDF viewer in the active view
+		if (!selectedText) {
+			const activeLeaf = this.app.workspace.getLeaf();
+			if (activeLeaf) {
+				try {
+					const view = (activeLeaf as any).view;
+					if (view && view.contentEl) {
+						// Look for PDF viewer container
+						const pdfViewer = view.contentEl.querySelector('div.pdfViewer');
+						if (pdfViewer) {
+							// Try to get selection from PDF viewer
+							const pdfSelection = window.getSelection();
+							if (pdfSelection && pdfSelection.toString().trim()) {
+								// Verify the selection is within the PDF viewer
+								const range = pdfSelection.rangeCount > 0 ? pdfSelection.getRangeAt(0) : null;
+								if (range && pdfViewer.contains(range.commonAncestorContainer)) {
+									selectedText = pdfSelection.toString().trim();
+									Logger.debug('From PDF viewer selection:', selectedText.length);
+								}
+							}
+						}
+					}
+				} catch (error) {
+					Logger.debug('Error accessing PDF viewer:', error);
+				}
+			}
+		}
+		
+		// Method 3: Try from epub reader iframes in the active view
+		if (!selectedText) {
+			const activeLeaf = this.app.workspace.getLeaf();
+			if (activeLeaf) {
+				try {
+					const view = (activeLeaf as any).view;
+					if (view && view.contentEl) {
+						// Look for iframes (epub readers often use iframes)
+						const iframes = view.contentEl.querySelectorAll('iframe');
+						for (const iframe of Array.from(iframes)) {
+							try {
+								const iframeWindow = (iframe as HTMLIFrameElement).contentWindow;
+								const iframeDoc = (iframe as HTMLIFrameElement).contentDocument || iframeWindow?.document;
+								
+								if (iframeDoc) {
+									const iframeSelection = iframeDoc.getSelection();
+									if (iframeSelection && iframeSelection.toString().trim()) {
+										selectedText = iframeSelection.toString().trim();
+										Logger.debug('From iframe selection (epub):', selectedText.length);
+										break;
+									}
+								}
+							} catch (error) {
+								// Cross-origin iframe, skip
+								Logger.debug('Could not access iframe selection:', error);
+							}
+						}
+					}
+				} catch (error) {
+					Logger.debug('Error accessing epub iframe:', error);
+				}
+			}
+		}
+		
+		// Method 3: Try from global window selection (for any text)
 		if (!selectedText) {
 			const selection = window.getSelection();
 			if (selection && selection.toString().trim()) {
@@ -1373,7 +1711,7 @@ export class ContextManager {
 			}
 		}
 		
-		// Method 3: Try from document selection
+		// Method 4: Try from document selection
 		if (!selectedText) {
 			if (document.getSelection) {
 				const docSelection = document.getSelection();
@@ -1388,10 +1726,269 @@ export class ContextManager {
 			length: selectedText.length,
 			preview: selectedText.substring(0, 100) + (selectedText.length > 100 ? '...' : ''),
 			activeView: !!activeView,
-			hasEditor: !!(activeView && (activeView as any).editor)
+			hasEditor: !!(activeView && (activeView as unknown).editor)
 		});
 		
 		return selectedText;
+	}
+
+	/**
+	 * Get YouTube video metadata and transcript using InnerTube API
+	 */
+	private async getYouTubeVideoData(videoId: string): Promise<string | null> {
+		try {
+			Logger.debug(`[ContextManager] Starting YouTube video fetch for ID: ${videoId}`);
+			
+			// Fetch video page to extract API key
+			const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}`;
+			Logger.debug(`[ContextManager] Fetching video page: ${videoPageUrl}`);
+			
+			const pageResponse = await requestUrl({
+				url: videoPageUrl,
+				method: 'GET',
+				headers: {
+					'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+					'Accept-Language': 'en-US,en;q=0.9'
+				},
+				throw: false
+			});
+
+			if (pageResponse.status !== 200) {
+				Logger.error(`[ContextManager] Failed to fetch video page: HTTP ${pageResponse.status}`);
+				throw new Error(`Failed to fetch video page: HTTP ${pageResponse.status}`);
+			}
+
+			Logger.debug(`[ContextManager] Video page fetched successfully, size: ${pageResponse.text.length} bytes`);
+			
+			const html = pageResponse.text;
+			const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":\s*"([a-zA-Z0-9_-]+)"/);
+			
+			if (!apiKeyMatch) {
+				Logger.error('[ContextManager] Could not extract YouTube API key from page');
+				throw new Error('Could not extract YouTube API key');
+			}
+
+			const apiKey = apiKeyMatch[1];
+			Logger.debug(`[ContextManager] Extracted API key: ${apiKey.substring(0, 10)}...`);
+			
+			// Call InnerTube API
+			const innertubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
+			Logger.debug(`[ContextManager] Calling InnerTube API: ${innertubeUrl}`);
+			
+			const innertubeResponse = await requestUrl({
+				url: innertubeUrl,
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+				},
+				body: JSON.stringify({
+					context: {
+						client: {
+							clientName: 'WEB',
+							clientVersion: '2.20231219.04.00'
+						}
+					},
+					videoId: videoId
+				}),
+				throw: false
+			});
+
+			if (innertubeResponse.status !== 200) {
+				Logger.error(`[ContextManager] InnerTube API error: HTTP ${innertubeResponse.status}`);
+				throw new Error(`InnerTube API error: HTTP ${innertubeResponse.status}`);
+			}
+
+			Logger.debug('[ContextManager] InnerTube API response received');
+			
+			const innertubeData = innertubeResponse.json;
+			
+			// Extract video metadata
+			const videoDetails = innertubeData.videoDetails;
+			Logger.debug('[ContextManager] Video metadata:', {
+				title: videoDetails?.title,
+				author: videoDetails?.author,
+				lengthSeconds: videoDetails?.lengthSeconds,
+				viewCount: videoDetails?.viewCount,
+				channelId: videoDetails?.channelId,
+				shortDescription: videoDetails?.shortDescription?.substring(0, 100) + '...'
+			});
+			
+			// Extract microformat metadata (additional info)
+			const microformat = innertubeData.microformat?.playerMicroformatRenderer;
+			Logger.debug('[ContextManager] Microformat metadata:', {
+				uploadDate: microformat?.uploadDate,
+				publishDate: microformat?.publishDate,
+				category: microformat?.category,
+				isUnlisted: microformat?.isUnlisted
+			});
+			
+			const captionsData = innertubeData.captions?.playerCaptionsTracklistRenderer;
+			
+			if (!captionsData || !captionsData.captionTracks || captionsData.captionTracks.length === 0) {
+				Logger.warn('[ContextManager] No captions available for this video');
+				
+				// Return metadata without transcript
+				return this.formatVideoMetadata(videoDetails, microformat, null);
+			}
+
+			const captionTracks = captionsData.captionTracks;
+			Logger.debug(`[ContextManager] Found ${captionTracks.length} caption tracks:`, 
+				captionTracks.map((t: any) => ({
+					lang: t.languageCode,
+					name: t.name?.simpleText || t.name?.runs?.[0]?.text,
+					kind: t.kind
+				}))
+			);
+			
+			// Select caption track: prioritize Chinese > English > first available
+			let selectedTrack = captionTracks.find((track: any) => 
+				track.languageCode.startsWith('zh')
+			) || captionTracks.find((track: any) => 
+				track.languageCode === 'en' || track.languageCode.startsWith('en')
+			) || captionTracks[0];
+
+			if (!selectedTrack) {
+				Logger.warn('[ContextManager] No suitable caption track found');
+				return this.formatVideoMetadata(videoDetails, microformat, null);
+			}
+
+			const trackName = selectedTrack.name?.simpleText || 
+						 selectedTrack.name?.runs?.[0]?.text || 
+						 selectedTrack.languageCode;
+			const isAutoGenerated = selectedTrack.kind === 'asr';
+			
+			Logger.debug(`[ContextManager] Selected caption: ${trackName} [${selectedTrack.languageCode}] ${isAutoGenerated ? '(auto-generated)' : '(manual)'}`);
+
+			let captionUrl = selectedTrack.baseUrl.replace(/&fmt=srv3/g, '');
+			Logger.debug(`[ContextManager] Fetching caption from: ${captionUrl.substring(0, 100)}...`);
+			
+			// Download caption data
+			const captionResponse = await requestUrl({
+				url: captionUrl,
+				method: 'GET',
+				headers: {
+					'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+				},
+				throw: false
+			});
+
+			if (captionResponse.status !== 200) {
+				Logger.error(`[ContextManager] Failed to fetch caption content: HTTP ${captionResponse.status}`);
+				throw new Error(`Failed to fetch caption content: HTTP ${captionResponse.status}`);
+			}
+
+			Logger.debug(`[ContextManager] Caption XML fetched, size: ${captionResponse.text.length} bytes`);
+			
+			const captionXml = captionResponse.text;
+			const segments = parseSubtitleXml(captionXml);
+
+			if (segments.length === 0) {
+				Logger.warn('[ContextManager] No segments extracted from caption XML');
+				return this.formatVideoMetadata(videoDetails, microformat, null);
+			}
+
+			// Format as plain text
+			const transcript = segments.map(s => s.text).join(' ');
+			
+			Logger.debug(`[ContextManager] Transcript processed: ${segments.length} segments, ${transcript.length} characters`);
+			Logger.debug(`[ContextManager] First 200 chars: ${transcript.substring(0, 200)}...`);
+			
+			// Return formatted metadata + transcript
+			return this.formatVideoMetadata(videoDetails, microformat, {
+				language: selectedTrack.languageCode,
+				languageName: trackName,
+				isAutoGenerated: isAutoGenerated,
+				segmentCount: segments.length,
+				transcript: transcript
+			});
+
+		} catch (error) {
+			Logger.error('[ContextManager] Error fetching YouTube video data:', error);
+			return null;
+		}
+	}
+
+	/**
+	 * Format YouTube video metadata and transcript into readable text
+	 */
+	private formatVideoMetadata(
+		videoDetails: any,
+		microformat: any,
+		captionData: { language: string; languageName: string; isAutoGenerated: boolean; segmentCount: number; transcript: string } | null
+	): string {
+		const sections: string[] = [];
+		
+		// Video basic info
+		sections.push('## 视频信息');
+		sections.push('');
+		
+		if (videoDetails?.title) {
+			sections.push(`**标题**: ${videoDetails.title}`);
+		}
+		
+		if (videoDetails?.author) {
+			sections.push(`**作者**: ${videoDetails.author}`);
+		}
+		
+		if (videoDetails?.lengthSeconds) {
+			const duration = this.formatDuration(parseInt(videoDetails.lengthSeconds));
+			sections.push(`**时长**: ${duration}`);
+		}
+		
+		if (videoDetails?.viewCount) {
+			const views = parseInt(videoDetails.viewCount).toLocaleString();
+			sections.push(`**观看次数**: ${views}`);
+		}
+		
+		if (microformat?.publishDate) {
+			sections.push(`**发布日期**: ${microformat.publishDate}`);
+		}
+		
+		if (microformat?.category) {
+			sections.push(`**分类**: ${microformat.category}`);
+		}
+		
+		if (videoDetails?.shortDescription) {
+			sections.push('');
+			sections.push('**简介**:');
+			sections.push(videoDetails.shortDescription);
+		}
+		
+		// Caption info
+		if (captionData) {
+			sections.push('');
+			sections.push('## 字幕信息');
+			sections.push('');
+			sections.push(`**语言**: ${captionData.languageName} (${captionData.language})`);
+			sections.push(`**类型**: ${captionData.isAutoGenerated ? '自动生成' : '手动添加'}`);
+			sections.push(`**片段数**: ${captionData.segmentCount}`);
+			sections.push(`**字符数**: ${captionData.transcript.length.toLocaleString()}`);
+			sections.push('');
+			sections.push('## 字幕内容');
+			sections.push('');
+			sections.push(captionData.transcript);
+		} else {
+			sections.push('');
+			sections.push('**注**: 该视频没有可用的字幕');
+		}
+		
+		return sections.join('\n');
+	}
+
+	/**
+	 * Format duration in seconds to readable format (HH:MM:SS)
+	 */
+	private formatDuration(seconds: number): string {
+		const hours = Math.floor(seconds / 3600);
+		const minutes = Math.floor((seconds % 3600) / 60);
+		const secs = seconds % 60;
+		
+		if (hours > 0) {
+			return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+		} else {
+			return `${minutes}:${secs.toString().padStart(2, '0')}`;
+		}
 	}
 
 	/**
@@ -1402,24 +1999,22 @@ export class ContextManager {
 		// Try to get URL from various sources
 		let url: string | null = null;
 		let webContent: string | null = null;
-		let foundLeaf: any = null;
+		let foundLeaf: unknown = null;
 
 		// Strategy: Find the most recently active webpage
 		// 1. First check the active leaf (might be the chat view, but worth checking)
 		// 2. Then check recently active leaves
 		// 3. Finally check all leaves
 		
-		const workspaceLeaves: any[] = [];
-		this.app.workspace.iterateAllLeaves((leaf: any) => {
+		const workspaceLeaves: unknown[] = [];
+		this.app.workspace.iterateAllLeaves((leaf: unknown) => {
 			workspaceLeaves.push(leaf);
 		});
 
-		// Get the active leaf and recently active leaves for prioritization
-		const activeLeaf = this.app.workspace.activeLeaf;
-		const recentLeaves = (this.app.workspace as any).recentlyActiveLeaves || [];
-		
-		// Create a prioritized list: active leaf first, then recent leaves, then all others
-		const prioritizedLeaves: any[] = [];
+	// Get the active leaf and recently active leaves for prioritization
+	const activeLeaf = this.app.workspace.getLeaf();
+	const recentLeaves = (this.app.workspace as unknown).recentlyActiveLeaves || [];		// Create a prioritized list: active leaf first, then recent leaves, then all others
+		const prioritizedLeaves: unknown[] = [];
 		
 		// Add active leaf first
 		if (activeLeaf) {
@@ -1442,7 +2037,7 @@ export class ContextManager {
 
 		// Search through prioritized leaves for a webpage
 		for (const leaf of prioritizedLeaves) {
-			const view = leaf.view as any;
+			const view = leaf.view;
 			
 			// Method 1: Check if view has a frame property (iframe)
 			if (view?.frame && view.frame.src) {
@@ -1530,6 +2125,47 @@ export class ContextManager {
 
 		Logger.debug('Fetching webpage content:', url);
 
+		// Check if this is a YouTube URL
+		const videoId = extractVideoId(url);
+		if (videoId) {
+			Logger.debug('[ContextManager] Detected YouTube video, fetching metadata and transcript...');
+			
+			const videoData = await this.getYouTubeVideoData(videoId);
+			
+			if (videoData) {
+				Logger.debug('[ContextManager] Successfully fetched YouTube video data');
+				
+				const preview = videoData.length > 100 
+					? videoData.substring(0, 100) + '...' 
+					: videoData;
+				
+				const context: SelectedTextContext = {
+					text: `[YouTube视频: ${url}]\n\n${videoData}`,
+					preview: `YouTube: ${preview}`
+				};
+
+				this.selectedTextContexts.push(context);
+				
+				Logger.debug('[ContextManager] Added YouTube video data to context:', {
+					url: url,
+					contentLength: videoData.length,
+					preview: preview,
+					totalSelections: this.selectedTextContexts.length
+				});
+				
+				return {
+					success: true,
+					message: '',
+					contentLength: videoData.length,
+					url: url,
+					context: context
+				};
+			} else {
+				Logger.warn('[ContextManager] Failed to fetch YouTube video data, falling back to webpage extraction');
+				// Continue with normal webpage extraction
+			}
+		}
+
 		// If we couldn't get content directly due to CORS, use Obsidian's requestUrl API
 		if (!webContent && url) {
 			
@@ -1563,7 +2199,7 @@ export class ContextManager {
 				
 				// Fallback: Try to access iframe content one more time
 				if (foundLeaf) {
-					const view = foundLeaf.view as any;
+					const view = foundLeaf.view;
 					let iframe: HTMLIFrameElement | null = null;
 					
 					// Find the iframe
@@ -1683,6 +2319,146 @@ export class ContextManager {
 		text = text.trim();
 
 		return text;
+	}
+
+	/**
+	 * Include current epub book page content as context
+	 * Extracts text from the currently displayed epub page in the active tab
+	 */
+	async includeEpubPageContent(): Promise<{ success: boolean; message: string; context?: SelectedTextContext; contentLength?: number; bookTitle?: string }> {
+		// Get the active leaf (tab)
+		const activeLeaf = this.app.workspace.getLeaf();
+		if (!activeLeaf) {
+			Logger.warn('No active leaf found');
+			return {
+				success: false,
+				message: this.i18n?.t('notifications.context.noActiveTab') || 'No active tab found. Please open an epub book first.'
+			};
+		}
+
+		// Try to find the epub page element within the active leaf's view
+		let epubPageElement: Element | null = null;
+		try {
+			const view = (activeLeaf as any).view;
+			if (view && view.contentEl) {
+				// Look for the epub reader content element within the active view
+				// Try multiple possible selectors for epub content
+				const selectors = [
+					'div.view-content iframe', // Epub might be in iframe (try this first)
+					'div.view-content > div > div:nth-child(2)', // Parent container of navigation
+					'div.view-content > div > div', // More general container
+					'div.view-content [class*="content"]', // Any element with "content" in class name
+					'[class*="epub"]', // Any element with epub in class name
+				];
+
+				for (const selector of selectors) {
+					const element = view.contentEl.querySelector(selector);
+					if (element) {
+						// If we found an iframe, try to access its content
+						if (element.tagName === 'IFRAME') {
+							try {
+								const iframe = element as HTMLIFrameElement;
+								const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+								if (iframeDoc && iframeDoc.body) {
+									epubPageElement = iframeDoc.body;
+									Logger.debug('Accessing epub content from iframe');
+									break;
+								}
+							} catch (error) {
+								Logger.debug('Could not access iframe content, trying next selector:', error);
+								continue;
+							}
+						} else {
+							// For non-iframe elements, check if it has meaningful content
+							const textContent = (element.textContent || '').trim();
+							// Skip elements that only have navigation symbols (‹›) or are very short
+							if (textContent.length > 50 && !textContent.match(/^[‹›\s]+$/)) {
+								epubPageElement = element;
+								Logger.debug('Found epub element with selector:', selector, 'content length:', textContent.length);
+								break;
+							} else {
+								Logger.debug('Element found but content too short or only navigation:', textContent.length, selector);
+							}
+						}
+					}
+				}
+			}
+		} catch (error) {
+			Logger.error('Error accessing active leaf view:', error);
+		}
+
+		if (!epubPageElement) {
+			Logger.warn('No epub page element found in active tab');
+			return {
+				success: false,
+				message: this.i18n?.t('notifications.context.noEpubFound') || 'No open epub book found in the active tab. Please open an epub book first.'
+			};
+		}
+
+		// Extract text content from the epub page
+		let pageContent = '';
+		try {
+			// Try to get text content, removing extra whitespace
+			const textContent = epubPageElement.textContent || '';
+			pageContent = textContent.trim();
+			
+			if (!pageContent) {
+				return {
+					success: false,
+					message: this.i18n?.t('notifications.context.epubPageEmpty') || 'The epub page appears to be empty.'
+				};
+			}
+			
+			// Clean up excessive whitespace
+			pageContent = pageContent.replace(/\n\s*\n\s*\n/g, '\n\n'); // Max 2 consecutive newlines
+			pageContent = pageContent.replace(/[ \t]+/g, ' '); // Normalize spaces
+			
+		} catch (error) {
+			Logger.error('Error extracting epub page content:', error);
+			return {
+				success: false,
+				message: (this.i18n?.t('notifications.context.epubExtractFailed') || 'Failed to extract content from epub page') + ': ' + (error instanceof Error ? error.message : String(error))
+			};
+		}
+
+		// Try to get book title from the active file or view
+		let bookTitle = 'Current Epub Page';
+		try {
+			const activeFile = this.app.workspace.getActiveFile();
+			if (activeFile && activeFile.extension === 'epub') {
+				bookTitle = activeFile.basename;
+			}
+		} catch (error) {
+			// Ignore errors getting book title
+			Logger.debug('Could not get book title:', error);
+		}
+
+		// Create preview (first 100 characters)
+		const preview = pageContent.length > 100 
+			? pageContent.substring(0, 100) + '...' 
+			: pageContent;
+		
+		const context: SelectedTextContext = {
+			text: pageContent,
+			preview: `${bookTitle}: ${preview}`
+		};
+
+		this.selectedTextContexts.push(context);
+		
+		Logger.debug('Added epub page content to context:', {
+			bookTitle: bookTitle,
+			contentLength: pageContent.length,
+			preview: preview,
+			totalSelections: this.selectedTextContexts.length
+		});
+		
+		return {
+			success: true,
+			message: '',  // Will be formatted in input-handler with i18n
+			contentLength: pageContent.length,
+			bookTitle: bookTitle,
+			context: context
+		};
 	}
 
 	/**

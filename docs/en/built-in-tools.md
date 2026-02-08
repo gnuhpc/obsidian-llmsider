@@ -2,7 +2,7 @@
 
 ## Overview
 
-LLMSider includes **600+ built-in tools** across 20+ categories, providing AI with powerful capabilities to interact with your vault, search the web, access financial data, and more.
+LLMSider includes **100+ built-in tools** across multiple categories, providing AI with powerful capabilities to interact with your vault, search the web, access financial data, and more.
 
 ---
 
@@ -39,20 +39,10 @@ LLMSider includes **600+ built-in tools** across 20+ categories, providing AI wi
 | **Search** | 15+ | Content discovery | ✅ Enabled |
 | **Web Content** | 10+ | Web scraping | ✅ Enabled |
 | **Search Engines** | 20+ | DuckDuckGo, Google | ✅ Enabled |
-| **Stock** | 150+ | Stock market data | ❌ Disabled |
-| **Futures** | 80+ | Futures & commodities | ❌ Disabled |
-| **Options** | 60+ | Options analytics | ❌ Disabled |
-| **Bonds** | 50+ | Bond market data | ❌ Disabled |
-| **Funds** | 70+ | Mutual funds, ETFs | ❌ Disabled |
-| **Forex** | 30+ | Currency exchange | ❌ Disabled |
-| **Crypto** | 15+ | Cryptocurrency | ❌ Disabled |
-| **Financial** | 40+ | Financial statements | ❌ Disabled |
-| **Macro** | 20+ | Economic indicators | ❌ Disabled |
-| **Risk** | 15+ | Risk management | ❌ Disabled |
-| **ESG** | 18+ | ESG & sustainability | ❌ Disabled |
-| **Industry** | 25+ | Industry data | ❌ Disabled |
+| **Forex** | 10+ | Currency exchange | ❌ Disabled |
+| **Stock Analysis** | 5+ | Yahoo Finance, etc. | ❌ Disabled |
 
-**Total: 624 tools across 20+ categories**
+**Total: 100+ tools across 10+ categories**
 
 ### Default Configuration
 
@@ -66,9 +56,9 @@ LLMSider includes **600+ built-in tools** across 20+ categories, providing AI wi
 - ✅ Web Content
 - ✅ Search Engines
 
-**Disabled by Default (15+ categories):**
-- ❌ All financial/market data categories
-- ❌ Specialized data categories
+**Disabled by Default (2 categories):**
+- ❌ Forex tools
+- ❌ Stock analysis tools (Yahoo Finance)
 
 ---
 
@@ -299,491 +289,65 @@ AI: [uses fetch_youtube_transcript()]
 
 ---
 
-## 💰 Data Tools
+## 💰 Financial Data Tools
 
-### Financial Market Data
+### Yahoo Finance Tools
 
-**Stock Market (150+ tools)**
-
-**Real-time Quotes:**
+**Stock Data Queries:**
 ```typescript
-// Get current quote
-get_market_quote(symbol: string)
+// Get stock quote
+get_yahoo_finance_quote(symbol: string)
 // Returns: price, volume, change, etc.
 
-// Real-time A-share data
-get_stock_a_share_spot(symbol?: string)
-// Live market data
-
-// Minute-level data
-get_stock_minute_data(symbol: string, period: string)
-// Intraday price movements
+// Get stock news
+get_yahoo_finance_news(symbol: string)
+// Returns stock-related news
 ```
 
-**Market Analysis:**
+**Stock Panorama Tools (HK & US stocks):**
 ```typescript
-// Hot stock rankings
-get_stock_hot_rank()
-get_hot_up_rank()
-
-// Industry/sector boards
-get_industry_board()
-get_concept_board()
-get_board_stocks(board: string)
-
-// Market overview
-get_market_overview()
-get_market_money_flow()
-```
-
-**Trading Activity:**
-```typescript
-// Limit up/down pools
-get_limit_board()
-get_limit_up_pool()
-get_limit_down_pool()
-
-// Dragon-Tiger List
-get_dragon_tiger_list(date: string)
-get_dragon_tiger_list_detail(symbol: string, date: string)
-
-// Block trades
-get_block_trade(date: string)
-get_block_trade_details(symbol: string)
-```
-
-**Financial Data:**
-```typescript
-// Financial statements
-get_income_statement_detail(symbol: string)
-get_balance_sheet_detail(symbol: string)
-get_cash_flow_detail(symbol: string)
-
-// Financial ratios
-get_financial_indicators(symbol: string)
-get_roe_dupont(symbol: string)
-get_profitability_metrics(symbol: string)
-
-// Valuation
-get_valuation_multiples(symbol: string)
-get_pe_pb_band(symbol: string)
-get_dividend_analysis(symbol: string)
+// Stock Panorama
+get_stock_panorama(symbol: string)
+// Get company profiles, industry classification, concept sectors, etc.
 ```
 
 **Example Usage:**
 ```markdown
 User: "What's the current price of AAPL?"
-AI: [uses get_market_quote("AAPL")]
+AI: [uses get_yahoo_finance_quote("AAPL")]
 📊 Apple Inc. (AAPL)
 Price: $185.23 (+2.34%)
 Volume: 45.2M
 Market Cap: $2.91T
-
-User: "Show me today's limit up stocks"
-AI: [uses get_limit_up_pool()]
-🚀 Today's Limit Up Stocks:
-1. 600000 (+10.01%)
-2. 000001 (+10.00%)
-... (23 stocks total)
-
-User: "Analyze the financial health of 600000"
-AI:
-1. [uses get_financial_indicators("600000")]
-2. [uses get_roe_dupont("600000")]
-3. [uses get_debt_ratio()]
-📊 Financial Analysis:
-- ROE: 15.2% (Good)
-- Debt Ratio: 42% (Moderate)
-- Current Ratio: 1.8 (Healthy)
 ```
 
 ---
 
-### Futures & Commodities (80+ tools)
+### Forex Tools
 
-**Real-time Data:**
+**Currency Exchange:**
 ```typescript
-// Futures quotes
-get_futures_realtime(symbol: string)
-get_futures_main_contract(variety: string)
+// Real-time exchange rate
+get_forex_rate(from: string, to: string)
+// Returns current exchange rate
 
-// Position rankings
-get_futures_position_rank(symbol: string, date: string)
-get_futures_holding_rank_detail(symbol: string, date: string)
-
-// Warehouse & inventory
-get_futures_warehouse_receipt(variety: string)
-get_futures_inventory(exchange: string)
+// Historical exchange rates
+get_forex_history(pair: string, start_date: string, end_date: string)
+// Returns historical rate data
 ```
 
-**Commodity Data:**
-```typescript
-// Agricultural inventory
-get_agriculture_inventory()
-get_oilseed_inventory()
-get_sugar_inventory()
+### Crypto & Digital Assets
 
-// Metals
-get_metals_inventory()
-get_metals_production()
+Tools for tracking the cryptocurrency market.
 
-// Energy
-get_oil_inventory()
-get_natural_gas_inventory()
-get_coal_inventory()
-
-// Industrial
-get_steel_inventory()
-get_cement_production()
-get_rubber_inventory()
-```
-
-**Example Usage:**
-```markdown
-User: "What's the current price of crude oil futures?"
-AI: [uses get_futures_realtime("CL")]
-🛢️ Crude Oil (CL)
-Price: $82.45 (+1.2%)
-Volume: 234,567
-Open Interest: 1.2M
-
-User: "Show me copper inventory trends"
-AI: [uses get_metals_inventory("copper")]
-📊 Copper Inventory (Last 30 Days):
-Jan 15: 345,000 tons
-Jan 14: 342,000 tons (+0.9%)
-...
-Trend: ⬆️ Increasing
-```
+**Key Capabilities:**
+- **Market Overview:** Global crypto market cap and volume.
+- **Price Tracking:** Real-time prices for 1000+ coins.
+- **Exchange Data:** Volume and liquidity across major exchanges.
 
 ---
 
-### Options (60+ tools)
-
-**Options Chains:**
-```typescript
-// Index options
-get_sse50_option()
-get_csi300_option()
-get_csi1000_option()
-
-// Real-time quotes
-get_option_t_quotes(underlying: string)
-
-// Greeks
-get_option_greeks(symbol: string)
-get_option_greeks_detail(symbol: string)
-```
-
-**Analytics:**
-```typescript
-// Implied volatility
-get_option_iv(symbol: string)
-get_volatility_surface_analysis(underlying: string)
-
-// Risk metrics
-get_option_risk_metrics(symbol: string)
-get_option_value_analysis(symbol: string)
-
-// Market indicators
-get_option_pcr()  // Put-Call Ratio
-get_china_vix()   // Volatility Index
-```
-
-**Example Usage:**
-```markdown
-User: "Show me CSI300 options with highest volume"
-AI: [uses get_csi300_option()]
-📈 Top 10 by Volume:
-1. 510300C2412M05000 - 23,456 contracts
-2. 510300P2412M05000 - 18,234 contracts
-...
-
-User: "Calculate Greeks for this option"
-AI: [uses get_option_greeks_detail("510300C2412M05000")]
-📊 Greeks Analysis:
-Delta: 0.58
-Gamma: 0.023
-Theta: -0.042
-Vega: 0.156
-Implied Vol: 18.5%
-```
-
----
-
-### Bonds (50+ tools)
-
-**Bond Market:**
-```typescript
-// Real-time quotes
-get_bond_realtime(symbol: string)
-get_bond_market_quote(market: string)
-
-// Convertible bonds
-get_convertible_bond()
-get_convertible_bond_value_analysis(symbol: string)
-get_convertible_bond_premium_analysis(symbol: string)
-
-// Yield curves
-get_treasury_yield_curve()
-get_china_bond_yield_curve()
-```
-
-**Credit Analysis:**
-```typescript
-// Credit ratings
-get_bond_credit_rating(symbol: string)
-get_bond_rating_changes(date: string)
-
-// Default risk
-get_bond_default_events()
-get_credit_risk_metrics(symbol: string)
-```
-
-**Example Usage:**
-```markdown
-User: "Show me today's convertible bond premiums"
-AI: [uses get_convertible_bond_premium_analysis()]
-📊 Convertible Bond Premiums:
-110061 (Tech CB): +12.5%
-113050 (Bank CB): +8.3%
-...
-
-User: "Plot the treasury yield curve"
-AI: [uses get_treasury_yield_curve()]
-📈 Treasury Yield Curve:
-3M:  2.45%
-6M:  2.68%
-1Y:  2.85%
-2Y:  3.12%
-5Y:  3.45%
-10Y: 3.68%
-30Y: 3.92%
-```
-
----
-
-### Funds (70+ tools)
-
-**Fund Data:**
-```typescript
-// Fund information
-get_open_fund(fund_code: string)
-get_etf_fund(fund_code: string)
-get_fund_ranking(category: string)
-
-// NAV history
-get_fund_nav_history(fund_code: string)
-
-// Holdings
-get_fund_holdings(fund_code: string)
-get_fund_stock_holdings(fund_code: string)
-get_fund_bond_holdings(fund_code: string)
-```
-
-**Fund Analysis:**
-```typescript
-// Performance
-get_fund_manager_performance(manager: string)
-get_fund_rating(fund_code: string)
-
-// Flow data
-get_fund_flow(fund_code: string)
-get_etf_arbitrage()
-get_lof_arbitrage()
-
-// Risk metrics
-get_fund_risk_metrics(fund_code: string)
-get_fund_style_analysis(fund_code: string)
-```
-
-**Example Usage:**
-```markdown
-User: "Find top-performing tech funds"
-AI: [uses get_fund_ranking("technology")]
-🏆 Top Tech Funds (YTD):
-1. Fund A: +35.2%
-2. Fund B: +28.7%
-3. Fund C: +24.3%
-
-User: "Analyze this fund's holdings"
-AI: [uses get_fund_holdings("110011")]
-📊 Fund 110011 Holdings:
-Top 10 Stocks (45% of portfolio):
-1. 600000 (8.2%)
-2. 000001 (6.5%)
-...
-Sector Allocation:
-Technology: 35%
-Finance: 20%
-Healthcare: 15%
-```
-
----
-
-### Macro Economics (20+ tools)
-
-**Economic Indicators:**
-```typescript
-// China indicators
-get_cpi()         // Consumer Price Index
-get_ppi()         // Producer Price Index
-get_gdp()         // Gross Domestic Product
-get_pmi()         // Purchasing Managers Index
-get_money_supply()
-get_unemployment_rate()
-
-// US indicators
-get_us_cpi()
-get_us_ppi()
-get_us_pmi()
-get_us_non_farm_payroll()
-get_us_retail_sales()
-```
-
-**Example Usage:**
-```markdown
-User: "Show me China's latest CPI data"
-AI: [uses get_cpi()]
-📊 China CPI (Latest):
-Dec 2024: 0.5% (YoY)
-Nov 2024: 0.3%
-Oct 2024: 0.1%
-Trend: 📈 Rising
-
-User: "Compare US and China GDP growth"
-AI:
-1. [uses get_gdp()]
-2. [uses get_us_gdp()]
-📊 GDP Growth Comparison:
-China Q4 2024: 5.2%
-US Q4 2024: 2.8%
-China growing 85% faster
-```
-
----
-
-### Crypto & Digital Assets (15+ tools)
-
-**Cryptocurrency:**
-```typescript
-// Spot prices
-get_crypto_spot(symbol: string)
-get_crypto_bitcoin_price_trend()
-
-// Market data
-get_crypto_market_cap_ranking()
-get_crypto_exchange_ranking()
-
-// DeFi & NFT
-get_crypto_defi_tvl()
-get_crypto_nft_market_data()
-
-// Bitcoin derivatives
-get_crypto_bitcoin_cme()
-get_crypto_bitcoin_hold_report()
-```
-
-**Example Usage:**
-```markdown
-User: "What's Bitcoin's current price?"
-AI: [uses get_crypto_spot("BTC")]
-₿ Bitcoin (BTC)
-Price: $42,350 (+3.2%)
-24h Volume: $28.5B
-Market Cap: $829B
-
-User: "Show me top DeFi protocols by TVL"
-AI: [uses get_crypto_defi_tvl()]
-🔗 Top DeFi by TVL:
-1. Lido: $23.4B
-2. MakerDAO: $8.7B
-3. Aave: $6.2B
-```
-
----
-
-### Alternative Data (100+ tools)
-
-**ESG Data (18 tools):**
-```typescript
-// ESG ratings & metrics
-get_esg_ratings(symbol: string)
-get_carbon_emissions_data(symbol: string)
-get_esg_controversy_scores(symbol: string)
-get_climate_risk_assessment(symbol: string)
-
-// Sustainability
-get_sustainability_reports(symbol: string)
-get_water_usage_data(symbol: string)
-get_renewable_energy_usage(symbol: string)
-
-// Governance
-get_board_diversity_metrics(symbol: string)
-get_governance_quality_metrics(symbol: string)
-```
-
-**Industry-Specific (25+ tools):**
-```typescript
-// Real estate
-get_real_estate_sales_data(city: string)
-get_land_transaction_data(city: string)
-get_property_price_indices()
-
-// Automotive
-get_automotive_sales_data()
-get_car_sales_ranking()
-get_nev_sales()  // New Energy Vehicles
-
-// Commodities
-get_hog_price_trend()
-get_corn_price()
-get_soybean_meal_price()
-```
-
-**Entertainment & Media:**
-```typescript
-// Box office
-get_movie_boxoffice_realtime()
-get_movie_boxoffice_daily()
-
-// TV & streaming
-get_tv_show_ranking()
-get_variety_show_ranking()
-```
-
-**Weather & Environment:**
-```typescript
-get_weather_daily(city: string)
-get_air_quality_hist(city: string)
-get_air_quality_rank()
-```
-
-**Example Usage:**
-```markdown
-User: "What's Tesla's ESG rating?"
-AI: [uses get_esg_ratings("TSLA")]
-🌱 Tesla ESG Profile:
-Overall Score: B+
-Environmental: A-
-Social: B
-Governance: B+
-Carbon Intensity: Low
-Key Strengths: Renewable energy, innovation
-Areas for Improvement: Labor practices
-
-User: "Show me today's box office numbers"
-AI: [uses get_movie_boxoffice_realtime()]
-🎬 Today's Box Office:
-1. Movie A: $12.5M
-2. Movie B: $8.3M
-3. Movie C: $6.7M
-Total: $45.2M (+15% vs. yesterday)
-```
-
----
-
-## ⚙️ Configuration
+## ⚙️ Configuration## ⚙️ Configuration
 
 ### Enable/Disable Tools
 
@@ -1098,7 +662,7 @@ See: All tool executions with params and results
 
 ---
 
-**Questions?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [Discord](https://discord.gg/llmsider)
+**Questions?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)
 
 ---
 

@@ -43,5 +43,11 @@ export const zhErrors = {
   aiServiceRateLimitExceeded: '请求频率超限',
   aiServiceRateLimitExceededDetail: '请求过于频繁。请稍等片刻后重试。',
   aiServiceTimeout: '请求超时',
-  aiServiceTimeoutDetail: 'AI服务响应时间过长。请重试。'
+  aiServiceTimeoutDetail: 'AI服务响应时间过长。请重试。',
+  imageAnalysisNotSupported: '不支持图片分析',
+  imageAnalysisNotSupportedDetail: '当前提供商不支持图片分析。请使用支持视觉能力的模型，例如：\n\n• GPT-4 Vision / GPT-4o / GPT-4 Turbo (OpenAI)\n• Claude 3/4 Opus / Sonnet / Haiku (Anthropic)\n• Gemini Pro Vision / Gemini 1.5/2.0 (Google)\n\n请在设置中切换到兼容的模型，或为当前模型启用"支持视觉"选项。',
+  aiServiceError: 'AI服务错误',
+  planGenerationFailed: '计划生成失败',
+  planGenerationFailedDetail: '无法解析LLM返回的执行计划。请重试。',
+  planValidationFailed: '计划验证失败'
 };

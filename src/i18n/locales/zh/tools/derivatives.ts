@@ -863,7 +863,6 @@ export const zhDerivativesTools = {
 			name: '获取外汇储备',
 			description: '获取中国外汇储备数据'
 		},
-		// 另类数据工具
 		getAnalystConsensus: {
 			name: '分析师共识',
 			description: '获取分析师共识评级，显示买入/持有/卖出分布、平均目标价、价格区间'

@@ -439,4 +439,4 @@ maxCacheSize: 100   # 最大缓存建议数
 
 ---
 
-**需要帮助?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [Discord](https://discord.gg/llmsider)
+**需要帮助?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)

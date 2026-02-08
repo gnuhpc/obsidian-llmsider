@@ -23,7 +23,7 @@ export class Logger {
   /**
    * Log debug message (only shown when debug mode is enabled)
    */
-  static debug(message: string, ...args: any[]): void {
+  static debug(message: string, ...args: unknown[]): void {
     if (Logger.debugEnabled) {
       console.log(`[LLMSider DEBUG] ${message}`, ...args);
     }
@@ -32,30 +32,32 @@ export class Logger {
   /**
    * Log info message (only shown when debug mode is enabled)
    */
-  static info(message: string, ...args: any[]): void {
+  static info(message: string, ...args: unknown[]): void {
     if (Logger.debugEnabled) {
       console.log(`[LLMSider INFO] ${message}`, ...args);
     }
   }
 
   /**
-   * Log warning message (always shown)
+   * Log warning message
    */
-  static warn(message: string, ...args: any[]): void {
-    console.warn(`[LLMSider WARN] ${message}`, ...args);
+  static warn(message: string, ...args: unknown[]): void {
+    if (Logger.debugEnabled) {
+      console.warn(`[LLMSider WARN] ${message}`, ...args);
+    }
   }
 
   /**
    * Log error message (always shown)
    */
-  static error(message: string, ...args: any[]): void {
+  static error(message: string, ...args: unknown[]): void {
     console.error(`[LLMSider ERROR] ${message}`, ...args);
   }
 
   /**
    * Log a message with custom prefix (only shown when debug mode is enabled)
    */
-  static log(prefix: string, message: string, ...args: any[]): void {
+  static log(prefix: string, message: string, ...args: unknown[]): void {
     if (Logger.debugEnabled) {
       console.log(`[${prefix}] ${message}`, ...args);
     }

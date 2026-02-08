@@ -79,23 +79,22 @@ AI: 1. The 2-Minute Rule: How Small Actions Lead to Big Results
 
 ### What is Guided Mode?
 
-**Step-by-step task breakdown with approval workflow** - AI creates a plan, you approve each step before execution.
+**Interactive, step-by-step conversation with tool confirmation** - The AI suggests actions one at a time, and you approve them before execution.
 
 ```
 You: Create a research note on machine learning
 
-AI: I'll break this into steps:
-    ✓ Step 1: Create note structure
-      → Create file with frontmatter and sections
-      [Approve] [Modify] [Skip]
+AI: I can help with that. First, I should create a file for the note.
     
-    Step 2: Research key concepts
-      → Search and summarize ML basics
-      [Approve] [Modify] [Skip]
-      
-    Step 3: Add references
-      → Compile sources and citations
-      [Approve] [Modify] [Skip]
+    [Tool Suggestion]
+    Tool: create_file
+    Args: { path: "machine-learning.md", content: "# Machine Learning\n\n" }
+    
+    [Approve] [Reject]
+
+You: [Approve]
+
+AI: File created. Now, should I search for some key concepts to add?
 ```
 
 ### Characteristics
@@ -105,91 +104,59 @@ AI: I'll break this into steps:
 | **Speed** | ⚡⚡ Moderate (requires approvals) |
 | **Complexity** | Moderate to high |
 | **Control** | ⭐⭐⭐ High user control |
-| **Tool Use** | Step-by-step with approval |
+| **Tool Use** | One-by-one with approval |
 | **Best For** | Learning, complex tasks, safety |
 
 ### When to Use
 
 **✅ Great For:**
-- Complex multi-step tasks
-- Learning new workflows
-- Tasks requiring validation
-- Sensitive operations
-- Educational purposes
-- Ensuring accuracy
+- Tasks where you want full control
+- Learning how the AI uses tools
+- Sensitive file operations
+- Ensuring accuracy at each step
+- Collaborative problem solving
 
 **❌ Not Ideal For:**
-- Simple questions
-- Quick lookups
-- Time-sensitive tasks
-- Highly repetitive operations
+- Fully autonomous tasks
+- Speed (Agent mode is faster)
+- Simple Q&A (Normal mode is better)
 
-### Approval Workflow
+### Workflow
 
-#### Step Structure
-
-```
-┌─────────────────────────────────────┐
-│ Step 1: Create project structure    │
-├─────────────────────────────────────┤
-│ Description:                        │
-│ Creates folders and template files  │
-│                                     │
-│ Tools to use:                       │
-│ • create_folder                     │
-│ • create_file                       │
-│                                     │
-│ Expected outcome:                   │
-│ Project structure with /src, /docs  │
-└─────────────────────────────────────┘
-[Approve] [Modify] [Skip] [Cancel All]
-```
-
-#### Approval Options
-
-| Action | Description | Use When |
-|--------|-------------|----------|
-| **Approve** | Execute step as planned | Step looks correct |
-| **Modify** | Edit step details | Need adjustments |
-| **Skip** | Skip this step | Not needed |
-| **Cancel All** | Stop entire plan | Change of plans |
+1. **User Request**: You ask for something.
+2. **AI Suggestion**: AI suggests a tool call or asks a clarifying question.
+3. **User Action**: You approve the tool or answer the question.
+4. **Execution**: Tool runs (if approved).
+5. **Loop**: AI analyzes the result and suggests the next step.
 
 ### Example Workflows
 
-#### 1. Complex Research Task
+#### 1. Controlled Research
 ```
-You: Research top 10 AI companies and create detailed notes
+You: Find information about the latest React version.
 
-AI: Plan (5 steps):
-    1. Search for top AI companies [Web search]
-    2. For each company, gather data [10× Web fetch]
-    3. Create note files [10× Create file]
-    4. Add company details [10× Edit file]
-    5. Create summary index [Create file]
-    
-    Step 1: Search for top AI companies
-    [Approve] → Executing...
-    Found: OpenAI, Anthropic, DeepMind...
-    
-    Step 2: Gather data for OpenAI
-    [Approve] → Fetching website...
-    Data collected: founding year, products...
+AI: I'll search for "React latest version release notes".
+    [Tool: google_search]
+    [Approve] [Reject]
+
+You: Approve.
+
+AI: Found React 19. Now I'll fetch the official blog post.
+    [Tool: fetch_url]
+    [Approve] [Reject]
 ```
 
-#### 2. Code Refactoring
+#### 2. Safe File Editing
 ```
-You: Refactor this codebase for better maintainability
+You: Refactor this file.
 
-AI: Plan (4 steps):
-    1. Analyze current structure
-    2. Identify improvement areas
-    3. Create refactored version
-    4. Update tests
-    
-    Each step shows:
-    - What will be changed
-    - Why it's being changed
-    - Expected impact
+AI: I'll read the file first.
+    [Tool: read_file]
+    [Approve]
+
+AI: I see the code. I'll apply the changes now.
+    [Tool: edit_file]
+    [Approve]
 ```
 
 ---
@@ -198,18 +165,23 @@ AI: Plan (4 steps):
 
 ### What is Agent Mode?
 
-**Autonomous AI with full tool access** - AI decides which tools to use and executes them automatically to accomplish your goal.
+**Autonomous Plan & Execute** - The AI analyzes your request, generates a full plan (Sequential or DAG), and executes it automatically.
 
 ```
 You: Research and compare top 5 programming languages
 
-AI: [Tool: Google Search] Searching for programming language rankings...
-    [Tool: Fetch Content] Getting Stack Overflow data...
-    [Tool: Fetch Content] Getting GitHub statistics...
-    [Tool: Create File] Creating comparison-chart.md...
-    [Tool: Edit File] Adding language comparison table...
+AI: [Plan Generated]
+    1. Search for rankings (Parallel)
+    2. Fetch details for Python (Parallel)
+    3. Fetch details for JavaScript (Parallel)
+    ...
+    6. Create comparison report (Sequential)
+
+    [Executing Step 1...]
+    [Executing Step 2...]
+    ...
     
-    ✓ Created comprehensive comparison with latest data!
+    ✓ Task Complete!
 ```
 
 ### Characteristics
@@ -240,7 +212,21 @@ AI: [Tool: Google Search] Searching for programming language rankings...
 
 ### Tool Execution
 
-**Automatic Tool Selection:**
+#### Execution Modes
+
+Agent Mode supports two execution strategies (configurable in Settings):
+
+1. **Sequential Mode (Default)**
+   - Steps run one after another
+   - Safer and easier to debug
+   - Stops if a step fails
+
+2. **DAG Mode (Parallel)**
+   - Independent steps run simultaneously
+   - Faster for complex tasks
+   - Example: Searching 5 different topics at once
+
+#### Automatic Tool Selection
 ```
 Goal: "Create weekly report from project notes"
 
@@ -342,6 +328,116 @@ AI: [🎯 Plan] Creating 5-post series...
 | **Learning Workflows** | Guided |
 | **Quick Drafts** | Normal |
 | **Automation** | Agent |
+
+---
+
+## 📝 Message Action Buttons
+
+When you hover over a message, a set of action buttons appears. Different message types display different buttons.
+
+### User Message Actions
+
+When you hover over **messages you sent**:
+
+| Button | Icon | Function | Use Case |
+|--------|------|----------|----------|
+| **Copy Message** | 📋 | Copy message content to clipboard | Quickly copy your prompt |
+| **Edit Message** | ✏️ | Edit this message (deletes this and all subsequent messages) | Fix typos or refine your question |
+
+**Note**: Editing a user message retracts that message and all subsequent conversation. The content will be placed back in the input box for you to modify.
+
+---
+
+### Assistant Message Actions
+
+When you hover over **AI assistant responses**:
+
+#### Basic Actions (Available in All Modes)
+
+| Button | Icon | Function | Use Case |
+|--------|------|----------|----------|
+| **Copy as Markdown** | 📋 | Copy response in Markdown format | Preserve formatting when copying |
+| **Generate New Note** | 📄 | Create a new note file from this response | Save AI answer as permanent note |
+| **Insert at Cursor** | ↙️ | Insert content at current editor cursor | Quickly add response to your note |
+| **Regenerate** | 🔄 | Delete this response and regenerate | Retry when unsatisfied with answer |
+| **Compare with Other Models** | 🔀 | Add another model for comparison | See multiple models' answers side-by-side |
+
+#### Advanced Actions (Guided/Normal Mode Only)
+
+When the message contains **text modification suggestions** or **selected text context**, additional buttons appear:
+
+| Button | Icon | Function | Use Case |
+|--------|------|----------|----------|
+| **Apply Changes** | ✅ | Apply AI's suggested modifications to original file | Accept AI's editing suggestions |
+| **Toggle Diff View** | 👁️ | Switch between rendered and diff comparison views | Review before/after changes |
+
+**Note**: 
+- Diff-related buttons only appear when there's a **single file reference**
+- If the message references **multiple files**, these buttons are hidden (cannot determine which file to apply to)
+
+---
+
+### Usage Tips
+
+#### 💡 Generate New Note
+```
+1. After AI responds, hover over the message
+2. Click 📄 "Generate New Note"
+3. AI automatically generates a title
+4. Note is created and automatically opened
+```
+
+#### ✂️ Apply Code Changes
+```
+1. Select a piece of code
+2. Right-click → "Add to LLMSider Context"
+3. Ask AI: "Optimize this code"
+4. After AI responds, click 👁️ to view diff
+5. After confirmation, click ✅ "Apply Changes"
+```
+
+#### 🔄 Regeneration Strategy
+```
+If the first response isn't ideal:
+1. Click 🔄 Regenerate
+2. Or click 🔀 Compare with other models
+3. Or click ✏️ to edit your question and re-ask
+```
+
+---
+
+## ⚠️ Important Notes
+
+### Editing Messages
+- Editing a user message **deletes that message and all subsequent conversation**
+- Content will be placed back in the input box for you to modify and resend
+- This is an irreversible operation, use with caution
+
+### Applying Changes
+- Applying changes **directly modifies the original file**
+- Recommended to click 👁️ to review diff before applying
+- If needed, you can use Obsidian's version history to revert
+
+### Insert at Cursor
+- Ensure a **Markdown editor** is open
+- If no active editor, will automatically switch to the most recent one
+- Content is inserted at **current cursor position**
+
+---
+
+## ⚡ Quick Access
+
+While there are no direct button shortcuts, you can quickly access via mouse hover:
+
+```
+Hover over message → Buttons appear → Click to execute
+```
+
+**Efficient Workflow:**
+1. Move mouse to message
+2. Buttons appear instantly
+3. Click desired action
+4. No need for right-click menu
 
 ---
 
@@ -529,4 +625,4 @@ Full automation → Agent
 
 ---
 
-**Questions?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [Discord](https://discord.gg/llmsider)
+**Questions?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)

@@ -6,6 +6,22 @@ import { ToolPermissionHandler } from '../handlers/tool-permission-handler';
 import { getAllBuiltInTools, BuiltInTool, getLocalizedBuiltInTools } from '../../tools/built-in-tools';
 import { getCategoryDisplayName } from '../utils/category-utils';
 import { getCategoryIcon } from '../utils/tool-icons';
+import { TOOL_CATEGORIES } from '../../types/tool-categories';
+
+// Type definitions for tool objects
+interface Tool {
+	id?: string;
+	name: string;
+	description?: string;
+	category?: string;
+	inputSchema?: Record<string, unknown>;
+}
+
+// System tools that are always enabled and hidden from UI
+const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each'];
+
+// Categories that should be hidden from UI (meta-tools, system tools, etc.)
+const HIDDEN_CATEGORIES = ['meta'];
 
 /**
  * Built-in Tools Renderer
@@ -30,7 +46,14 @@ export class BuiltInToolsRenderer {
 	 */
 	renderBuiltInToolsManagement(container: HTMLDivElement, filterText: string = ''): void {
 		// Import built-in tools with localization
-		const allBuiltInTools = getAllBuiltInTools({ i18n: this.i18n, asArray: true }) as BuiltInTool[];
+		const allBuiltInToolsUnfiltered = getAllBuiltInTools({ i18n: this.i18n, asArray: true }) as BuiltInTool[];
+		
+		// Filter out hidden system tools and hidden categories (like 'meta')
+		const allBuiltInTools = allBuiltInToolsUnfiltered.filter((tool: BuiltInTool) => {
+			const toolId = tool.id || tool.name;
+			const category = (tool as Tool).category || 'other';
+			return !HIDDEN_SYSTEM_TOOLS.includes(toolId) && !HIDDEN_CATEGORIES.includes(category);
+		});
 
 		if (allBuiltInTools.length === 0) {
 			const emptyState = container.createDiv({ cls: 'llmsider-mcp-tool-empty' });
@@ -48,7 +71,7 @@ export class BuiltInToolsRenderer {
 		// Group tools by category
 		const toolsByCategory = new Map<string, typeof allBuiltInTools>();
 		allBuiltInTools.forEach(tool => {
-			const category = (tool as any).category || 'utility';
+			const category = (tool as Tool).category || 'other';
 			if (!toolsByCategory.has(category)) {
 				toolsByCategory.set(category, []);
 			}
@@ -60,9 +83,9 @@ export class BuiltInToolsRenderer {
 		if (filterText) {
 			const lowerFilter = filterText.toLowerCase();
 			toolsByCategory.forEach((tools, category) => {
-				const filteredTools = tools.filter((tool: any) =>
-					tool.name.toLowerCase().includes(lowerFilter) ||
-					(tool.description && tool.description.toLowerCase().includes(lowerFilter))
+				const filteredTools = tools.filter((tool: unknown) =>
+					(tool as Tool).name.toLowerCase().includes(lowerFilter) ||
+					((tool as Tool).description && (tool as Tool).description!.toLowerCase().includes(lowerFilter))
 				);
 				if (filteredTools.length > 0) {
 					filteredToolsByCategory.set(category, filteredTools);
@@ -89,24 +112,35 @@ export class BuiltInToolsRenderer {
 			return;
 		}
 
-		// Category cards grid
-		const categoryGrid = container.createDiv({ cls: 'llmsider-builtin-category-grid' });
-		
-		// Create details row FIRST (will be positioned by order)
-		const toolDetailsRow = categoryGrid.createDiv({ cls: 'llmsider-builtin-tools-details-row' });
-		toolDetailsRow.style.display = 'none';
-		toolDetailsRow.style.gridColumn = '1 / -1';
-		toolDetailsRow.style.order = '9999'; // Initially at end
-		
-		let currentExpandedCard: HTMLDivElement | null = null;
+	// Category cards grid
+	const categoryGrid = container.createDiv({ cls: 'llmsider-builtin-category-grid' });
+	
+	// Create details row that will be moved dynamically
+	const toolDetailsRow = categoryGrid.createDiv({ cls: 'llmsider-builtin-tools-details-row' });
+	toolDetailsRow.style.display = 'none';
+	
+	let currentExpandedCard: HTMLDivElement | null = null;
 
-		// Render category cards
-		filteredToolsByCategory.forEach((tools, category) => {
-			const categoryCard = categoryGrid.createDiv({ cls: 'llmsider-builtin-category-card' });
-			categoryCard.style.cursor = 'pointer';
-			categoryCard.style.order = Array.from(filteredToolsByCategory.keys()).indexOf(category).toString();
-			
-			// Category icon and name
+	// Sort categories according to TOOL_CATEGORIES order (note-management and search-web first)
+	const categoryOrder = TOOL_CATEGORIES.map(cat => cat.key);
+	const sortedCategories = Array.from(filteredToolsByCategory.keys()).sort((a, b) => {
+		const indexA = categoryOrder.indexOf(a as any);
+		const indexB = categoryOrder.indexOf(b as any);
+		// If category not in defined order, put at end
+		if (indexA === -1 && indexB === -1) return 0;
+		if (indexA === -1) return 1;
+		if (indexB === -1) return -1;
+		return indexA - indexB;
+	});
+
+	// Render category cards in sorted order
+	sortedCategories.forEach(category => {
+		const tools = filteredToolsByCategory.get(category)!;
+		const isCategoryEnabled = this.isCategoryEnabled(category, tools);
+		const categoryCard = categoryGrid.createDiv({ 
+			cls: `llmsider-builtin-category-card ${!isCategoryEnabled ? 'category-disabled' : ''}` 
+		});
+		categoryCard.style.cursor = 'pointer';			// Category icon and name
 			const categoryHeader = categoryCard.createDiv({ cls: 'llmsider-category-header' });
 			const categoryIcon = categoryHeader.createDiv({ cls: 'llmsider-category-icon' });
 			categoryIcon.innerHTML = getCategoryIcon(category);
@@ -124,7 +158,6 @@ export class BuiltInToolsRenderer {
 			
 			// Category toggle (enable/disable all tools in category)
 			const toggleContainer = categoryCard.createDiv({ cls: 'llmsider-category-toggle' });
-			const isCategoryEnabled = this.isCategoryEnabled(category, tools);
 			
 			const toggleSwitch = toggleContainer.createDiv({ cls: `llmsider-toggle-switch ${isCategoryEnabled ? 'active' : ''}` });
 			const toggleThumb = toggleSwitch.createDiv({ cls: 'llmsider-toggle-thumb' });
@@ -133,18 +166,45 @@ export class BuiltInToolsRenderer {
 				e.stopPropagation(); // Prevent card click
 				const newState = !toggleSwitch.hasClass('active');
 				
-				await this.toolPermissionHandler.toggleCategoryTools(category, tools, newState);
+				// Store original state to check if it actually changed
+				const originalState = toggleSwitch.hasClass('active');
 				
-				if (newState) {
-					toggleSwitch.addClass('active');
-				} else {
-					toggleSwitch.removeClass('active');
+				// Pass localized category name for error messages
+				const categoryDisplayName = getCategoryDisplayName(category, this.i18n);
+				const result = await this.toolPermissionHandler.toggleCategoryTools(categoryDisplayName, tools, newState);
+				
+				// If operation failed (e.g. limit reached), do not update UI
+				if (!result) {
+					return;
 				}
 				
-				new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsInCategoryToggled', {
-					category: getCategoryDisplayName(category, this.i18n),
-					status: newState ? this.i18n.t('settingsPage.toolManagement.enabled') : this.i18n.t('settingsPage.toolManagement.disabled')
-				}));
+				// Check if operation was successful by checking actual tool states
+				// Use same logic as isCategoryEnabled: at least one tool enabled = category enabled
+				const actuallyEnabled = tools.some((tool: unknown) => {
+					const toolId = (tool as { id?: string; name: string }).id || (tool as { name: string }).name;
+					return this.plugin.configDb.isBuiltInToolEnabled(toolId);
+				});
+				
+				// Update UI to reflect actual state
+				if (actuallyEnabled) {
+					toggleSwitch.addClass('active');
+					categoryCard.removeClass('category-disabled');
+					if (!originalState) {
+						new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsInCategoryToggled', {
+							category: categoryDisplayName,
+							status: this.i18n.t('settingsPage.toolManagement.enabled')
+						}));
+					}
+				} else {
+					toggleSwitch.removeClass('active');
+					categoryCard.addClass('category-disabled');
+					if (originalState) {
+						new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsInCategoryToggled', {
+							category: categoryDisplayName,
+							status: this.i18n.t('settingsPage.toolManagement.disabled')
+						}));
+					}
+				}
 			});
 			
 			// Expand arrow indicator
@@ -172,27 +232,35 @@ export class BuiltInToolsRenderer {
 					categoryCard.removeClass('expanded');
 					toolDetailsRow.style.display = 'none';
 					currentExpandedCard = null;
-				} else {
-					// Expand this card
-					categoryCard.addClass('expanded');
-					currentExpandedCard = categoryCard;
-					
-					// Position details row after this card
-					const cardOrder = parseInt(categoryCard.style.order);
-					toolDetailsRow.style.order = (cardOrder + 0.5).toString();
-					toolDetailsRow.style.display = 'block';
-					
-					// Render tools in details row
-					this.renderCategoryDetails(toolDetailsRow, category, tools);
+			} else {
+				// Expand this card
+				categoryCard.addClass('expanded');
+				currentExpandedCard = categoryCard;
+				
+				// Move details row to appear right after the clicked card using DOM manipulation
+				// Since Obsidian filters out the 'order' CSS property, we need to physically move the element
+				toolDetailsRow.style.display = 'block';
+				
+				// Find the next sibling after the clicked card
+				const nextSibling = categoryCard.nextSibling;
+				
+				// If the next sibling is not the details row, insert it after the card
+				if (nextSibling !== toolDetailsRow) {
+					categoryCard.parentElement?.insertBefore(toolDetailsRow, nextSibling);
 				}
-			});
+				
+				
+				// Render tools in details row
+				this.renderCategoryDetails(toolDetailsRow, category, tools);
+			}
+		});
 		});
 	}
 
 	/**
 	 * Render a category group with tools list (collapsible)
 	 */
-	renderBuiltInToolCategory(container: HTMLDivElement, category: string, tools: any[]): void {
+	renderBuiltInToolCategory(container: HTMLDivElement, category: string, tools: unknown[]): void {
 		const categoryGroup = container.createDiv({ cls: 'llmsider-mcp-server-tool-group' });
 
 		// Category header
@@ -256,8 +324,9 @@ export class BuiltInToolsRenderer {
 	/**
 	 * Render a single built-in tool item card
 	 */
-	renderBuiltInToolItem(container: HTMLDivElement, tool: any): void {
-		const toolId = tool.id || tool.name;
+	renderBuiltInToolItem(container: HTMLDivElement, tool: unknown): void {
+		const typedTool = tool as Tool;
+		const toolId = typedTool.id || typedTool.name;
 		const isToolEnabled = this.plugin.configDb.isBuiltInToolEnabled(toolId);
 		const requireConfirmation = this.plugin.configDb.isBuiltInToolRequireConfirmation(toolId);
 		
@@ -295,21 +364,21 @@ export class BuiltInToolsRenderer {
 		const toolInfo = mainContent.createDiv({ cls: 'llmsider-modern-tool-info' });
 		toolInfo.style.cssText = 'flex: 1 !important; min-width: 0 !important;';
 
-		const toolName = toolInfo.createEl('h3', { text: tool.name });
+		const toolName = toolInfo.createEl('h3', { text: typedTool.name });
 		toolName.style.cssText = 'margin: 0 0 4px 0 !important; font-size: 14px !important; font-weight: 600 !important; color: var(--text-normal) !important;';
 
-		if (tool.description) {
-			const toolDesc = toolInfo.createEl('p', { text: tool.description });
+		if (typedTool.description) {
+			const toolDesc = toolInfo.createEl('p', { text: typedTool.description });
 			toolDesc.style.cssText = 'margin: 0 !important; font-size: 13px !important; line-height: 1.5 !important; color: var(--text-muted) !important;';
 		}
 
 		// Tool schema info (collapsible)
-		if (tool.inputSchema) {
+		if (typedTool.inputSchema) {
 			const schemaToggle = toolInfo.createEl('details', { cls: 'llmsider-mcp-tool-schema' });
 			schemaToggle.style.cssText = 'margin-top: 12px;';
 			schemaToggle.createEl('summary', { text: this.i18n.t('settingsPage.viewInputSchema') });
 			const schemaContent = schemaToggle.createEl('pre', { cls: 'llmsider-mcp-tool-schema-content' });
-			schemaContent.textContent = JSON.stringify(tool.inputSchema, null, 2);
+			schemaContent.textContent = JSON.stringify(typedTool.inputSchema, null, 2);
 		}
 
 		// Right side: Controls with button groups
@@ -322,12 +391,21 @@ export class BuiltInToolsRenderer {
 			isToolEnabled,
 			requireConfirmation,
 			async (enabled) => {
+				// Check limit when enabling
+				if (enabled && !this.toolPermissionHandler.canEnableBuiltInTool()) {
+					new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsLimitReached', {
+						limit: this.plugin.settings.maxBuiltInToolsSelection.toString()
+					}));
+					return false;
+				}
+				
 				this.plugin.configDb.setBuiltInToolEnabled(toolId, enabled);
 				await this.plugin.saveSettings();
 				new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolToggled', {
-					name: tool.name,
+					name: typedTool.name,
 					status: enabled ? this.i18n.t('settingsPage.toolManagement.enabled') : this.i18n.t('settingsPage.toolManagement.disabled')
 				}));
+				return true;
 			},
 			async (requireConfirm) => {
 				this.plugin.configDb.setBuiltInToolRequireConfirmation(toolId, requireConfirm);
@@ -338,7 +416,7 @@ export class BuiltInToolsRenderer {
 	/**
 	 * Render category details (expanded tool list)
 	 */
-	renderCategoryDetails(container: HTMLDivElement, category: string, tools: any[]): void {
+	renderCategoryDetails(container: HTMLDivElement, category: string, tools: unknown[]): void {
 		// Clear existing content
 		container.empty();
 		
@@ -346,14 +424,15 @@ export class BuiltInToolsRenderer {
 		const toolsList = container.createDiv({ cls: 'llmsider-tools-list' });
 		
 		// Get localized tools
-		const localizedTools = getLocalizedBuiltInTools(this.i18n);
+		const localizedTools = getAllBuiltInTools({ i18n: this.i18n });
 		
 		tools.forEach(tool => {
 			// Use same modern card design as renderBuiltInToolItem
-			const toolId = tool.id || tool.name;
+			const typedTool = tool as Tool;
+			const toolId = typedTool.id || typedTool.name;
 			const isToolEnabled = this.plugin.configDb.isBuiltInToolEnabled(toolId);
 			const requireConfirmation = this.plugin.configDb.isBuiltInToolRequireConfirmation(toolId);
-			const localizedTool = localizedTools[tool.name] || tool;
+			const localizedTool = localizedTools[typedTool.name] || tool;
 			
 			// Tool card container with hover effect - full width
 			const toolItem = toolsList.createDiv({ cls: 'llmsider-modern-tool-card' });
@@ -408,8 +487,17 @@ export class BuiltInToolsRenderer {
 				isToolEnabled,
 				requireConfirmation,
 				async (enabled) => {
+					// Check limit when enabling
+					if (enabled && !this.toolPermissionHandler.canEnableBuiltInTool()) {
+						new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsLimitReached', {
+							limit: this.plugin.settings.maxBuiltInToolsSelection.toString()
+						}));
+						return false;
+					}
+					
 					this.plugin.configDb.setBuiltInToolEnabled(toolId, enabled);
 					await this.plugin.saveSettings();
+					return true;
 				},
 				async (requireConfirm) => {
 					this.plugin.configDb.setBuiltInToolRequireConfirmation(toolId, requireConfirm);
@@ -421,15 +509,16 @@ export class BuiltInToolsRenderer {
 	/**
 	 * Show tool details modal
 	 */
-	showToolDetailsModal(tool: any): void {
+	showToolDetailsModal(tool: unknown): void {
+		const typedTool = tool as Tool;
 		const modal = document.createElement('div');
 		modal.addClass('llmsider-modal-overlay');
 		
 		const modalContent = modal.createDiv({ cls: 'llmsider-modal-content' });
 		
 		// Get localized tool info
-		const localizedTools = getLocalizedBuiltInTools(this.i18n);
-		const localizedTool = localizedTools[tool.name] || tool;
+		const localizedTools = getAllBuiltInTools({ i18n: this.i18n });
+		const localizedTool = localizedTools[typedTool.name] || tool;
 		
 		// Modal header
 		const modalHeader = modalContent.createDiv({ cls: 'llmsider-modal-header' });
@@ -457,11 +546,11 @@ export class BuiltInToolsRenderer {
 		}
 		
 		// Input schema section
-		if (tool.inputSchema) {
+		if (typedTool.inputSchema) {
 			const schemaSection = modalBody.createDiv({ cls: 'llmsider-modal-section' });
 			schemaSection.createEl('h3', { text: this.i18n.t('settingsPage.inputSchema') });
 			const schemaContent = schemaSection.createEl('pre', { cls: 'llmsider-modal-code' });
-			schemaContent.textContent = JSON.stringify(tool.inputSchema, null, 2);
+			schemaContent.textContent = JSON.stringify(typedTool.inputSchema, null, 2);
 		}
 		
 		// Close on overlay click
@@ -483,11 +572,16 @@ export class BuiltInToolsRenderer {
 		container.style.gap = '12px';
 		container.style.alignItems = 'center';
 
-	// Check if all tools are enabled
-	const allBuiltInTools = getAllBuiltInTools({ asArray: true }) as BuiltInTool[];
-	const allEnabled = allBuiltInTools.every(tool => 
-		this.plugin.settings.builtInToolsPermissions[(tool as any).id || tool.name] !== false
-	);		// Toggle all label and switch
+	// Check if all tools are enabled (excluding system tools)
+	const allBuiltInToolsUnfiltered = getAllBuiltInTools({ asArray: true }) as BuiltInTool[];
+	const allBuiltInTools = allBuiltInToolsUnfiltered.filter((tool: BuiltInTool) => {
+		const toolId = (tool as Tool).id || (tool as Tool).name;
+		return !HIDDEN_SYSTEM_TOOLS.includes(toolId);
+	});
+	const allEnabled = allBuiltInTools.every(tool => {
+		const toolId = (tool as Tool).id || (tool as Tool).name;
+		return this.plugin.configDb.isBuiltInToolEnabled(toolId);
+	});		// Toggle all label and switch
 		const toggleAllContainer = container.createDiv({ cls: 'llmsider-tools-toggle-all-container' });
 		
 		const toggleLabel = toggleAllContainer.createEl('span', {
@@ -507,10 +601,20 @@ export class BuiltInToolsRenderer {
 			e.stopPropagation();
 			const newState = !toggleSwitch.hasClass('active');
 			
+			let result = false;
 			if (newState) {
-				await this.toolPermissionHandler.enableAllBuiltInTools();
+				result = await this.toolPermissionHandler.enableAllBuiltInTools();
 			} else {
-				await this.toolPermissionHandler.disableAllBuiltInTools();
+				result = await this.toolPermissionHandler.disableAllBuiltInTools();
+			}
+			
+			// Only update UI if operation succeeded
+			if (result) {
+				if (newState) {
+					toggleSwitch.addClass('active');
+				} else {
+					toggleSwitch.removeClass('active');
+				}
 			}
 		});
 
@@ -527,11 +631,13 @@ export class BuiltInToolsRenderer {
 	}
 
 	/**
-	 * Check if a category is enabled (at least one tool enabled)
+	 * Check if a category has at least one tool enabled
+	 * Returns false when ALL tools in the category are disabled (category should show as gray)
+	 * Returns true when at least one tool in the category is enabled (category shows normal)
 	 */
-	isCategoryEnabled(category: string, tools: any[]): boolean {
-		// Category is enabled if at least one tool is enabled
-		const result = tools.some(tool => this.plugin.configDb.isBuiltInToolEnabled(tool.id || tool.name));
+	isCategoryEnabled(category: string, tools: unknown[]): boolean {
+		// Category is considered enabled if at least one tool is enabled
+		const result = tools.some(tool => this.plugin.configDb.isBuiltInToolEnabled((tool as Tool).id || (tool as Tool).name));
 		return result;
 	}
 }

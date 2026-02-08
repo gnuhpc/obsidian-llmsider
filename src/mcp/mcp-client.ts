@@ -26,7 +26,7 @@ import {
 } from './mcp-protocol';
 
 interface PendingRequest {
-  resolve: (value: any) => void;
+  resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
 }
@@ -37,8 +37,8 @@ export class MCPClient {
   private requestIdCounter = 0;
   private isInitialized = false;
   private initializationPromise: Promise<void> | null = null;
-  private serverCapabilities: any = {};
-  private serverInfo: any = {};
+  private serverCapabilities: unknown = {};
+  private serverInfo: unknown = {};
   private connectionType: 'websocket' | 'stdio' | 'streamable-http' = 'stdio';
   
 
@@ -276,7 +276,7 @@ export class MCPClient {
     }
   }
 
-  async callTool(name: string, arguments_?: any): Promise<CallToolResult> {
+  async callTool(name: string, arguments_?: unknown): Promise<CallToolResult> {
     await this.ensureInitialized();
     
     try {
@@ -293,7 +293,7 @@ export class MCPClient {
   }
 
   // Utility Methods
-  async ping(): Promise<any> {
+  async ping(): Promise<unknown> {
     return this.sendRequest(MCP_METHODS.PING, {});
   }
 
@@ -306,16 +306,16 @@ export class MCPClient {
     return this.transport?.isConnected() || false;
   }
 
-  getServerInfo(): any {
+  getServerInfo(): unknown {
     return { ...this.serverInfo };
   }
 
-  getServerCapabilities(): any {
+  getServerCapabilities(): unknown {
     return { ...this.serverCapabilities };
   }
 
   // Private Methods
-  private async sendRequest(method: string, params?: any): Promise<any> {
+  private async sendRequest(method: string, params?: unknown): Promise<unknown> {
     if (!this.transport) {
       throw new Error('Transport not available');
     }
@@ -354,14 +354,14 @@ export class MCPClient {
       this.transport!.send(request).catch((error) => {
         clearTimeout(timeout);
         this.pendingRequests.delete(id);
-        reject(error);
+        reject(error instanceof Error ? error : new Error(String(error)));
       });
     });
   }
 
 
 
-  private async sendNotification(method: string, params?: any): Promise<void> {
+  private async sendNotification(method: string, params?: unknown): Promise<void> {
     if (!this.transport) {
       throw new Error('Transport not available');
     }
@@ -381,7 +381,7 @@ export class MCPClient {
     await this.transport.send(notification);
   }
 
-  private handleMessage(message: any): void {
+  private handleMessage(message: unknown): void {
     try {
       if (message.id !== undefined) {
         // This is a response
@@ -396,7 +396,7 @@ export class MCPClient {
     }
   }
 
-  private handleResponse(response: any): void {
+  private handleResponse(response: unknown): void {
     const pending = this.pendingRequests.get(response.id);
     if (!pending) {
       Logger.warn(`Received response for unknown request:`, response.id);
@@ -423,7 +423,7 @@ export class MCPClient {
     }
   }
 
-  private handleNotification(notification: any): void {
+  private handleNotification(notification: unknown): void {
     Logger.debug(`Received notification:`, notification.method, notification.params);
     
     // Handle specific notifications
@@ -514,14 +514,14 @@ export class MCPClient {
 
 // Add missing method to MCPProtocolValidator
 declare module './mcp-protocol' {
-  namespace MCPProtocolValidator {
-    function createRequest(id: string | number, method: string, params?: any): any;
+  interface MCPProtocolValidator {
+    createRequest(id: string | number, method: string, params?: unknown): unknown;
   }
 }
 
 // Extend MCPProtocolValidator with createRequest method
-(MCPProtocolValidator as any).createRequest = function(id: string | number, method: string, params?: any) {
-  const request: any = {
+(MCPProtocolValidator as unknown).createRequest = function(id: string | number, method: string, params?: unknown) {
+  const request: unknown = {
     jsonrpc: '2.0',
     id,
     method

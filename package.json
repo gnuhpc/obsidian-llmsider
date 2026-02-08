@@ -5,7 +5,7 @@
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "npm run build:css && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"build": "npm run build:css && node esbuild.config.mjs production",
 		"build:css": "node scripts/build-css.js production",
 		"build:css:dev": "node scripts/build-css.js",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
@@ -25,6 +25,7 @@
 	"dependencies": {
 		"@ai-sdk/anthropic": "^2.0.17",
 		"@ai-sdk/openai": "^2.0.30",
+		"@mastra/memory": "latest",
 		"@modelcontextprotocol/sdk": "^1.0.0",
 		"@orama/orama": "^3.0.0",
 		"@orama/plugin-data-persistence": "^3.1.16",
@@ -34,29 +35,51 @@
 		"axios": "^1.6.0",
 		"diff": "^5.2.0",
 		"filetomarkdown": "^0.6.9",
+		"glob": "^13.0.0",
+		"jsmind": "^0.9.1",
 		"mammoth": "^1.10.0",
-		"pdf-parse": "^1.1.1",
+		"mastra": "latest",
+		"minimatch": "^10.1.1",
+		"pdf-parse": "1.1.1",
 		"sed-lite": "^1.1.0",
-		"sql.js": "^1.13.0"
+		"sql.js": "^1.13.0",
+		"zod": "^3.25.76",
+		"zod-to-json-schema": "^3.25.0"
 	},
 	"devDependencies": {
+		"@eslint/json": "^0.14.0",
 		"@types/diff": "^7.0.2",
 		"@types/node": "^16.18.126",
+		"@types/react": "^19.2.5",
 		"@types/sql.js": "^1.4.9",
-		"@typescript-eslint/eslint-plugin": "5.29.0",
-		"@typescript-eslint/parser": "5.29.0",
+		"@typescript-eslint/eslint-plugin": "^8.46.4",
+		"@typescript-eslint/parser": "^8.46.4",
+		"@typescript-eslint/utils": "^8.46.4",
 		"builtin-modules": "3.3.0",
 		"esbuild": "0.25.1",
 		"esbuild-plugin-inline-worker": "^0.1.1",
 		"esbuild-plugin-polyfill-node": "^0.3.0",
+		"eslint": "^9.39.1",
+		"eslint-plugin-obsidianmd": "^0.1.9",
 		"obsidian": "latest",
 		"patch-package": "^8.0.0",
 		"postcss": "^8.5.6",
 		"postcss-cli": "^11.0.1",
 		"postcss-csso": "^6.0.1",
 		"postcss-import": "^16.1.1",
+		"socks-proxy-agent": "^7.0.0",
 		"ts-node": "^10.9.2",
 		"tslib": "2.4.0",
-		"typescript": "^5.9.2"
+		"typescript": "^5.9.2",
+		"typescript-eslint": "^8.46.4"
+	},
+	"overrides": {
+		"ai": "^5.0.44",
+		"@mastra/memory": {
+			"ai": "^5.0.44"
+		},
+		"@mastra/core": {
+			"ai": "^5.0.44"
+		}
 	}
 }

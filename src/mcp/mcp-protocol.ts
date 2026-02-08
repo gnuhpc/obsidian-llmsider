@@ -62,7 +62,7 @@ export interface InitializeParams {
 }
 
 export interface ClientCapabilities {
-  experimental?: Record<string, any>;
+  experimental?: Record<string, unknown>;
   sampling?: object;
 }
 
@@ -78,7 +78,7 @@ export interface InitializeResult {
 }
 
 export interface ServerCapabilities {
-  experimental?: Record<string, any>;
+  experimental?: Record<string, unknown>;
   logging?: object;
   prompts?: PromptsCapability;
   resources?: ResourcesCapability;
@@ -135,7 +135,7 @@ export interface ReadResourceResult {
 export interface Tool {
   name: string;
   description?: string;
-  inputSchema: any; // JSON Schema
+  inputSchema: unknown; // JSON Schema
 }
 
 export interface ListToolsResult {
@@ -145,7 +145,7 @@ export interface ListToolsResult {
 
 export interface CallToolParams {
   name: string;
-  arguments?: any;
+  arguments?: unknown;
 }
 
 export interface CallToolResult {
@@ -208,7 +208,7 @@ export interface PromptContent {
 
 // Utility functions for protocol validation
 export class MCPProtocolValidator {
-  static validateRequest(request: any): MCPRequest {
+  static validateRequest(request: unknown): MCPRequest {
     if (!request.jsonrpc || request.jsonrpc !== '2.0') {
       throw new Error('Invalid JSON-RPC version');
     }
@@ -224,7 +224,7 @@ export class MCPProtocolValidator {
     return request as MCPRequest;
   }
   
-  static validateResponse(response: any): MCPResponse {
+  static validateResponse(response: unknown): MCPResponse {
     if (!response.jsonrpc || response.jsonrpc !== '2.0') {
       throw new Error('Invalid JSON-RPC version');
     }
@@ -244,7 +244,7 @@ export class MCPProtocolValidator {
     return response as MCPResponse;
   }
   
-  static createErrorResponse(id: string | number, code: number, message: string, data?: any): MCPResponse {
+  static createErrorResponse(id: string | number, code: number, message: string, data?: unknown): MCPResponse {
     return {
       jsonrpc: '2.0',
       id,
@@ -256,7 +256,7 @@ export class MCPProtocolValidator {
     };
   }
   
-  static createSuccessResponse(id: string | number, result: any): MCPResponse {
+  static createSuccessResponse(id: string | number, result: unknown): MCPResponse {
     return {
       jsonrpc: '2.0',
       id,
@@ -264,7 +264,7 @@ export class MCPProtocolValidator {
     };
   }
   
-  static createNotification(method: string, params?: any): MCPNotification {
+  static createNotification(method: string, params?: unknown): MCPNotification {
     return {
       jsonrpc: '2.0',
       method,
@@ -276,16 +276,16 @@ export class MCPProtocolValidator {
 // MCP Error class
 export class MCPProtocolError extends Error implements MCPError {
   public code: number;
-  public data?: any;
+  public data?: unknown;
   
-  constructor(code: number, message: string, data?: any) {
+  constructor(code: number, message: string, data?: unknown) {
     super(message);
     this.name = 'MCPProtocolError';
     this.code = code;
     this.data = data;
   }
   
-  static fromErrorCode(code: number, message?: string, data?: any): MCPProtocolError {
+  static fromErrorCode(code: number, message?: string, data?: unknown): MCPProtocolError {
     const defaultMessages: Record<number, string> = {
       [MCP_ERROR_CODES.PARSE_ERROR]: 'Parse error',
       [MCP_ERROR_CODES.INVALID_REQUEST]: 'Invalid request',
