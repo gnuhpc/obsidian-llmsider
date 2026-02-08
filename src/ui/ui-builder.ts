@@ -1,19 +1,50 @@
-import { ChatMode, ConversationMode, CHAT_VIEW_TYPE, LLMConnection, LLMModel } from '../types';
+import { ChatMode, ConversationMode, CHAT_VIEW_TYPE, LLMConnection, LLMModel, BuiltInTool, MCPTool } from '../types';
 import { Logger } from './../utils/logger';
 import LLMSiderPlugin from '../main';
 import { I18nManager } from '../i18n/i18n-manager';
 import { Notice } from 'obsidian';
 import { categoryMap, getCategoryIcon, getCategoryDisplayName } from '../settings';
+import { ToolPermissionHandler } from '../settings/handlers/tool-permission-handler';
+import { TOOL_CATEGORIES } from '../types/tool-categories';
 
 export class UIBuilder {
 	private plugin: LLMSiderPlugin;
 	private containerEl: HTMLElement;
 	private i18n: I18nManager;
+	private isExecutingCallback: (() => boolean) | null = null;
+	private toolPermissionHandler: ToolPermissionHandler;
 
-	constructor(plugin: LLMSiderPlugin, containerEl: HTMLElement) {
+	constructor(plugin: LLMSiderPlugin, containerEl: HTMLElement, toolPermissionHandler?: ToolPermissionHandler) {
 		this.plugin = plugin;
 		this.containerEl = containerEl;
 		this.i18n = plugin.getI18nManager()!;
+		// If handler is provided, use it. Otherwise create a new one with no-op update callback
+		this.toolPermissionHandler = toolPermissionHandler || new ToolPermissionHandler(plugin, this.i18n, () => {});
+		
+		// Initialize speed reading drawer with container
+		// Use a longer timeout to ensure everything is loaded
+		setTimeout(() => {
+			const speedReadingManager = this.plugin.getSpeedReadingManager();
+			Logger.debug('[SpeedReading] UIBuilder constructor - manager exists:', !!speedReadingManager);
+			if (speedReadingManager) {
+				Logger.debug('[SpeedReading] Initializing drawer with container');
+				speedReadingManager.initializeDrawer(containerEl);
+			}
+		}, 100);
+	}
+
+	/**
+	 * Set callback to check if execution is in progress
+	 */
+	public setIsExecutingCallback(callback: () => boolean): void {
+		this.isExecutingCallback = callback;
+	}
+
+	/**
+	 * Check if execution is in progress
+	 */
+	private isExecuting(): boolean {
+		return this.isExecutingCallback?.() || false;
 	}
 
 	/**
@@ -112,13 +143,14 @@ export class UIBuilder {
 			cls: 'llmsider-header-btn',
 			title: this.i18n.t('ui.chatHistory')
 		});
-		historyBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<circle cx="12" cy="12" r="10"></circle>
-			<polyline points="12 6 12 12 16 14"></polyline>
-		</svg>`;
-		historyBtn.onclick = () => this.handleShowHistory();
-
-	// Settings button
+	historyBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		<circle cx="12" cy="12" r="10"></circle>
+		<polyline points="12 6 12 12 16 14"></polyline>
+	</svg>`;
+	historyBtn.onclick = () => {
+		Logger.debug('📜 History button clicked');
+		this.handleShowHistory();
+	};	// Settings button
 	const settingsBtn = actionsContainer.createEl('button', {
 		cls: 'llmsider-header-btn',
 		title: this.i18n.t('ui.openSettings')
@@ -206,7 +238,7 @@ export class UIBuilder {
 				placeholder: this.i18n.t('chatPlaceholder'),
 				rows: '1'
 			}
-		}) as HTMLTextAreaElement;
+		});
 
 		// Button row (below text input)
 		const buttonRow = inputWrapper.createDiv({ cls: 'llmsider-button-row' });
@@ -223,6 +255,20 @@ export class UIBuilder {
 			<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
 		</svg>`;
 		attachBtn.onclick = () => this.handleShowContextOptions();
+		
+		// Debug: Log Add context button styles
+		setTimeout(() => {
+			const attachStyles = window.getComputedStyle(attachBtn);
+			Logger.debug('[Button Debug] Add context button:', {
+				width: attachStyles.width,
+				height: attachStyles.height,
+				padding: attachStyles.padding,
+				border: attachStyles.border,
+				boxSizing: attachStyles.boxSizing,
+				display: attachStyles.display,
+				classes: attachBtn.className
+			});
+		}, 100);
 
 		// Conversation mode selector (replaces agent toggle)
 		const modeSelectorBtn = this.buildModeSelector(leftButtons);
@@ -235,6 +281,12 @@ export class UIBuilder {
 
 		// Local Context Search toggle button
 		const contextSearchBtn = this.buildContextSearchToggle(leftButtons);
+
+		// Speed Reading button
+		const speedReadingBtn = this.buildSpeedReadingButton(leftButtons);
+
+		// Optimize Prompt button
+		const optimizePromptBtn = this.buildOptimizePromptButton(leftButtons);
 
 		// Right side - Provider, Send/Stop buttons
 		const rightButtons = buttonRow.createDiv({ cls: 'llmsider-button-row-right' });
@@ -249,7 +301,7 @@ export class UIBuilder {
 		// Create a hidden select element for compatibility with existing code
 		const providerSelect = providerSelectorContainer.createEl('select', {
 			cls: 'llmsider-model-select-dropdown'
-		}) as HTMLSelectElement;
+		});
 		providerSelect.style.display = 'none'; // Hide the native select
 		
 		// Initialize provider button text
@@ -351,15 +403,24 @@ export class UIBuilder {
 		});
 		
 		// Set initial state
+		Logger.debug('[ContextSearch] Button initialization - autoSearchEnabled from settings:', this.plugin.settings.vectorSettings.autoSearchEnabled);
 		this.updateContextSearchButton(toggleBtn);
 		
 		// Handle button click to toggle
 		toggleBtn.onclick = async (e) => {
 			e.stopPropagation();
 			
-			// Check if there's data available
+			Logger.debug('[ContextSearch] Button clicked, current state:', this.plugin.settings.vectorSettings.autoSearchEnabled);
+			
+			// Check if button is actually disabled (not just styled as disabled)
 			const vectorDBManager = this.plugin.getVectorDBManager();
 			if (!vectorDBManager) {
+				new Notice(this.i18n.t('ui.vectorDBNotInitialized') || 'Vector database not initialized');
+				return;
+			}
+			
+			// Check if database is initialized
+			if (!vectorDBManager.isSystemInitialized()) {
 				new Notice(this.i18n.t('ui.vectorDBNotInitialized') || 'Vector database not initialized');
 				return;
 			}
@@ -370,12 +431,16 @@ export class UIBuilder {
 				return;
 			}
 			
-			// Toggle auto-search setting (not the main enabled setting)
+			// Toggle auto-search setting
 			const newState = !this.plugin.settings.vectorSettings.autoSearchEnabled;
+			Logger.debug('[ContextSearch] Toggling state from', this.plugin.settings.vectorSettings.autoSearchEnabled, 'to', newState);
 			this.plugin.settings.vectorSettings.autoSearchEnabled = newState;
-			await this.plugin.saveSettings();
 			
-			// Update button appearance
+			// Use lightweight save method to avoid triggering provider reset
+			await this.plugin.saveVectorSettingsOnly();
+			Logger.debug('[ContextSearch] Settings saved, new state:', this.plugin.settings.vectorSettings.autoSearchEnabled);
+			
+			// Update button appearance AFTER save completes
 			this.updateContextSearchButton(toggleBtn);
 			
 			// Show notice
@@ -388,13 +453,105 @@ export class UIBuilder {
 		
 		return contextSearchToggle;
 	}
+
+	/**
+	 * Build Speed Reading button
+	 */
+	private buildSpeedReadingButton(container: HTMLElement): HTMLElement {
+		// Speed Reading button - use same class as other input buttons
+		const speedReadBtn = container.createEl('button', {
+			cls: 'llmsider-input-btn',
+			title: this.i18n.t('ui.speedReading') || 'Speed Reading'
+		});
+		
+		// Smart Reading icon - Book with sparkles/intelligence
+		const readingIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+			<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+			<path d="M8 7h8"></path>
+			<path d="M8 11h8"></path>
+			<path d="M2 6l2-2 2 2"></path>
+			<path d="M2 12l2-2 2 2"></path>
+			<path d="M2 18l2-2 2 2"></path>
+		</svg>`;
+		
+		speedReadBtn.innerHTML = `${readingIcon}`;
+		
+		// Handle button click
+		speedReadBtn.onclick = async (e) => {
+			e.stopPropagation();
+			
+			Logger.debug('[SpeedReading] Button clicked');
+			
+			const speedReadingManager = this.plugin.getSpeedReadingManager();
+			Logger.debug('[SpeedReading] Manager exists:', !!speedReadingManager);
+			
+			if (!speedReadingManager) {
+				new Notice(this.i18n.t('ui.speedReadingNotInit'));
+				return;
+			}
+			
+			Logger.debug('[SpeedReading] Calling processActiveNote');
+			await speedReadingManager.processActiveNote();
+		};
+		
+		// Debug: Log Speed Reading button styles
+		setTimeout(() => {
+			const speedStyles = window.getComputedStyle(speedReadBtn);
+			Logger.debug('[Button Debug] Speed Reading button:', {
+				width: speedStyles.width,
+				height: speedStyles.height,
+				padding: speedStyles.padding,
+				border: speedStyles.border,
+				boxSizing: speedStyles.boxSizing,
+				display: speedStyles.display,
+				classes: speedReadBtn.className
+			});
+		}, 100);
+		
+		return speedReadBtn;
+	}
+	
+	/**
+	 * Build Optimize Prompt button
+	 */
+	private buildOptimizePromptButton(container: HTMLElement): HTMLElement {
+		// Optimize Prompt button - use same class as other input buttons
+		const optimizePromptBtn = container.createEl('button', {
+			cls: 'llmsider-input-btn',
+			title: this.i18n.t('ui.optimizePromptTooltip') || 'Optimize Prompt'
+		});
+		
+		// Sparkle/magic wand icon for optimization
+		const optimizeIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M12 3l2.5 7.5L22 13l-7.5 2.5L12 23l-2.5-7.5L2 13l7.5-2.5L12 3z"/>
+			<path d="M6 3l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3z"/>
+		</svg>`;
+		
+		optimizePromptBtn.innerHTML = `${optimizeIcon}`;
+		
+		// Handle button click
+		optimizePromptBtn.onclick = async (e) => {
+			e.stopPropagation();
+			
+			Logger.debug('[OptimizePrompt] Button clicked');
+			
+			// Dispatch event to trigger optimization
+			window.dispatchEvent(new CustomEvent('llmsider-optimize-prompt'));
+		};
+		
+		return optimizePromptBtn;
+	}
 	
 	/**
 	 * Update Context Search button appearance
 	 */
 	private updateContextSearchButton(button?: HTMLElement): void {
 		const btn = button || this.containerEl.querySelector('.llmsider-context-search-btn') as HTMLElement;
-		if (!btn) return;
+		if (!btn) {
+			Logger.debug('[ContextSearch] updateContextSearchButton: button not found');
+			return;
+		}
 		
 		// Use autoSearchEnabled for button state (not the main enabled setting)
 		const autoSearchEnabled = this.plugin.settings.vectorSettings.autoSearchEnabled;
@@ -420,33 +577,35 @@ export class UIBuilder {
 		</svg>`;
 		
 		// Update button appearance based on state
-		if (!isInitialized) {
-			// Vector DB not loaded yet - button disabled
+		if (!isInitialized || !hasData) {
+			// Vector DB not ready - show as disabled but don't block clicks
+			// (clicks will be handled by onclick check)
 			btn.classList.add('disabled');
 			btn.classList.remove('enabled');
 			btn.style.opacity = '0.3';
-			btn.style.cursor = 'not-allowed';
-			btn.title = this.i18n.t('ui.vectorDBNotInitialized') || 'Vector database not initialized';
-		} else if (!hasData) {
-			// Vector DB loaded but no data - button disabled
-			btn.classList.add('disabled');
-			btn.classList.remove('enabled');
-			btn.style.opacity = '0.3';
-			btn.style.cursor = 'not-allowed';
-			btn.title = this.i18n.t('ui.noVectorDataAvailable') || 'No vector data available. Please sync or rebuild the index first.';
+			btn.style.cursor = '';  // Use CSS default cursor (pointer)
+			btn.style.removeProperty('pointer-events'); // Allow clicks for better UX (notice will show)
+			
+			if (!isInitialized) {
+				btn.title = this.i18n.t('ui.vectorDBNotInitialized') || 'Vector database not initialized';
+			} else {
+				btn.title = this.i18n.t('ui.noVectorDataAvailable') || 'No vector data available. Please sync or rebuild the index first.';
+			}
 		} else if (autoSearchEnabled) {
 			// Vector DB loaded with data and auto-search enabled
 			btn.classList.add('enabled');
 			btn.classList.remove('disabled');
-			btn.style.opacity = '1';
-			btn.style.cursor = 'pointer';
+			btn.style.opacity = '';  // Remove inline style to use CSS
+			btn.style.cursor = '';   // Remove inline style to use CSS
+			btn.style.removeProperty('pointer-events'); // Allow clicks when enabled
 			btn.title = this.i18n.t('ui.localContextSearchEnabled') || 'Local context search enabled';
 		} else {
 			// Vector DB loaded with data but auto-search disabled
 			btn.classList.remove('enabled');
 			btn.classList.add('disabled');
 			btn.style.opacity = '0.5';
-			btn.style.cursor = 'pointer';
+			btn.style.cursor = '';  // Remove inline style to use CSS default (pointer)
+			btn.style.removeProperty('pointer-events'); // Allow clicks to toggle
 			btn.title = this.i18n.t('ui.localContextSearchDisabled') || 'Local context search disabled';
 		}
 		
@@ -529,21 +688,55 @@ export class UIBuilder {
 		// Create dropdown (use same class as MCP dropdown for consistent styling)
 		const dropdown = document.body.createDiv({ cls: 'llmsider-mcp-dropdown' });
 		
-		// Position dropdown ABOVE button
+		// Position dropdown with smart placement
 		const buttonRect = button.getBoundingClientRect();
 		dropdown.style.position = 'fixed';
-		dropdown.style.left = `${buttonRect.left}px`;
-		dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
 		dropdown.style.zIndex = '99999';
+
+		// Vertical positioning
+		const spaceAbove = buttonRect.top;
+		const spaceBelow = window.innerHeight - buttonRect.bottom;
+		const dropdownMaxHeight = 450; // Match CSS max-height
+
+		if (spaceAbove >= dropdownMaxHeight || spaceAbove > spaceBelow) {
+			dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
+			dropdown.style.top = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceAbove - 16)}px`;
+		} else {
+			dropdown.style.top = `${buttonRect.bottom + 8}px`;
+			dropdown.style.bottom = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceBelow - 16)}px`;
+		}
+
+		// Horizontal positioning
+		const dropdownWidth = 340; // Match CSS width
+		if (buttonRect.left + dropdownWidth > window.innerWidth) {
+			dropdown.style.left = 'auto';
+			dropdown.style.right = `${window.innerWidth - buttonRect.right}px`;
+		} else {
+			dropdown.style.left = `${buttonRect.left}px`;
+			dropdown.style.right = 'auto';
+		}
 		
 		// Import built-in tools with localization
 		const { getAllBuiltInTools } = require('../tools/built-in-tools');
-		const allBuiltInTools = getAllBuiltInTools({ i18n: this.i18n, asArray: true });
+		const allBuiltInToolsUnfiltered = getAllBuiltInTools({ i18n: this.i18n, asArray: true });
+		
+		// Filter out hidden categories (like 'meta' for control flow tools) and system tools
+		const HIDDEN_CATEGORIES = ['meta'];
+		const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each'];
+		
+		const allBuiltInTools = allBuiltInToolsUnfiltered.filter((tool: unknown) => {
+			const t = tool as BuiltInTool;
+			const category = t.category || 'other';
+			const toolId = t.id || t.name;
+			return !HIDDEN_CATEGORIES.includes(category) && !HIDDEN_SYSTEM_TOOLS.includes(toolId);
+		});
 		
 		// Group built-in tools by category
-		const toolsByCategory = new Map<string, any[]>();
-		allBuiltInTools.forEach((tool: any) => {
-			const category = tool.category || 'other';
+		const toolsByCategory = new Map<string, unknown[]>();
+		allBuiltInTools.forEach((tool: unknown) => {
+			const category = (tool as BuiltInTool).category || 'other';
 			if (!toolsByCategory.has(category)) {
 				toolsByCategory.set(category, []);
 			}
@@ -575,15 +768,22 @@ export class UIBuilder {
 			const globalSwitch = this.createToggleSwitch(
 				this.areAllBuiltInToolsEnabled(allBuiltInTools),
 				async (enabled) => {
-					await this.toggleAllBuiltInTools(enabled, allBuiltInTools);
-					dropdown.remove();
-					this.showToolsDropdown(button);
+					if (this.isExecuting()) {
+						new Notice(this.i18n.t('ui.cannotModifyToolsDuringExecution') || 'Cannot modify tools during execution');
+						return false;
+					}
+					const result = await this.toggleAllBuiltInTools(enabled, allBuiltInTools);
+					if (result !== false) {
+						dropdown.remove();
+						this.showToolsDropdown(button);
+					}
+					return result;
 				}
 			);
 			globalToggle.appendChild(globalSwitch);
 			
 			// Built-in tools permissions
-			const builtInTools = this.plugin.settings.builtInToolsPermissions || {};
+			// const builtInTools = this.plugin.settings.builtInToolsPermissions || {};
 			
 			// Container for categories (will be filtered)
 			const categoriesListContainer = categoriesContainer.createDiv({ cls: 'llmsider-tools-categories-list' });
@@ -593,21 +793,31 @@ export class UIBuilder {
 			noResultsMsg.textContent = this.i18n.t('ui.noMatchingTools');
 			noResultsMsg.style.display = 'none';
 			
-			// Function to render category cards
-			const renderCategoryCards = (filterText: string = '') => {
-				categoriesListContainer.empty();
-				let hasVisibleTools = false;
+		// Function to render category cards
+		const renderCategoryCards = (filterText: string = '') => {
+			categoriesListContainer.empty();
+			let hasVisibleTools = false;
+			
+			// Sort categories by the order in TOOL_CATEGORIES
+			const sortedCategories = Array.from(toolsByCategory.entries()).sort((a, b) => {
+				const indexA = TOOL_CATEGORIES.findIndex(cat => cat.key === a[0]);
+				const indexB = TOOL_CATEGORIES.findIndex(cat => cat.key === b[0]);
 				
-				toolsByCategory.forEach((tools, category) => {
-					// Filter tools based on search text
-					const filteredTools = filterText 
-						? tools.filter((tool: any) => 
-							tool.name.toLowerCase().includes(filterText.toLowerCase()) ||
-							(tool.description && tool.description.toLowerCase().includes(filterText.toLowerCase()))
-						)
-						: tools;
-					
-					// Skip category if no matching tools
+				// If category not in TOOL_CATEGORIES, push to end
+				const posA = indexA === -1 ? TOOL_CATEGORIES.length : indexA;
+				const posB = indexB === -1 ? TOOL_CATEGORIES.length : indexB;
+				
+				return posA - posB;
+			});
+			
+			sortedCategories.forEach(([category, tools]) => {
+				// Filter tools based on search text
+				const filteredTools = filterText 
+					? tools.filter((tool: unknown) => 
+						(tool as BuiltInTool).name.toLowerCase().includes(filterText.toLowerCase()) ||
+						((tool as BuiltInTool).description && (tool as BuiltInTool).description.toLowerCase().includes(filterText.toLowerCase()))
+					)
+					: tools;					// Skip category if no matching tools
 					if (filteredTools.length === 0) return;
 					hasVisibleTools = true;
 					
@@ -640,9 +850,12 @@ export class UIBuilder {
 				const categorySwitch = this.createToggleSwitch(
 					this.areAllCategoryToolsEnabled(tools),
 					async (enabled) => {
-						await this.toggleCategoryTools(category, tools, enabled);
-						dropdown.remove();
-						this.showToolsDropdown(button);
+						const result = await this.toggleCategoryTools(category, tools, enabled);
+						if (result !== false) {
+							dropdown.remove();
+							this.showToolsDropdown(button);
+						}
+						return result;
 					}
 				);
 				categoryHeader.appendChild(categorySwitch);
@@ -653,7 +866,7 @@ export class UIBuilder {
 				
 				// Tools list
 				const toolsList = expandedContent.createDiv({ cls: 'llmsider-mcp-tools-list' });
-				filteredTools.forEach((tool: any) => {
+				filteredTools.forEach((tool: unknown) => {
 					const toolItem = toolsList.createDiv({ cls: 'llmsider-mcp-tool-item' });
 					
 					// Tool indicator dot
@@ -662,38 +875,49 @@ export class UIBuilder {
 					// Tool info
 					const toolInfo = toolItem.createDiv({ cls: 'tool-info' });
 					const toolName = toolInfo.createDiv({ cls: 'tool-name' });
-					toolName.textContent = tool.name;
+					toolName.textContent = (tool as BuiltInTool).name;
 					
-					if (tool.description) {
+					if ((tool as BuiltInTool).description) {
 						const toolDesc = toolInfo.createDiv({ cls: 'tool-description' });
-						toolDesc.textContent = tool.description;
+						toolDesc.textContent = (tool as BuiltInTool).description;
 					}
 					
 				
-				// Tool toggle switch
-				const toolId = (tool as any).id || tool.name;
-				const permission = builtInTools[toolId];
-				const isToolEnabled = permission === undefined ? true : permission === true;
-				const toolSwitch = this.createToggleSwitch(
-					isToolEnabled,
-					async (enabled) => {
-						if (!this.plugin.settings.builtInToolsPermissions) {
-							this.plugin.settings.builtInToolsPermissions = {};
-						}
-						this.plugin.settings.builtInToolsPermissions[toolId] = enabled;
-						await this.plugin.saveSettings();
+			// Tool toggle switch
+			const toolId = (tool as BuiltInTool & { id?: string }).id || (tool as BuiltInTool).name;
+			const isToolEnabled = this.toolPermissionHandler.isBuiltInToolEnabled(toolId);
+			
+			// Add tooltip to show tool status on hover
+			const statusTooltip = isToolEnabled 
+				? this.i18n.t('settingsPage.toolEnabledTooltip') 
+				: this.i18n.t('settingsPage.toolDisabledTooltip');
+			toolItem.setAttribute('title', statusTooltip);
+			
+			const toolSwitch = this.createToggleSwitch(
+				isToolEnabled,
+				async (enabled) => {
+					Logger.debug(`[ToolToggle] Toggling ${(tool as BuiltInTool).name} to ${enabled}`);
+					const result = await this.toolPermissionHandler.toggleBuiltInTool(toolId, enabled);
+					if (result !== false) {
+						Logger.debug(`[ToolToggle] Toggle successful, updating UI without closing dropdown`);
+						// Update the tooltip and dot color without refreshing dropdown
 						const statusText = enabled ? this.i18n.t('ui.toolEnabled') : this.i18n.t('ui.toolDisabled');
-						new Notice(`Tool "${tool.name}" ${statusText}`);
-						// Refresh dropdown to sync all switches
-						dropdown.remove();
-						this.showToolsDropdown(button);
+						const newTooltip = enabled 
+							? this.i18n.t('settingsPage.toolEnabledTooltip') 
+							: this.i18n.t('settingsPage.toolDisabledTooltip');
+						toolItem.setAttribute('title', newTooltip);
+						toolDot.style.background = enabled ? 'var(--interactive-accent)' : 'var(--text-muted)';
+						
+						// Show notice
+						Logger.debug(`[ToolToggle] Showing notice: ${(tool as BuiltInTool).name}: ${statusText}`);
+						new Notice(`${(tool as BuiltInTool).name}: ${statusText}`, 3000);
 					}
-				);
-				toolItem.appendChild(toolSwitch);					// Set initial dot color
-					toolDot.style.background = isToolEnabled ? 'var(--interactive-accent)' : 'var(--text-muted)';
-				});
-				
-				// Toggle expansion
+					return result;
+				}
+			);
+			toolItem.appendChild(toolSwitch);					// Set initial dot color
+				toolDot.style.background = isToolEnabled ? 'var(--interactive-accent)' : 'var(--text-muted)';
+			});				// Toggle expansion
 				let isExpanded = false;
 				const toggleExpansion = () => {
 					isExpanded = !isExpanded;
@@ -777,24 +1001,48 @@ export class UIBuilder {
 		// Create dropdown
 		const dropdown = document.body.createDiv({ cls: 'llmsider-mcp-dropdown' });
 		
-		// Position dropdown ABOVE button
+		// Position dropdown with smart placement
 		const buttonRect = button.getBoundingClientRect();
 		dropdown.style.position = 'fixed';
-		dropdown.style.left = `${buttonRect.left}px`;
-		dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
 		dropdown.style.zIndex = '99999';
+
+		// Vertical positioning
+		const spaceAbove = buttonRect.top;
+		const spaceBelow = window.innerHeight - buttonRect.bottom;
+		const dropdownMaxHeight = 450; // Match CSS max-height
+
+		if (spaceAbove >= dropdownMaxHeight || spaceAbove > spaceBelow) {
+			dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
+			dropdown.style.top = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceAbove - 16)}px`;
+		} else {
+			dropdown.style.top = `${buttonRect.bottom + 8}px`;
+			dropdown.style.bottom = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceBelow - 16)}px`;
+		}
+
+		// Horizontal positioning
+		const dropdownWidth = 340; // Match CSS width
+		if (buttonRect.left + dropdownWidth > window.innerWidth) {
+			dropdown.style.left = 'auto';
+			dropdown.style.right = `${window.innerWidth - buttonRect.right}px`;
+		} else {
+			dropdown.style.left = `${buttonRect.left}px`;
+			dropdown.style.right = 'auto';
+		}
 		
 		// Get MCP Manager
 		const mcpManager = this.plugin.getMCPManager();
 		
 		// Get all tools and group by server
 		const allMCPTools = mcpManager ? mcpManager.getAllAvailableTools() : [];
-		const toolsByServer = new Map<string, typeof allMCPTools>();
-		allMCPTools.forEach((tool: any) => {
-			if (!toolsByServer.has(tool.server)) {
-				toolsByServer.set(tool.server, []);
+		const toolsByServer = new Map<string, MCPTool[]>();
+		allMCPTools.forEach((tool: unknown) => {
+			const mcpTool = tool as MCPTool;
+			if (!toolsByServer.has(mcpTool.server)) {
+				toolsByServer.set(mcpTool.server, []);
 			}
-			toolsByServer.get(tool.server)!.push(tool);
+			toolsByServer.get(mcpTool.server)!.push(mcpTool);
 		});
 		
 		// Get all configured servers (including disconnected ones)
@@ -812,10 +1060,18 @@ export class UIBuilder {
 		if (toolsByServer.size > 0) {
 			const serversContainer = dropdown.createDiv({ cls: 'llmsider-tools-categories' });
 			
-			// Header with title and global toggle in one line
+			// Header with title, search input and global toggle
 			const headerRow = serversContainer.createDiv({ cls: 'llmsider-tools-header-row' });
 			const mcpHeader = headerRow.createDiv({ cls: 'llmsider-tools-section-header' });
 			mcpHeader.textContent = this.i18n.t('ui.mcpServersHeader');
+
+			// Search input
+			const searchContainer = serversContainer.createDiv({ cls: 'llmsider-tools-search-container' });
+			const searchInput = searchContainer.createEl('input', {
+				type: 'text',
+				placeholder: this.i18n.t('ui.searchTools') || 'Search tools...',
+				cls: 'llmsider-tools-search-input'
+			});
 			
 			// Global toggle for all MCP servers
 			const globalServerToggle = headerRow.createDiv({ cls: 'llmsider-tools-global-toggle' });
@@ -831,147 +1087,197 @@ export class UIBuilder {
 				}
 			);
 			globalServerToggle.appendChild(globalServerSwitch);
+
+			// Container for servers (will be filtered)
+			const serversListContainer = serversContainer.createDiv({ cls: 'llmsider-tools-categories-list' });
 			
-			// Individual servers with their tools
-			toolsByServer.forEach((tools, serverId) => {
-				const serverStatus = mcpManager!.getServerStatus(serverId);
-				const canExpand = serverStatus === 'connected' && tools.length > 0;
-				
-				// Server card - add connection status class
-				const serverCard = serversContainer.createDiv({ cls: 'llmsider-mcp-server-card' });
-				if (serverStatus === 'connected') {
-					serverCard.addClass('mcp-server-connected');
-				} else {
-					serverCard.addClass('mcp-server-disconnected');
-				}
-				
-				const serverHeader = serverCard.createDiv({ cls: 'llmsider-mcp-server-header' });
-				
-				// Expand button (only visible if can expand)
-				const expandBtn = serverHeader.createDiv({ cls: 'llmsider-mcp-expand-btn' });
-				if (canExpand) {
-					expandBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-						<polyline points="6 4 10 8 6 12"></polyline>
-					</svg>`;
-				}
-				
-				// Server info container
-				const serverInfo = serverHeader.createDiv({ cls: 'llmsider-mcp-server-info' });
-				
-				// Server name container (removed status icon)
-				const serverNameContainer = serverInfo.createDiv({ cls: 'llmsider-mcp-server-name' });
-				const displayName = serverNameContainer.createDiv({ cls: 'mcp-server-display-name' });
-				displayName.textContent = serverId;
-				
-				const serverIdText = serverNameContainer.createDiv({ cls: 'mcp-server-id' });
-				serverIdText.textContent = serverId;
-				
-				// Tool count badge
-				const toolBadge = serverHeader.createDiv({ cls: 'llmsider-mcp-tool-badge' });
-				toolBadge.textContent = `${tools.length}`;
-				if (tools.length === 0) {
-					toolBadge.addClass('no-tools');
-				}
-				
-				// Server switch
-				// Display state: connected (actually connected) or autoConnect (configured to auto-connect)
-				const isConnected = serverStatus === 'connected';
-				const isAutoConnect = mcpManager!.getServerAutoConnect(serverId);
-				const switchState = isConnected || isAutoConnect;
-				
-				const serverSwitch = this.createToggleSwitch(
-					switchState,
-					async (enabled) => {
-						// Update autoConnect setting
-						await mcpManager!.setServerAutoConnect(serverId, enabled);
-						
-						// Also connect/disconnect immediately
-						if (enabled) {
-							if (!isConnected) {
-								await mcpManager!.connectServer(serverId);
-							}
-						} else {
-							if (isConnected) {
-								await mcpManager!.disconnectServer(serverId);
-							}
-						}
-						
-						new Notice(`Server "${serverId}" ${enabled ? 'enabled and connected' : 'disabled and disconnected'}`);
-						dropdown.remove();
-						this.showMCPDropdown(button);
+			// No results message (hidden by default)
+			const noResultsMsg = serversContainer.createDiv({ cls: 'llmsider-tools-no-results' });
+			noResultsMsg.textContent = this.i18n.t('ui.noMatchingTools');
+			noResultsMsg.style.display = 'none';
+			
+			// Function to render server cards
+			const renderServerCards = (filterText: string = '') => {
+				serversListContainer.empty();
+				let hasVisibleTools = false;
+
+				toolsByServer.forEach((tools, serverId) => {
+					// Filter tools based on search text
+					const filteredTools = filterText 
+						? tools.filter((tool: unknown) => 
+							(tool as MCPTool).name.toLowerCase().includes(filterText.toLowerCase()) ||
+							((tool as MCPTool).description && (tool as MCPTool).description.toLowerCase().includes(filterText.toLowerCase()))
+						)
+						: tools;
+					
+					// Also match server name
+					const serverMatches = serverId.toLowerCase().includes(filterText.toLowerCase());
+					
+					// Determine which tools to show
+					let toolsToShow = filteredTools;
+					if (serverMatches && filterText && filteredTools.length === 0) {
+						// If server matches but no tools match, show all tools
+						toolsToShow = tools;
 					}
-				);
-				serverHeader.appendChild(serverSwitch);
-				
-				// Expanded content (only for connected servers with tools)
-				if (canExpand) {
-					const expandedContent = serverCard.createDiv({ cls: 'llmsider-mcp-expanded-content' });
-					expandedContent.style.display = 'none';
+
+					// If no tools to show and server doesn't match, skip
+					if (toolsToShow.length === 0 && !serverMatches) return;
+
+					hasVisibleTools = true;
+
+					const serverStatus = mcpManager!.getServerStatus(serverId);
+					const canExpand = serverStatus === 'connected' && toolsToShow.length > 0;
 					
-					// Tools list
-					const toolsList = expandedContent.createDiv({ cls: 'llmsider-mcp-tools-list' });
-					tools.forEach((tool: any) => {
-						const toolItem = toolsList.createDiv({ cls: 'llmsider-mcp-tool-item' });
-						
-						// Tool indicator dot
-						const toolDot = toolItem.createDiv({ cls: 'tool-dot' });
-						
-						// Tool info
-						const toolInfo = toolItem.createDiv({ cls: 'tool-info' });
-						const toolName = toolInfo.createDiv({ cls: 'tool-name' });
-						toolName.textContent = tool.name;
-						
-						if (tool.description) {
-							const toolDesc = toolInfo.createDiv({ cls: 'tool-description' });
-							toolDesc.textContent = tool.description;
-						}
-						
-						// Tool enable/disable switch
-						const toolSwitch = this.createToggleSwitch(
-							mcpManager!.isToolEnabled(serverId, tool.name),
-							async (enabled) => {
-								await mcpManager!.setToolEnabled(serverId, tool.name, enabled);
-								new Notice(`Tool "${tool.name}" ${enabled ? 'enabled' : 'disabled'}`);
-								// Update UI without closing dropdown
-								const dotColor = enabled ? 'var(--interactive-accent)' : 'var(--text-muted)';
-								toolDot.style.background = dotColor;
+					// Server card - add connection status class
+					const serverCard = serversListContainer.createDiv({ cls: 'llmsider-mcp-server-card' });
+					if (serverStatus === 'connected') {
+						serverCard.addClass('mcp-server-connected');
+					} else {
+						serverCard.addClass('mcp-server-disconnected');
+					}
+					
+					const serverHeader = serverCard.createDiv({ cls: 'llmsider-mcp-server-header' });
+					
+					// Expand button (only visible if can expand)
+					const expandBtn = serverHeader.createDiv({ cls: 'llmsider-mcp-expand-btn' });
+					if (canExpand) {
+						expandBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+							<polyline points="6 4 10 8 6 12"></polyline>
+						</svg>`;
+					}
+					
+					// Server info container
+					const serverInfo = serverHeader.createDiv({ cls: 'llmsider-mcp-server-info' });
+					
+					// Server name
+					const displayName = serverInfo.createDiv({ cls: 'mcp-server-display-name' });
+					displayName.textContent = serverId;
+					
+					// Tool count badge
+					const toolBadge = serverHeader.createDiv({ cls: 'llmsider-mcp-tool-badge' });
+					toolBadge.textContent = `${tools.length}`;
+					if (tools.length === 0) {
+						toolBadge.addClass('no-tools');
+					}
+					
+					// Server switch
+					// Display state: connected (actually connected) or autoConnect (configured to auto-connect)
+					const isConnected = serverStatus === 'connected';
+					const isAutoConnect = mcpManager!.getServerAutoConnect(serverId);
+					const switchState = isConnected || isAutoConnect;
+					
+					const serverSwitch = this.createToggleSwitch(
+						switchState,
+						async (enabled) => {
+							// Update autoConnect setting
+							await mcpManager!.setServerAutoConnect(serverId, enabled);
+							
+							// Also connect/disconnect immediately
+							if (enabled) {
+								if (!isConnected) {
+									await mcpManager!.connectServer(serverId);
+								}
+							} else {
+								if (isConnected) {
+									await mcpManager!.disconnectServer(serverId);
+								}
 							}
-						);
-						toolItem.appendChild(toolSwitch);
+							
+							const noticeKey = enabled ? 'serverEnabledConnected' : 'serverDisabledDisconnected';
+							new Notice(this.plugin.getI18nManager()?.t(`notifications.uiBuilder.${noticeKey}`, {serverId}) || `Server "${serverId}" ${enabled ? 'enabled and connected' : 'disabled and disconnected'}`);
+							dropdown.remove();
+							this.showMCPDropdown(button);
+						}
+					);
+					serverHeader.appendChild(serverSwitch);
+
+					// Expanded content (only for connected servers with tools)
+					if (canExpand) {
+						const expandedContent = serverCard.createDiv({ cls: 'llmsider-mcp-expanded-content' });
+						expandedContent.style.display = 'none';
 						
-						// Set initial dot color based on enabled state
-						const isToolEnabled = mcpManager!.isToolEnabled(serverId, tool.name);
-						toolDot.style.background = isToolEnabled ? 'var(--interactive-accent)' : 'var(--text-muted)';
-					});
-					
-					// Toggle expansion
-					let isExpanded = false;
-					const toggleExpansion = () => {
-						isExpanded = !isExpanded;
-						if (isExpanded) {
-							expandedContent.style.display = 'block';
-							expandBtn.addClass('expanded');
-							serverCard.addClass('expanded');
-						} else {
-							expandedContent.style.display = 'none';
-							expandBtn.removeClass('expanded');
-							serverCard.removeClass('expanded');
-						}
-					};
-					
-					expandBtn.onclick = (e) => {
-						e.stopPropagation();
-						toggleExpansion();
-					};
-					
-					// Make entire header clickable for expansion
-					serverHeader.style.cursor = 'pointer';
-					serverHeader.onclick = (e) => {
-						if (!(e.target as HTMLElement).closest('.llmsider-tools-switch-container')) {
+						// Tools list
+						const toolsList = expandedContent.createDiv({ cls: 'llmsider-mcp-tools-list' });
+						toolsToShow.forEach((tool: unknown) => {
+							const toolItem = toolsList.createDiv({ cls: 'llmsider-mcp-tool-item' });
+							
+							// Tool indicator dot
+							const toolDot = toolItem.createDiv({ cls: 'tool-dot' });
+							
+							// Tool info
+							const toolInfo = toolItem.createDiv({ cls: 'tool-info' });
+							const toolName = toolInfo.createDiv({ cls: 'tool-name' });
+							toolName.textContent = (tool as MCPTool).name;
+							
+							if ((tool as MCPTool).description) {
+								const toolDesc = toolInfo.createDiv({ cls: 'tool-description' });
+								toolDesc.textContent = (tool as MCPTool).description;
+							}
+							
+							// Tool enable/disable switch
+							const toolSwitch = this.createToggleSwitch(
+								mcpManager!.isToolEnabled(serverId, (tool as MCPTool).name),
+								async (enabled) => {
+									await mcpManager!.setToolEnabled(serverId, (tool as MCPTool).name, enabled);
+									const statusText = enabled ? 'enabled' : 'disabled';
+									new Notice(`${(tool as MCPTool).name}: ${statusText}`, 3000);
+									// Update UI without closing dropdown
+									const dotColor = enabled ? 'var(--interactive-accent)' : 'var(--text-muted)';
+									toolDot.style.background = dotColor;
+								}
+							);
+							toolItem.appendChild(toolSwitch);
+
+							// Set initial dot color based on enabled state
+							const isToolEnabled = mcpManager!.isToolEnabled(serverId, (tool as MCPTool).name);
+							toolDot.style.background = isToolEnabled ? 'var(--interactive-accent)' : 'var(--text-muted)';
+						});
+						
+						// Toggle expansion
+						let isExpanded = false;
+						const toggleExpansion = () => {
+							isExpanded = !isExpanded;
+							if (isExpanded) {
+								expandedContent.style.display = 'block';
+								expandBtn.addClass('expanded');
+								serverCard.addClass('expanded');
+							} else {
+								expandedContent.style.display = 'none';
+								expandBtn.removeClass('expanded');
+								serverCard.removeClass('expanded');
+							}
+						};
+						
+						expandBtn.onclick = (e) => {
+							e.stopPropagation();
 							toggleExpansion();
-						}
-					};
+						};
+						
+						// Make entire header clickable for expansion
+						serverHeader.style.cursor = 'pointer';
+						serverHeader.onclick = (e) => {
+							if (!(e.target as HTMLElement).closest('.llmsider-tools-switch-container')) {
+								toggleExpansion();
+							}
+						};
+					}
+				});
+
+				// Show/hide no results message
+				if (hasVisibleTools) {
+					noResultsMsg.style.display = 'none';
+				} else {
+					noResultsMsg.style.display = 'block';
 				}
+			};
+
+			// Initial render
+			renderServerCards();
+			
+			// Add search input event listener
+			searchInput.addEventListener('input', (e) => {
+				const filterText = (e.target as HTMLInputElement).value;
+				renderServerCards(filterText);
 			});
 		}
 		
@@ -999,7 +1305,7 @@ export class UIBuilder {
 	/**
 	 * Create a toggle switch element
 	 */
-	private createToggleSwitch(isEnabled: boolean, onChange: (enabled: boolean) => Promise<void>): HTMLElement {
+	private createToggleSwitch(isEnabled: boolean, onChange: (enabled: boolean) => Promise<boolean | void>): HTMLElement {
 		const switchContainer = document.createElement('div');
 		switchContainer.className = 'llmsider-tools-switch-container';
 		
@@ -1008,8 +1314,20 @@ export class UIBuilder {
 		
 		switchEl.onclick = async (e) => {
 			e.stopPropagation();
+			
+			// Check if execution is in progress
+			if (this.isExecuting()) {
+				new Notice(this.i18n.t('ui.cannotModifyToolsDuringExecution') || 'Cannot modify tools during execution');
+				return;
+			}
+			
 			const newState = !switchEl.hasClass('active');
-			await onChange(newState);
+			const result = await onChange(newState);
+			
+			// If result is explicitly false, do not update UI (operation failed/cancelled)
+			if (result === false) {
+				return;
+			}
 			
 			if (newState) {
 				switchEl.addClass('active');
@@ -1031,64 +1349,45 @@ export class UIBuilder {
 	/**
 	 * Check if all built-in tools are enabled
 	 */
-	private areAllBuiltInToolsEnabled(allTools: any[]): boolean {
-		const builtInTools = this.plugin.settings.builtInToolsPermissions || {};
-		const result = allTools.every((tool: any) => {
-			const toolId = tool.id || tool.name;
-			const permission = builtInTools[toolId];
-			return permission === undefined ? true : permission === true;
+	private areAllBuiltInToolsEnabled(allTools: unknown[]): boolean {
+		const result = allTools.every((tool: unknown) => {
+			const toolId = (tool as { id?: string; name: string }).id || (tool as { name: string }).name;
+			return this.toolPermissionHandler.isBuiltInToolEnabled(toolId);
 		});
-		Logger.debug('areAllBuiltInToolsEnabled:', result, 'permissions:', builtInTools);
+		Logger.debug('areAllBuiltInToolsEnabled:', result);
 		return result;
 	}
 	
 	/**
 	 * Toggle all built-in tools
 	 */
-	private async toggleAllBuiltInTools(enabled: boolean, allTools: any[]): Promise<void> {
-		if (!this.plugin.settings.builtInToolsPermissions) {
-			this.plugin.settings.builtInToolsPermissions = {};
+	private async toggleAllBuiltInTools(enabled: boolean, allTools: unknown[]): Promise<boolean> {
+		if (enabled) {
+			return await this.toolPermissionHandler.enableAllBuiltInTools();
+		} else {
+			await this.toolPermissionHandler.disableAllBuiltInTools();
+			return true;
 		}
-		
-		allTools.forEach((tool: any) => {
-			const toolId = tool.id || tool.name;
-			this.plugin.settings.builtInToolsPermissions[toolId] = enabled;
-		});
-		
-		await this.plugin.saveSettings();
-		const statusText = enabled ? this.i18n.t('ui.toolEnabled') : this.i18n.t('ui.toolDisabled');
-		new Notice(`${this.i18n.t('ui.allBuiltInTools')} ${statusText}`);
 	}
 	
 	/**
-	 * Check if all tools in a category are enabled
+	 * Check if a category should be shown as enabled
+	 * Returns true if at least one tool in the category is enabled
+	 * This matches the logic in Settings page (builtin-tools-renderer.ts)
 	 */
-	private areAllCategoryToolsEnabled(tools: any[]): boolean {
-		const builtInTools = this.plugin.settings.builtInToolsPermissions || {};
-		return tools.every((tool: any) => {
-			const toolId = tool.id || tool.name;
-			const permission = builtInTools[toolId];
-			return permission === undefined ? true : permission === true;
+	private areAllCategoryToolsEnabled(tools: unknown[]): boolean {
+		// Category is considered enabled if at least one tool is enabled
+		return tools.some((tool: unknown) => {
+			const toolId = (tool as { id?: string; name: string }).id || (tool as { name: string }).name;
+			return this.toolPermissionHandler.isBuiltInToolEnabled(toolId);
 		});
 	}
 	
 	/**
 	 * Toggle all tools in a category
 	 */
-	private async toggleCategoryTools(category: string, tools: any[], enabled: boolean): Promise<void> {
-		if (!this.plugin.settings.builtInToolsPermissions) {
-			this.plugin.settings.builtInToolsPermissions = {};
-		}
-		
-		tools.forEach((tool: any) => {
-			const toolId = tool.id || tool.name;
-			this.plugin.settings.builtInToolsPermissions[toolId] = enabled;
-		});
-		
-		await this.plugin.saveSettings();
-		const statusText = enabled ? this.i18n.t('ui.toolEnabled') : this.i18n.t('ui.toolDisabled');
-		const categoryName = this.getCategoryDisplayName(category);
-		new Notice(`${categoryName} ${statusText}`);
+	private async toggleCategoryTools(category: string, tools: unknown[], enabled: boolean): Promise<boolean> {
+		return await this.toolPermissionHandler.toggleCategoryTools(category, tools, enabled);
 	}
 	
 	/**
@@ -1135,7 +1434,8 @@ export class UIBuilder {
 			}
 		}
 		
-		new Notice(`All MCP servers ${enabled ? 'enabled and connected' : 'disabled and disconnected'}`);
+		const noticeKey = enabled ? 'allMCPServersEnabledConnected' : 'allMCPServersDisabledDisconnected';
+		new Notice(this.plugin.getI18nManager()?.t(`notifications.uiBuilder.${noticeKey}`) || `All MCP servers ${enabled ? 'enabled and connected' : 'disabled and disconnected'}`);
 	}
 
 	/**
@@ -1156,6 +1456,10 @@ export class UIBuilder {
 		// Handle button click to show dropdown
 		modeBtn.onclick = (e) => {
 			e.stopPropagation();
+			if (this.isExecuting()) {
+				new Notice(this.i18n.t('ui.cannotChangeModeDuringExecution') || 'Cannot change mode during execution');
+				return;
+			}
 			this.showModeDropdown(modeBtn);
 		};
 		
@@ -1203,11 +1507,35 @@ export class UIBuilder {
 		// Create dropdown
 		const dropdown = document.body.createDiv({ cls: 'llmsider-mode-dropdown' });
 		
-		// Position dropdown ABOVE button
+		// Position dropdown with smart placement
 		const buttonRect = button.getBoundingClientRect();
 		dropdown.style.position = 'fixed';
-		dropdown.style.left = `${buttonRect.left}px`;
-		dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`; // Position above button
+		dropdown.style.zIndex = '99999';
+
+		// Vertical positioning
+		const spaceAbove = buttonRect.top;
+		const spaceBelow = window.innerHeight - buttonRect.bottom;
+		const dropdownMaxHeight = 300; // Estimated max height
+
+		if (spaceAbove >= dropdownMaxHeight || spaceAbove > spaceBelow) {
+			dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
+			dropdown.style.top = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceAbove - 16)}px`;
+		} else {
+			dropdown.style.top = `${buttonRect.bottom + 8}px`;
+			dropdown.style.bottom = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceBelow - 16)}px`;
+		}
+
+		// Horizontal positioning
+		const dropdownWidth = 200; // Min width from CSS
+		if (buttonRect.left + dropdownWidth > window.innerWidth) {
+			dropdown.style.left = 'auto';
+			dropdown.style.right = `${window.innerWidth - buttonRect.right}px`;
+		} else {
+			dropdown.style.left = `${buttonRect.left}px`;
+			dropdown.style.right = 'auto';
+		}
 		dropdown.style.zIndex = '99999';
 		
 		// Mode options
@@ -1358,17 +1686,43 @@ export class UIBuilder {
 		// Create dropdown
 		const dropdown = document.body.createDiv({ cls: 'llmsider-provider-dropdown' });
 		
-		// Position dropdown ABOVE button
+		// Position dropdown with smart placement
 		const buttonRect = button.getBoundingClientRect();
 		dropdown.style.position = 'fixed';
-		dropdown.style.right = `${window.innerWidth - buttonRect.right}px`;
-		dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
 		dropdown.style.zIndex = '99999';
+
+		// Vertical positioning
+		const spaceAbove = buttonRect.top;
+		const spaceBelow = window.innerHeight - buttonRect.bottom;
+		const dropdownMaxHeight = 400; // Match CSS max-height
+
+		if (spaceAbove >= dropdownMaxHeight || spaceAbove > spaceBelow) {
+			dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
+			dropdown.style.top = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceAbove - 16)}px`;
+		} else {
+			dropdown.style.top = `${buttonRect.bottom + 8}px`;
+			dropdown.style.bottom = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceBelow - 16)}px`;
+		}
+
+		// Horizontal positioning (Right aligned by default)
+		const dropdownWidth = 280; // Match CSS width
+		if (buttonRect.right >= dropdownWidth) {
+			dropdown.style.right = `${window.innerWidth - buttonRect.right}px`;
+			dropdown.style.left = 'auto';
+		} else {
+			dropdown.style.left = `${buttonRect.left}px`;
+			dropdown.style.right = 'auto';
+		}
 		
 		// Get providers from settings
 		const connections = this.plugin.settings.connections || [];
 		const models = this.plugin.settings.models || [];
 		const activeProvider = this.plugin.settings.activeProvider;
+		
+		Logger.debug('[UI] showProviderDropdown - Total models:', models.length);
+		Logger.debug('[UI] showProviderDropdown - Models:', models.map(m => ({ id: m.id, name: m.name, connectionId: m.connectionId, enabled: m.enabled })));
 		
 		if (connections.length === 0 || models.length === 0) {
 			const emptyOption = dropdown.createDiv({ cls: 'llmsider-provider-option provider-empty' });
@@ -1388,6 +1742,7 @@ export class UIBuilder {
 		// Create provider options grouped by connection
 		connections.forEach((connection: LLMConnection) => {
 			const connectionModels = models.filter((m: LLMModel) => m.connectionId === connection.id && m.enabled);
+			Logger.debug(`[UI] Connection ${connection.id} (${connection.name}) - enabled models:`, connectionModels.length, 'of', models.filter((m: LLMModel) => m.connectionId === connection.id).length);
 			if (connectionModels.length === 0) return;
 			
 			// Add connection header if there are multiple connections
@@ -1444,17 +1799,30 @@ export class UIBuilder {
 	 */
 	private async handleProviderChange(providerId: string, selectElement: HTMLSelectElement): Promise<void> {
 		try {
+			Logger.debug('[UIBuilder] handleProviderChange called:', providerId);
+			
+			// Ensure the option exists in the select element before setting value
+			// This is necessary because the select is hidden and may not have all options populated
+			if (!Array.from(selectElement.options).some(opt => opt.value === providerId)) {
+				const option = selectElement.createEl('option', { value: providerId });
+				option.selected = true;
+				Logger.debug('[UIBuilder] Created new option for:', providerId);
+			}
+			
 			// Update the hidden select element for compatibility
 			selectElement.value = providerId;
+			Logger.debug('[UIBuilder] Updated select element value:', selectElement.value);
 			
 			// Trigger change event on the select element
 			const event = new Event('change', { bubbles: true });
 			selectElement.dispatchEvent(event);
+			Logger.debug('[UIBuilder] Dispatched change event');
 			
 			// Update button appearance
 			this.updateProviderButton();
+			Logger.debug('[UIBuilder] Updated provider button');
 		} catch (error) {
-			Logger.error('Failed to change provider:', error);
+			Logger.error('[UIBuilder] Failed to change provider:', error);
 		}
 	}
 
@@ -1699,7 +2067,7 @@ export class UIBuilder {
 	/**
 	 * Update Agent button appearance (replaces updateModeButton)
 	 */
-	updateModeButton(currentMode?: any): void {
+	updateModeButton(currentMode?: unknown): void {
 		// Update Agent button state in all locations (for compatibility)
 		this.updateAgentButton();
 		this.updateAgentButtonInProviderRow();
@@ -1759,6 +2127,17 @@ export class UIBuilder {
 	 */
 	private async handleModeChange(mode: ConversationMode): Promise<void> {
 		try {
+			// Check if using Free Qwen and switching to Guided/Agent mode
+			if ((mode === 'guided' || mode === 'agent') && this.plugin.getActiveProvider()) {
+				const providerName = this.plugin.getActiveProvider()!.constructor.name;
+				if (providerName === 'FreeQwenProviderImpl') {
+					// Show warning about tool calling limitations
+					const warningMessage = this.i18n.t('ui.freeQwenToolCallWarning');
+					new Notice(warningMessage, 8000);
+					Logger.warn('[Free Qwen] Switching to', mode, 'mode - tool calling may not work properly');
+				}
+			}
+			
 			// Save to SQLite instead of settings
 			await this.plugin.configDb.setConfigValue('conversationMode', mode);
 			
@@ -1806,7 +2185,9 @@ export class UIBuilder {
 
 	private handleShowHistory(): void {
 		// This will be handled by the main ChatView class
+		Logger.debug('📜 Dispatching llmsider-show-history event');
 		window.dispatchEvent(new CustomEvent('llmsider-show-history'));
+		Logger.debug('📜 Event dispatched');
 	}
 
 	private handleOpenSettings(): void {
@@ -1909,15 +2290,37 @@ export class UIBuilder {
 				return 'Untitled';
 			}
 
-			// Construct prompt for title generation
-			const titlePrompt = `Based on the following conversation, generate a concise, descriptive title that captures the main topic or question. The title should be:
-- Maximum 10 Chinese characters OR 30 English letters/numbers
+			// Check if current model is an image-only generation model
+			// These models don't support text chat, so we skip title generation
+			const currentModel = provider.getModelName?.() || '';
+			Logger.debug('[TitleGen] Checking model for image-only detection:', currentModel);
+			
+			const isImageOnlyModel = 
+				currentModel.includes('qwen-image-plus') ||
+				currentModel.includes('qwen-image') ||
+				currentModel.includes('wanx') ||
+				currentModel.includes('flux-') ||
+				currentModel.includes('dall-e') ||
+				currentModel.includes('stable-diffusion') ||
+				currentModel.includes('midjourney');
+			
+			Logger.debug('[TitleGen] Is image-only model?', isImageOnlyModel);
+			
+			if (isImageOnlyModel) {
+				Logger.info('[TitleGen] ✅ Skipping title generation for image-only model:', currentModel);
+				return 'Image Generation';
+			}
+
+		// Construct prompt for title generation - ONLY use user's initial question
+		// Do NOT include assistant's response to avoid generating title based on execution results
+		const titlePrompt = `Based on the following user question, generate a concise, descriptive title that captures the main topic or intent. The title should be:
+- 8-15 Chinese characters OR 20-40 English letters
 - Clear and informative
+- Reflect what the user is asking about, not the answer content
 - Return ONLY the title, no quotes or additional text
 
-User: ${userMessage.substring(0, 200)}
-Assistant: ${assistantMessage.substring(0, 300)}`;
-
+User Question: ${userMessage.substring(0, 300)}`;
+			
 			const titleMessages = [{
 				id: 'title-gen-' + Date.now(),
 				role: 'user' as const,
@@ -1925,56 +2328,50 @@ Assistant: ${assistantMessage.substring(0, 300)}`;
 				timestamp: Date.now()
 			}];
 
-			// Generate title using AI
-			let titleContent = '';
-			await provider.sendStreamingMessage(titleMessages, (chunk) => {
+			// Generate title using AI - explicitly pass undefined for tools and empty system message
+			// to avoid triggering plan generation or tool list prompts
+		// Also use a systemMessage to bypass image generation for image models
+		let titleContent = '';
+		const bypassImageGeneration = 'Generate only text response, no images.';
+		await provider.sendStreamingMessage(
+			titleMessages, 
+			(chunk) => {
 				if (chunk.delta) {
-					titleContent += chunk.delta;
+					// Skip thinking content during streaming
+					if (chunk.metadata?.type !== 'thinking') {
+						titleContent += chunk.delta;
+					}
 				}
-			});
+			},
+			undefined, // signal
+			undefined, // tools
+			bypassImageGeneration // systemMessage to prevent image generation
+		);
 
-			if (!titleContent.trim()) {
-				return 'Untitled';
-			}
-
-			// Clean up the generated title
-			let generatedTitle = titleContent.trim()
-				.replace(/^["']|["']$/g, '') // Remove quotes
-				.replace(/\n/g, ' ') // Replace newlines with spaces
-				.trim();
-
-			// Apply smart length limit: 10 Chinese chars OR 30 English/numbers
-			let chineseCount = 0;
-			let englishCount = 0;
-			let result = '';
-			
-			for (const char of generatedTitle) {
-				if (/[\u4e00-\u9fa5]/.test(char)) {
-					// Chinese character
-					if (chineseCount + englishCount >= 10 && chineseCount > 0) break;
-					chineseCount++;
-				} else if (/[a-zA-Z0-9]/.test(char)) {
-					// English letter or number
-					if (englishCount >= 30 || (chineseCount > 0 && chineseCount + englishCount >= 10)) break;
-					englishCount++;
-				}
-				result += char;
-			}
-
-			generatedTitle = result.trim() || generatedTitle.substring(0, 30);
-			Logger.debug('Generated session title:', generatedTitle);
-			
-			return generatedTitle || 'Untitled';
-		} catch (error) {
-			Logger.error('Failed to generate session name:', error);
+		if (!titleContent.trim()) {
 			return 'Untitled';
 		}
-	}
 
-	/**
-	 * Update context search button state (public method for external calls)
-	 */
-	public refreshContextSearchButton(): void {
-		this.updateContextSearchButton();
+		// Clean up the generated title
+		let generatedTitle = titleContent.trim();
+		
+		// Remove thinking callout sections if any leaked through
+		// Pattern works for both collapsed [!tip]- and expanded [!tip] formats
+		generatedTitle = generatedTitle.replace(/^>\s*\[!\w+\][^\n]*思考[^\n]*\n(>\s*[^\n]*\n)*\n*/gm, '');
+		generatedTitle = generatedTitle.replace(/^(>\s*[^\n]*\n)+\n*/m, '');
+		
+		// Remove quotes and clean up
+		generatedTitle = generatedTitle
+			.replace(/^["']|["']$/g, '') // Remove quotes
+			.replace(/\n/g, ' ') // Replace newlines with spaces
+			.trim();
+
+		Logger.debug('Generated session title:', generatedTitle);
+		
+		return generatedTitle || 'Untitled';
+	} catch (error) {
+		Logger.error('Failed to generate session name:', error);
+		return 'Untitled';
 	}
+}
 }

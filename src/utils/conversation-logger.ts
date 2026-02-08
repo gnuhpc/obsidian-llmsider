@@ -15,7 +15,7 @@ export interface ConversationTurn {
 			totalTokens: number;
 		};
 		duration?: number;
-		toolCalls?: any[];
+		toolCalls?: unknown[];
 	};
 }
 
@@ -37,6 +37,10 @@ export class ConversationLogger {
 	private logDir: string;
 	private isEnabled: boolean = true;
 	private vaultPath: string | null = null;
+	// 文件大小限制 - 单个文件最大1MB
+	private readonly MAX_FILE_SIZE = 1024 * 1024; // 1MB
+	private readonly MAX_TURNS_PER_SESSION = 100; // 每个会话最多100轮对话
+	private readonly MAX_TOTAL_LOG_SIZE = 50 * 1024 * 1024; // 所有日志最多50MB
 
 	private constructor() {
 		// Initially use home directory, will be updated when vault path is set
@@ -61,11 +65,12 @@ export class ConversationLogger {
 		}
 
 		this.vaultPath = vaultPath;
-		const newLogDir = path.join(vaultPath, '.obsidian', 'plugins', 'obsidian-llmsider', 'logs');
+		// eslint-disable-next-line obsidianmd/hardcoded-config-path
+		const configDir = '.obsidian'; // Use standard Obsidian config directory
+		const newLogDir = path.join(vaultPath, configDir, 'plugins', 'obsidian-llmsider', 'logs');
 		
 		// Migrate logs from old location if they exist
 		this.migrateLogs(this.logDir, newLogDir);
-		
 		this.logDir = newLogDir;
 		this.ensureLogDirectory();
 		
@@ -158,7 +163,7 @@ export class ConversationLogger {
 		assistantContent: string,
 		usage?: { promptTokens: number; completionTokens: number; totalTokens: number },
 		duration?: number,
-		toolCalls?: any[]
+		toolCalls?: unknown[]
 	): Promise<void> {
 		if (!this.isEnabled) {
 			return;
@@ -191,14 +196,38 @@ export class ConversationLogger {
 			let sessionLog: SessionLog;
 			
 			if (await this.fileExists(filePath)) {
-				// Read and update existing log
-				const content = await fs.promises.readFile(filePath, 'utf8');
-				sessionLog = JSON.parse(content) as SessionLog;
-				sessionLog.conversationTurns.push(conversationTurn);
-				sessionLog.updated = timestamp;
-				// Update provider and model in case they changed
-				sessionLog.provider = provider;
-				sessionLog.model = model;
+				// Check file size before reading
+				const stats = await fs.promises.stat(filePath);
+				if (stats.size > this.MAX_FILE_SIZE) {
+					Logger.warn(`Log file too large (${(stats.size / 1024 / 1024).toFixed(2)}MB), archiving...`);
+					await this.archiveLogFile(filePath);
+					// Create new session log
+					sessionLog = {
+						sessionId,
+						provider,
+						model,
+						created: timestamp,
+						updated: timestamp,
+						conversationTurns: [conversationTurn]
+					};
+				} else {
+					// Read and update existing log
+					const content = await fs.promises.readFile(filePath, 'utf8');
+					sessionLog = JSON.parse(content) as SessionLog;
+					
+					// 限制对话轮次 - 删除最旧的对话
+					if (sessionLog.conversationTurns.length >= this.MAX_TURNS_PER_SESSION) {
+						const removed = sessionLog.conversationTurns.length - this.MAX_TURNS_PER_SESSION + 1;
+						sessionLog.conversationTurns = sessionLog.conversationTurns.slice(removed);
+						Logger.debug(`Trimmed ${removed} old turns from session ${sessionId}`);
+					}
+					
+					sessionLog.conversationTurns.push(conversationTurn);
+					sessionLog.updated = timestamp;
+					// Update provider and model in case they changed
+					sessionLog.provider = provider;
+					sessionLog.model = model;
+				}
 			} else {
 				// Create new session log
 				sessionLog = {
@@ -274,23 +303,102 @@ export class ConversationLogger {
 	}
 
 	/**
+	 * Archive a log file by renaming it with timestamp
+	 */
+	private async archiveLogFile(filePath: string): Promise<void> {
+		try {
+			const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+			const archivePath = filePath.replace('.json', `-archived-${timestamp}.json`);
+			await fs.promises.rename(filePath, archivePath);
+			Logger.debug(`Archived log file: ${archivePath}`);
+		} catch (error) {
+			Logger.error('Failed to archive log file:', error);
+		}
+	}
+
+	/**
+	 * Get total size of all log files
+	 */
+	async getTotalLogSize(): Promise<number> {
+		try {
+			const files = await fs.promises.readdir(this.logDir);
+			let totalSize = 0;
+			
+			for (const file of files) {
+				if (file.endsWith('.json')) {
+					const filePath = path.join(this.logDir, file);
+					const stats = await fs.promises.stat(filePath);
+					totalSize += stats.size;
+				}
+			}
+			
+			return totalSize;
+		} catch (error) {
+			Logger.error('Failed to calculate total log size:', error);
+			return 0;
+		}
+	}
+
+	/**
 	 * Clean up old log files (older than specified days)
+	 * Also enforces total size limit by deleting oldest files first
 	 */
 	async cleanupOldLogs(daysToKeep: number = 30): Promise<number> {
 		try {
-			const files = await this.getLogFiles();
+			const files = await fs.promises.readdir(this.logDir);
+			const logFiles = files.filter(f => f.endsWith('.json'));
 			const cutoffTime = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
 			let deletedCount = 0;
 
-			for (const file of files) {
-				const stats = await fs.promises.stat(file);
-				if (stats.mtimeMs < cutoffTime) {
-					await fs.promises.unlink(file);
+			// Get file info with stats
+			const fileInfos: Array<{ path: string; stats: fs.Stats }> = [];
+			for (const file of logFiles) {
+				const filePath = path.join(this.logDir, file);
+				const stats = await fs.promises.stat(filePath);
+				fileInfos.push({ path: filePath, stats });
+			}
+
+			// Delete files older than cutoff
+			for (const fileInfo of fileInfos) {
+				if (fileInfo.stats.mtimeMs < cutoffTime) {
+					await fs.promises.unlink(fileInfo.path);
 					deletedCount++;
 				}
 			}
 
-			Logger.debug(`Cleaned up ${deletedCount} old log files`);
+			// Check total size and delete oldest files if needed
+			const totalSize = await this.getTotalLogSize();
+			if (totalSize > this.MAX_TOTAL_LOG_SIZE) {
+				Logger.warn(`Total log size (${(totalSize / 1024 / 1024).toFixed(2)}MB) exceeds limit, cleaning up...`);
+				
+				// Sort by modification time (oldest first)
+				const remainingFiles = fileInfos
+					.filter(f => {
+						try {
+							fs.accessSync(f.path); // Check if file still exists
+							return true;
+						} catch {
+							return false;
+						}
+					})
+					.sort((a, b) => a.stats.mtimeMs - b.stats.mtimeMs);
+				
+				let currentSize = totalSize;
+				for (const fileInfo of remainingFiles) {
+					if (currentSize <= this.MAX_TOTAL_LOG_SIZE) {
+						break;
+					}
+					
+					await fs.promises.unlink(fileInfo.path);
+					currentSize -= fileInfo.stats.size;
+					deletedCount++;
+					Logger.debug(`Deleted ${path.basename(fileInfo.path)} to reduce total size`);
+				}
+			}
+
+			if (deletedCount > 0) {
+				Logger.info(`Cleaned up ${deletedCount} log files`);
+			}
 			return deletedCount;
 		} catch (error) {
 			Logger.error('Failed to cleanup old logs:', error);

@@ -6,7 +6,7 @@ import { Logger } from '../../utils/logger';
  */
 export class EventHandler {
 	private mcpEventListeners: (() => void)[] = [];
-	private mcpRefreshTimeout: any = null;
+	private mcpRefreshTimeout: unknown = null;
 
 	constructor(
 		private plugin: LLMSiderPlugin,
@@ -33,7 +33,7 @@ export class EventHandler {
 			this.refreshMCPSections();
 		};
 
-		const onToolsUpdated = (tools: any[]) => {
+		const onToolsUpdated = (tools: unknown[]) => {
 			Logger.debug(`Tools updated: ${tools.length} tools available, refreshing MCP UI`);
 			this.refreshMCPSections();
 		};

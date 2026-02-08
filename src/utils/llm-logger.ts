@@ -17,7 +17,7 @@ export interface LLMRequestLog {
 		maxTokens: number;
 		temperature: number;
 		stream: boolean;
-		tools?: any[];
+		tools?: unknown[];
 		systemMessage?: string;
 	};
 }
@@ -35,8 +35,8 @@ export interface LLMResponseLog {
 			totalTokens: number;
 		};
 		finishReason?: string;
-		toolCalls?: any[];
-		metadata?: any;
+		toolCalls?: unknown[];
+		metadata?: unknown;
 	};
 	duration: number;
 	isStreaming: boolean;
@@ -55,8 +55,8 @@ export interface StreamingBuffer {
 	};
 	isComplete: boolean;
 	finishReason?: string;
-	toolCalls?: any[];
-	metadata?: any;
+	toolCalls?: unknown[];
+	metadata?: unknown;
 }
 
 export class LLMLogger {

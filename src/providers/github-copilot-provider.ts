@@ -2,6 +2,7 @@
  * GitHub Copilot Provider Implementation
  */
 
+import * as https from 'https';
 import { BaseLLMProvider } from './base-provider';
 import { Logger } from './../utils/logger';
 import { LLMResponse, StreamingResponse, ChatMessage } from '../types';
@@ -14,6 +15,7 @@ export interface GitHubCopilotProvider {
 	githubToken: string;
 	copilotToken: string;
 	tokenExpiry: number;
+	supportsVision?: boolean; // Manual override for vision support
 }
 
 export class GitHubCopilotProviderImpl extends BaseLLMProvider {
@@ -21,12 +23,14 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 	private copilotToken: string;
 	private tokenExpiry: number;
 	private copilotBaseUrl = 'https://api.githubcopilot.com';
+	private supportsVisionOverride?: boolean;
 
-	constructor(config: any) {
+	constructor(config: unknown) {
 		super(config);
 		this.githubToken = config.githubToken || '';
 		this.copilotToken = config.copilotToken || '';
 		this.tokenExpiry = config.tokenExpiry || 0;
+		this.supportsVisionOverride = config.supportsVision;
 		this.initializeModelConfig();
 	}
 
@@ -35,7 +39,7 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 		this.model_config = null;
 	}
 
-	protected getAISDKModel(): any {
+	protected getAISDKModel(): unknown {
 		// GitHub Copilot doesn't use AI SDK
 		throw new Error('GitHub Copilot does not use AI SDK');
 	}
@@ -83,7 +87,7 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 			});
 		}
 
-		const requestBody: any = {
+		const requestBody: unknown = {
 			messages: formattedMessages,
 			model: this.model,
 			max_tokens: this.maxTokens,
@@ -145,7 +149,7 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 			});
 		}
 
-		const requestBody: any = {
+		const requestBody: Record<string, unknown> = {
 			messages: formattedMessages,
 			model: this.model,
 			max_tokens: this.maxTokens,
@@ -164,40 +168,45 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 			}));
 		}
 
-		const response = await fetch(`${this.copilotBaseUrl}/chat/completions`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${this.copilotToken}`,
-				'Editor-Version': 'vscode/1.95.0',
-				'Editor-Plugin-Version': 'copilot-chat/0.22.4',
-				'User-Agent': 'GitHubCopilotChat/0.22.4'
-			},
-			body: JSON.stringify(requestBody),
-			signal: abortSignal
-		});
+		const requestBodyStr = JSON.stringify(requestBody);
 
-		if (!response.ok) {
-			throw new Error(`GitHub Copilot API error: ${response.statusText}`);
-		}
+		return new Promise((resolve, reject) => {
+			const options: https.RequestOptions = {
+				hostname: 'api.githubcopilot.com',
+				path: '/chat/completions',
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Length': Buffer.byteLength(requestBodyStr),
+					'Authorization': `Bearer ${this.copilotToken}`,
+					'Editor-Version': 'vscode/1.95.0',
+					'Editor-Plugin-Version': 'copilot-chat/0.22.4',
+					'User-Agent': 'GitHubCopilotChat/0.22.4'
+				}
+			};
 
-		const reader = response.body!.getReader();
-		const decoder = new TextDecoder();
-		
-		// Track tool calls accumulation across chunks
-		const toolCallsAccumulator: Map<number, { id?: string; type?: string; function?: { name?: string; arguments?: string } }> = new Map();
+			const req = https.request(options, (res) => {
+				if (res.statusCode !== 200) {
+					let errorData = '';
+					res.on('data', chunk => errorData += chunk);
+					res.on('end', () => {
+						reject(new Error(`GitHub Copilot API error: ${res.statusCode} - ${errorData}`));
+					});
+					return;
+				}
 
-		try {
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
+				let buffer = '';
+				const toolCallsAccumulator: Map<number, { id?: string; type?: string; function?: { name?: string; arguments?: string } }> = new Map();
 
-				const chunk = decoder.decode(value, { stream: true });
-				const lines = chunk.split('\n');
+				res.on('data', (chunk) => {
+					buffer += chunk.toString();
+					const lines = buffer.split('\n');
+					buffer = lines.pop() || '';
 
-				for (const line of lines) {
-					if (line.startsWith('data: ')) {
-						const data = line.slice(6);
+					for (const line of lines) {
+						if (!line.startsWith('data: ')) continue;
+
+						const data = line.slice(6).trim();
 						if (data === '[DONE]') {
 							// Send accumulated tool calls if any
 							if (toolCallsAccumulator.size > 0) {
@@ -211,7 +220,7 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 											arguments: tc.function!.arguments!
 										}
 									}));
-								
+
 								if (toolCalls.length > 0) {
 									onChunk({
 										delta: '',
@@ -220,7 +229,7 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 									});
 								}
 							}
-							
+
 							onChunk({
 								delta: '',
 								isComplete: true
@@ -231,7 +240,7 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 						try {
 							const parsed = JSON.parse(data);
 							const choice = parsed.choices?.[0];
-							
+
 							// Handle text delta
 							const delta = choice?.delta?.content || '';
 							if (delta) {
@@ -240,39 +249,32 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 									isComplete: false
 								});
 							}
-							
+
 							// Handle tool calls delta
 							if (choice?.delta?.tool_calls) {
 								for (const toolCallDelta of choice.delta.tool_calls) {
 									const index = toolCallDelta.index ?? 0;
-									
+
 									if (!toolCallsAccumulator.has(index)) {
 										toolCallsAccumulator.set(index, {});
 									}
-									
-									const accumulated = toolCallsAccumulator.get(index)!;
-									
-									// Accumulate tool call data
-									if (toolCallDelta.id) {
-										accumulated.id = toolCallDelta.id;
-									}
-									if (toolCallDelta.type) {
-										accumulated.type = toolCallDelta.type;
-									}
+
+									const tc = toolCallsAccumulator.get(index)!;
+									if (toolCallDelta.id) tc.id = toolCallDelta.id;
+									if (toolCallDelta.type) tc.type = toolCallDelta.type;
 									if (toolCallDelta.function) {
-										if (!accumulated.function) {
-											accumulated.function = {};
-										}
+										if (!tc.function) tc.function = {};
 										if (toolCallDelta.function.name) {
-											accumulated.function.name = toolCallDelta.function.name;
+											tc.function.name = toolCallDelta.function.name;
 										}
 										if (toolCallDelta.function.arguments) {
-											accumulated.function.arguments = (accumulated.function.arguments || '') + toolCallDelta.function.arguments;
+											tc.function.arguments = (tc.function.arguments || '') + toolCallDelta.function.arguments;
 										}
 									}
 								}
 							}
 
+							// Handle usage
 							if (parsed.usage) {
 								onChunk({
 									delta: '',
@@ -285,23 +287,42 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 								});
 							}
 						} catch (e) {
-							// Skip invalid JSON
+							// Ignore parse errors for incomplete chunks
 						}
 					}
-				}
+				});
+
+				res.on('end', () => {
+					resolve();
+				});
+
+				res.on('error', (error) => {
+					reject(error);
+				});
+			});
+
+			req.on('error', (error) => {
+				reject(error);
+			});
+
+			if (abortSignal) {
+				abortSignal.addEventListener('abort', () => {
+					req.destroy();
+				});
 			}
-		} finally {
-			reader.releaseLock();
-		}
+
+			req.write(requestBodyStr);
+			req.end();
+		});
 	}
 
-	private handleNonStreamResponse(data: any): LLMResponse {
+	private handleNonStreamResponse(data: unknown): LLMResponse {
 		const choice = data.choices[0];
 		
 		// Parse tool calls if present
-		let toolCalls: any[] | undefined;
+		let toolCalls: unknown[] | undefined;
 		if (choice.message.tool_calls) {
-			toolCalls = choice.message.tool_calls.map((tc: any) => ({
+			toolCalls = choice.message.tool_calls.map((tc: unknown) => ({
 				id: tc.id,
 				type: 'function',
 				function: {
@@ -343,7 +364,27 @@ export class GitHubCopilotProviderImpl extends BaseLLMProvider {
 	}
 
 	supportsVision(): boolean {
-		// GitHub Copilot supports vision through some models
-		return this.model.includes('gpt-4') || this.model.includes('vision');
+		// Only use user's explicit configuration
+		if (this.supportsVisionOverride !== undefined) {
+			Logger.debug(`[GitHub Copilot] Using user vision configuration for ${this.model}:`, this.supportsVisionOverride);
+			return this.supportsVisionOverride;
+		}
+
+		// Default to false if not configured
+		Logger.debug(`[GitHub Copilot] No vision configuration set for ${this.model}, defaulting to false`);
+		return false;
+	}
+
+	updateConfig(config: Partial<GitHubCopilotProvider>): void {
+		super.updateConfig(config as any);
+		if (config.githubToken !== undefined) {
+			this.githubToken = config.githubToken;
+		}
+		if (config.supportsVision !== undefined) {
+			this.supportsVisionOverride = config.supportsVision;
+		}
+
+		// Reinitialize the client with new config
+		this.initializeModelConfig();
 	}
 }

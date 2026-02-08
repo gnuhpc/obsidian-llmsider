@@ -48,7 +48,10 @@ Your text here|  ← Press Cmd+/
    Enable Quick Chat: ✓
    Trigger Key: Cmd+/
    Model: GPT-4
+   Show on Selection: ✓ (optional)
    ```
+
+   > 💡 **Tip**: When "Show on Selection" is enabled, a floating button will automatically appear when you select any text. Click it to start Quick Chat directly with the selected content.
 
 3. **Configure Hotkey** (optional)
    - Settings → Hotkeys
@@ -548,4 +551,4 @@ Temperature: 0.5-0.7
 
 ---
 
-**Questions?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [Discord](https://discord.gg/llmsider)
+**Questions?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)

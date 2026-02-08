@@ -9,7 +9,7 @@ export class MCPToolDetailsModal {
 	/**
 	 * Show the MCP tool details modal
 	 */
-	show(tool: any): void {
+	show(tool: unknown): void {
 		// Create modal overlay (same as built-in tools)
 		const modal = document.createElement('div');
 		modal.addClass('llmsider-modal-overlay');
@@ -35,7 +35,7 @@ export class MCPToolDetailsModal {
 	/**
 	 * Render the modal header with title and close button
 	 */
-	private renderModalHeader(modalContent: HTMLElement, tool: any, modal: HTMLElement): void {
+	private renderModalHeader(modalContent: HTMLElement, tool: unknown, modal: HTMLElement): void {
 		const modalHeader = modalContent.createDiv({ cls: 'llmsider-modal-header' });
 		
 		const modalTitle = modalHeader.createEl('h2', {
@@ -54,7 +54,7 @@ export class MCPToolDetailsModal {
 	/**
 	 * Render the modal body with tool details
 	 */
-	private renderModalBody(modalContent: HTMLElement, tool: any): void {
+	private renderModalBody(modalContent: HTMLElement, tool: unknown): void {
 		const modalBody = modalContent.createDiv({ cls: 'llmsider-modal-body' });
 		
 		// Description
@@ -67,7 +67,8 @@ export class MCPToolDetailsModal {
 		
 		// Server info section
 		const serverInfo = modalBody.createDiv({ cls: 'llmsider-modal-server-info' });
-		serverInfo.createEl('strong', { text: 'Server: ' });
+		const i18n = this.plugin.getI18nManager();
+		serverInfo.createEl('strong', { text: i18n?.t('ui.serverLabel') || 'Server: ' });
 		serverInfo.appendText(tool.server);
 		
 		// Show schema if available (same as built-in tools)
@@ -79,7 +80,7 @@ export class MCPToolDetailsModal {
 	/**
 	 * Render the input schema section
 	 */
-	private renderInputSchema(modalBody: HTMLElement, inputSchema: any): void {
+	private renderInputSchema(modalBody: HTMLElement, inputSchema: unknown): void {
 		const schemaSection = modalBody.createDiv({ cls: 'llmsider-modal-schema-section' });
 		
 		const schemaToggle = schemaSection.createEl('details', { cls: 'llmsider-schema-toggle' });

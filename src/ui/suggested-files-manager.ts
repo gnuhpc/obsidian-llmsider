@@ -31,7 +31,7 @@ export class SuggestedFilesManager {
 	 * Check if suggested files feature is enabled
 	 */
 	isEnabled(): boolean {
-		return this.plugin.settings.vectorSettings.suggestRelatedFiles;
+		return false;
 	}
 
 	/**

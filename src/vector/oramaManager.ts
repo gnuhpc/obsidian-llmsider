@@ -55,8 +55,18 @@ export class OramaManager implements IVectorDatabase {
   private embeddingProgressCallback: ((current: number, total: number) => void) | null = null;
   private connectionUpdateCallback: ((connection: LLMConnection) => Promise<void>) | null = null;
   private toolManager: UnifiedToolManager;
-  private embeddingDimension: number = 1536; // Default dimension
+  private embeddingDimension: number = 0; // Will be detected during initialization
   private i18n: I18nManager | null = null;
+  
+  // 内存管理配置
+  private readonly MAX_DOCUMENTS = 50000; // 最多存储50000个文档
+  private readonly BATCH_SIZE_EMBEDDING = 5; // 每次最多处理5个embedding（减少内存峰值）
+  private readonly WARNING_THRESHOLD = 40000; // 超过40000个文档时警告
+  private readonly MAX_CONTENT_LENGTH = 2000; // 最多存储2000字符的内容用于搜索
+  private readonly CLEANUP_INTERVAL_HOURS = 24; // 每24小时自动清理一次
+  private lastCleanupTime: number = 0;
+  private batchMode: boolean = false;
+  private pendingPersist: boolean = false;
 
   constructor(
     storagePath: string,
@@ -109,8 +119,7 @@ export class OramaManager implements IVectorDatabase {
   private async detectEmbeddingDimension(): Promise<number> {
     // For remote provider
     if (!this.connection || !this.model) {
-      Logger.warn('Cannot detect dimension without connection/model, using default 1536');
-      return 1536;
+      throw new Error('Cannot detect embedding dimension: no connection or model configured. Please configure an embedding model in settings.');
     }
 
     // GitHub Copilot uses fixed 1024 dimensions for embeddings
@@ -121,20 +130,29 @@ export class OramaManager implements IVectorDatabase {
 
     // First, check if the model has a configured embedding dimension
     if (this.model.embeddingDimension && this.model.embeddingDimension > 0) {
-      Logger.debug(`Using configured embedding dimension: ${this.model.embeddingDimension}`);
+      Logger.info(`[Dimension] Using model config: ${this.model.embeddingDimension}D`);
+      Logger.info(`[Dimension] Model: ${this.model.modelName}`);
+      Logger.info(`[Dimension] Connection: ${this.connection?.name} (${this.connection?.type})`);
       return this.model.embeddingDimension;
     }
 
     // If not configured, try to detect by generating a test embedding
     try {
-      Logger.debug('No dimension configured, detecting by generating test embedding...');
+      Logger.warn('[Dimension] No embedding dimension configured in model settings!');
+      Logger.warn('[Dimension] Attempting auto-detection by generating test embedding...');
+      Logger.warn('[Dimension] Recommendation: Configure embeddingDimension in model settings');
+      
       const testEmbeddings = await this.generateEmbeddings(['test']);
       const dimension = testEmbeddings[0].length;
-      Logger.debug(`Detected embedding dimension: ${dimension}`);
+      
+      Logger.info(`[Dimension] Auto-detected: ${dimension}D`);
+      Logger.info(`[Dimension] Model: ${this.model.modelName}`);
+      Logger.warn(`[Dimension] Please update model settings to set embeddingDimension=${dimension}`);
+      
       return dimension;
     } catch (error) {
-      Logger.warn('Failed to detect dimension, using default 1536:', error);
-      return 1536;
+      Logger.error('[Dimension] Failed to detect embedding dimension:', error);
+      throw new Error(`Cannot detect embedding dimension: ${error}. Please check your embedding model configuration.`);
     }
   }
 
@@ -164,14 +182,38 @@ export class OramaManager implements IVectorDatabase {
           const data = await fs.readFile(persistencePath, 'utf-8');
           
           // Parse JSON to verify it's valid and extract metadata
-          const parsedData = JSON.parse(data);
+          let parsedData;
+          try {
+            parsedData = JSON.parse(data);
+          } catch (parseError) {
+            Logger.error('Database file exists but JSON is corrupted!');
+            Logger.error('Parse error:', parseError);
+            Logger.error('File path:', persistencePath);
+            // Treat as corrupted file, will be backed up and recreated
+            throw new Error('JSON_CORRUPTED');
+          }
+          
           const docCount = parsedData?.docs?.count || 0;
           
           Logger.debug(`Database file contains ${docCount} documents`);
           
           if (docCount === 0) {
-            Logger.warn(`WARNING: Database file exists but contains no documents!`);
-            Logger.warn(`This might indicate a previous failed rebuild.`);
+            // Check file age to determine if this is a fresh empty DB or potentially failed rebuild
+            try {
+              const stats = await fs.stat(persistencePath);
+              const fileAgeMinutes = (Date.now() - stats.mtimeMs) / (1000 * 60);
+              
+              // Only warn if file is older than 5 minutes (not a fresh creation)
+              if (fileAgeMinutes > 5) {
+                Logger.warn(`WARNING: Database file exists but contains no documents!`);
+                Logger.warn(`File age: ${Math.round(fileAgeMinutes)} minutes - this might indicate a previous failed rebuild.`);
+              } else {
+                Logger.debug(`Empty database file is fresh (${Math.round(fileAgeMinutes * 60)}s old), no warning needed`);
+              }
+            } catch (statError) {
+              // If we can't check file age, just show debug message
+              Logger.debug(`Database file is empty (0 documents)`);
+            }
           }
           
           // IMPORTANT: Always use configured dimension from model, not from file
@@ -181,7 +223,7 @@ export class OramaManager implements IVectorDatabase {
           
           // Check if dimension changed from file
           const embeddingProperty = parsedData?.index?.searchablePropertiesWithTypes?.embedding;
-          let fileDimension = 1536; // default
+          let fileDimension = this.embeddingDimension; // Use current detected dimension as default
           if (embeddingProperty && typeof embeddingProperty === 'string') {
             const match = embeddingProperty.match(/vector\[(\d+)\]/);
             if (match) {
@@ -190,24 +232,30 @@ export class OramaManager implements IVectorDatabase {
           }
           
           if (fileDimension !== this.embeddingDimension) {
-            Logger.warn(`Dimension mismatch: file has ${fileDimension}D, but model requires ${this.embeddingDimension}D`);
-            Logger.warn(`Database needs to be rebuilt with new embedding dimension`);
+            Logger.warn(`[Dimension] Mismatch detected during initialization:`);
+            Logger.warn(`[Dimension] - Database file: ${fileDimension}D`);
+            Logger.warn(`[Dimension] - Current model: ${this.embeddingDimension}D`);
+            Logger.warn(`[Dimension] - This usually happens when switching embedding models`);
+            Logger.warn(`[Dimension] Database needs to be rebuilt with new embedding dimension`);
             // Don't load the old database, create a new one instead
             throw new Error('DIMENSION_MISMATCH');
           }
           
           // Restore database from persisted data
-          this.db = await restore('json', data) as Orama<OramaSchema>;
+          this.db = await restore('json', data);
           Logger.debug(`Successfully loaded existing database with ${docCount} documents (${this.embeddingDimension}D embeddings)`);
           
         } catch (error) {
-          // Check if it's a dimension mismatch or corruption
+          // Check error type for better handling
           const isDimensionMismatch = error instanceof Error && error.message === 'DIMENSION_MISMATCH';
+          const isJsonCorrupted = error instanceof Error && error.message === 'JSON_CORRUPTED';
           
           if (isDimensionMismatch) {
-            Logger.warn('Embedding dimension changed, creating new database...');
+            Logger.warn('Embedding dimension changed, will create new database...');
+          } else if (isJsonCorrupted) {
+            Logger.error('Database file is corrupted (invalid JSON)!');
           } else {
-            Logger.error('Database file exists but is corrupted!');
+            Logger.error('Database file exists but could not be loaded!');
             Logger.error('Error details:', error);
             Logger.error('File path:', persistencePath);
           }
@@ -216,8 +264,10 @@ export class OramaManager implements IVectorDatabase {
           try {
             if (isDimensionMismatch) {
               Logger.debug('Backing up database with old dimension...');
+            } else if (isJsonCorrupted) {
+              Logger.debug('Attempting auto-recovery from corrupted JSON...');
             } else {
-              Logger.debug('Attempting auto-recovery...');
+              Logger.debug('Attempting auto-recovery from unknown error...');
             }
 
             // Backup the old file
@@ -227,7 +277,7 @@ export class OramaManager implements IVectorDatabase {
             Logger.debug(`Backed up old file to: ${backupPath}`);
 
             // Create new database with current dimension
-            Logger.debug('Creating new database...');
+            Logger.debug('Creating new empty database...');
             // Dimension already set above, don't re-detect
             if (!this.embeddingDimension || this.embeddingDimension === 0) {
               this.embeddingDimension = await this.detectEmbeddingDimension();
@@ -251,18 +301,21 @@ export class OramaManager implements IVectorDatabase {
               }
             });
 
+            // Show appropriate user message based on error type
+            let message: string;
             if (isDimensionMismatch) {
               Logger.debug(`Successfully created new database with ${this.embeddingDimension}D embeddings`);
-              const message = this.i18n?.t('vectorDatabase.dimensionChanged') || 'Vector database dimension changed. Please rebuild the index with the new embedding model.';
-              new Notice(message, 8000);
+              message = this.i18n?.t('vectorDatabase.dimensionChanged') || 
+                'Vector database dimension changed. Please rebuild the index with the new embedding model.';
             } else {
-              Logger.debug(`Successfully recovered from database corruption with ${this.embeddingDimension}D embeddings`);
-              const message = this.i18n?.t('vectorDatabase.databaseCorrupted') || 'Vector database was corrupted and has been automatically reset. Please rebuild the index.';
-              new Notice(message, 8000);
+              Logger.debug(`Successfully recovered from database error with ${this.embeddingDimension}D embeddings`);
+              message = this.i18n?.t('vectorDatabase.databaseCorrupted') || 
+                'Vector database was corrupted and has been automatically reset. Please rebuild the index.';
             }
+            new Notice(message, 8000);
 
           } catch (recoveryError) {
-            Logger.error('Failed to recover:', recoveryError);
+            Logger.error('Failed to recover from database error:', recoveryError);
             throw new Error(`Database recovery failed: ${error}`);
           }
         }
@@ -302,28 +355,95 @@ export class OramaManager implements IVectorDatabase {
   }
 
   /**
-   * Persist the database to disk
+   * Persist the database to disk using atomic write operation
+   * 
+   * This method uses a "write-temp-then-rename" pattern to ensure data integrity:
+   * 1. Write serialized data to a temporary file (.tmp)
+   * 2. If write succeeds, rename temp file to actual file (atomic operation)
+   * 3. If anything fails, the original file remains intact
+   * 
+   * This prevents corruption when:
+   * - Plugin is reloaded during write
+   * - Obsidian crashes during write
+   * - System interrupts occur during write
+   * 
+   * In batch mode (during rebuild), this method only marks that persistence is needed
+   * and returns immediately to avoid excessive I/O operations.
    */
   private async persist(): Promise<void> {
     if (!this.db) {
       throw new Error('Orama not initialized');
     }
 
+    // In batch mode, just mark that we need to persist later
+    if (this.batchMode) {
+      this.pendingPersist = true;
+      Logger.debug('Batch mode active - deferring persistence');
+      return;
+    }
+
     try {
       // Persist database to JSON format
       const serializedData = await persist(this.db, 'json');
       const persistencePath = this.getPersistencePath();
+      const tempPath = `${persistencePath}.tmp`;
       
       // Ensure directory exists
       await fs.mkdir(this.storagePath, { recursive: true });
       
-      // Write to file
-      await fs.writeFile(persistencePath, serializedData as string, 'utf-8');
+      // Step 1: Write to temporary file
+      // If this fails, original file remains intact
+      await fs.writeFile(tempPath, serializedData as string, 'utf-8');
+      Logger.debug(`Database serialized to temp file: "${tempPath}"`);
       
-      Logger.debug(`Database persisted to "${persistencePath}"`);
+      // Step 2: Atomic rename - this is the critical operation
+      // On most filesystems, rename is atomic, meaning:
+      // - Either it completes fully, or not at all
+      // - No partial/corrupted state is possible
+      await fs.rename(tempPath, persistencePath);
+      
+      Logger.debug(`Database persisted atomically to "${persistencePath}"`);
     } catch (error) {
       Logger.error('Failed to persist database:', error);
+      
+      // Clean up temp file if it exists
+      try {
+        const tempPath = `${this.getPersistencePath()}.tmp`;
+        await fs.unlink(tempPath);
+        Logger.debug('Cleaned up temporary file after failed write');
+      } catch (cleanupError) {
+        // Ignore cleanup errors - temp file might not exist
+      }
+      
       throw error;
+    }
+  }
+
+  /**
+   * Enable batch mode to reduce persistence frequency during bulk operations
+   * When enabled, persist() calls will only mark pendingPersist flag
+   * Call flushPendingPersist() to actually persist when batch is complete
+   */
+  setBatchMode(enabled: boolean): void {
+    this.batchMode = enabled;
+    Logger.debug(`Batch mode ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Force persistence if there are pending changes from batch operations
+   * This should be called after completing a batch of operations
+   */
+  async flushPendingPersist(): Promise<void> {
+    if (this.pendingPersist) {
+      Logger.debug('Flushing pending persistence...');
+      this.pendingPersist = false;
+      const wasBatchMode = this.batchMode;
+      this.batchMode = false; // Temporarily disable batch mode to allow persist
+      try {
+        await this.persist();
+      } finally {
+        this.batchMode = wasBatchMode; // Restore batch mode state
+      }
     }
   }
 
@@ -435,8 +555,8 @@ export class OramaManager implements IVectorDatabase {
                 input: batch,
                 // Use text-embedding-3-small for embeddings (not chat models)
                 model: 'text-embedding-3-small',
-                // GitHub Copilot embeddings API uses 1024 dimensions
-                dimensions: 1024
+                // Use configured dimension (GitHub Copilot uses 1024 by default)
+                dimensions: this.embeddingDimension
               })
             });
 
@@ -450,7 +570,7 @@ export class OramaManager implements IVectorDatabase {
             }
 
             // Extract embeddings from response
-            const embeddings = data.data.map((item: any) => item.embedding);
+            const embeddings = data.data.map((item: unknown) => item.embedding);
             
             // Validate embeddings
             if (embeddings.length === 0 || !embeddings[0] || !Array.isArray(embeddings[0])) {
@@ -557,8 +677,8 @@ export class OramaManager implements IVectorDatabase {
       // Determine base URL, API key, and batch size based on connection type
       let baseURL: string | undefined;
       let apiKey: string;
-      // Use smaller batch size for all providers to show better progress feedback
-      let maxBatchSize = 10; // Reduced from 100 for better user experience
+      // Use smaller batch size for all providers to reduce memory peaks and show better progress
+      let maxBatchSize = this.BATCH_SIZE_EMBEDDING; // Reduced for memory optimization
       
       if (this.connection.type === 'qwen') {
         // Qwen has a default endpoint and strict batch size limit
@@ -583,11 +703,21 @@ export class OramaManager implements IVectorDatabase {
       const embeddingModel = provider.embedding(this.model.modelName);
       
       // Prepare embedding options with dimensions if configured
-      // Note: dimensions parameter is supported by some models like text-embedding-3-small/large
-      const embeddingOptions: any = {};
+      // Note: dimensions parameter must be passed through providerOptions for AI SDK
+      const embeddingOptions: {
+        providerOptions?: {
+          openai?: {
+            dimensions?: number;
+          };
+        };
+      } = {};
+      
       if (this.model.embeddingDimension && this.model.embeddingDimension > 0) {
-        embeddingOptions.dimensions = this.model.embeddingDimension;
-        Logger.debug(`Requesting embeddings with dimension: ${this.model.embeddingDimension}`);
+        embeddingOptions.providerOptions = {
+          openai: {
+            dimensions: this.model.embeddingDimension
+          }
+        };
       }
       
       // Process in batches to respect API limits
@@ -664,6 +794,28 @@ export class OramaManager implements IVectorDatabase {
           Logger.debug(`Averaged ${relatedEmbeddings.length} embeddings for text ${i}`);
         }
       }
+      
+      // CRITICAL: Validate that generated embeddings match expected dimension
+      if (finalEmbeddings.length > 0) {
+        const actualDimension = finalEmbeddings[0].length;
+        const expectedDimension = this.embeddingDimension;
+        
+        if (actualDimension !== expectedDimension) {
+          const errorMsg = `[Dimension] MISMATCH during generation!\n` +
+            `Expected: ${expectedDimension}D (from model config)\n` +
+            `Actual: ${actualDimension}D (from API response)\n` +
+            `Model: ${this.model?.modelName}\n` +
+            `Connection: ${this.connection?.name}\n\n` +
+            `This usually means:\n` +
+            `1. The model doesn't support the configured dimension\n` +
+            `2. The API ignored the 'dimensions' parameter\n` +
+            `3. Wrong model is selected\n\n` +
+            `Please check your embedding model configuration in Settings.`;
+          
+          Logger.error(errorMsg);
+          throw new Error(`[Dimension] Mismatch: expected ${expectedDimension}D but got ${actualDimension}D`);
+        }
+      }
 
       return finalEmbeddings;
     } catch (error) {
@@ -674,7 +826,31 @@ export class OramaManager implements IVectorDatabase {
   }
 
   /**
+   * Truncate content to save memory
+   */
+  private truncateContent(content: string): string {
+    if (!content) return '';
+    if (content.length <= this.MAX_CONTENT_LENGTH) return content;
+    return content.substring(0, this.MAX_CONTENT_LENGTH);
+  }
+
+  /**
+   * Check if auto cleanup is needed and perform it
+   */
+  private async autoCleanupIfNeeded(): Promise<void> {
+    const now = Date.now();
+    const intervalMs = this.CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000;
+    
+    if (now - this.lastCleanupTime > intervalMs) {
+      Logger.debug('[OramaManager] Performing scheduled auto cleanup...');
+      await this.cleanupOldDocuments();
+      this.lastCleanupTime = now;
+    }
+  }
+
+  /**
    * Add chunks to the database
+   * Supports optional precomputed embeddings to avoid redundant generation
    */
   async add(chunks: ChunkMetadata[]): Promise<void> {
     if (!this.db) {
@@ -685,23 +861,71 @@ export class OramaManager implements IVectorDatabase {
       return;
     }
 
+    // 检查文档数量限制
+    const currentCount = await this.count();
+    if (currentCount >= this.MAX_DOCUMENTS) {
+      Logger.warn(`[OramaManager] Document limit reached (${this.MAX_DOCUMENTS}), skipping add`);
+      return;
+    }
+    
+    // 限制本次添加的数量
+    const availableSpace = this.MAX_DOCUMENTS - currentCount;
+    if (chunks.length > availableSpace) {
+      Logger.warn(`[OramaManager] Limiting add from ${chunks.length} to ${availableSpace} chunks`);
+      chunks = chunks.slice(0, availableSpace);
+    }
+    
+    // 警告阈值检查
+    if (currentCount + chunks.length >= this.WARNING_THRESHOLD) {
+      Logger.warn(`[OramaManager] Approaching document limit: ${currentCount + chunks.length}/${this.MAX_DOCUMENTS}`);
+    }
+
     try {
-      // Generate embeddings for all chunks
-      const texts = chunks.map(c => c.content);
-      const embeddings = await this.generateEmbeddings(texts, this.embeddingProgressCallback || undefined);
+      // Prepare embeddings array
+      const embeddings: number[][] = new Array(chunks.length);
+      const indicesToGenerate: number[] = [];
+      const textsToGenerate: string[] = [];
+
+      // Check which chunks already have embeddings
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        if (chunk.embedding && Array.isArray(chunk.embedding) && chunk.embedding.length > 0) {
+          embeddings[i] = chunk.embedding;
+        } else {
+          indicesToGenerate.push(i);
+          textsToGenerate.push(chunk.content);
+        }
+      }
+      
+      if (indicesToGenerate.length > 0) {
+        Logger.debug(`Generating ${indicesToGenerate.length} new embeddings (reusing ${chunks.length - indicesToGenerate.length})`);
+        const newEmbeddings = await this.generateEmbeddings(textsToGenerate, this.embeddingProgressCallback || undefined);
+        
+        // Fill in the generated embeddings
+        for (let i = 0; i < indicesToGenerate.length; i++) {
+          const originalIndex = indicesToGenerate[i];
+          embeddings[originalIndex] = newEmbeddings[i];
+        }
+      } else {
+        Logger.debug(`Using ${chunks.length} precomputed embeddings (performance optimization)`);
+      }
 
       // Insert documents into database
+      // Truncate content to save memory but keep full hash for comparison
       const documents = chunks.map((chunk, i) => ({
         id: chunk.id,
         filePath: chunk.filePath,
         chunkIndex: chunk.chunkIndex,
         contentHash: chunk.contentHash,
-        content: chunk.content,
+        content: this.truncateContent(chunk.content), // Truncate to save memory
         timestamp: chunk.timestamp,
         embedding: embeddings[i]
       }));
 
       await insertMultiple(this.db, documents);
+      
+      // Auto cleanup check
+      await this.autoCleanupIfNeeded();
       
       // Persist after batch insert
       await this.persist();
@@ -741,13 +965,13 @@ export class OramaManager implements IVectorDatabase {
           // Document might not exist, continue
         }
 
-        // Insert updated document
+        // Insert updated document (with truncated content)
         await insert(this.db, {
           id: chunk.id,
           filePath: chunk.filePath,
           chunkIndex: chunk.chunkIndex,
           contentHash: chunk.contentHash,
-          content: chunk.content,
+          content: this.truncateContent(chunk.content),
           timestamp: chunk.timestamp,
           embedding: embeddings[i]
         });
@@ -823,7 +1047,7 @@ export class OramaManager implements IVectorDatabase {
       
       // Check if query embedding dimension matches database dimension
       if (queryVector.length !== this.embeddingDimension) {
-        const errorMsg = `Embedding dimension mismatch: query has ${queryVector.length}D but database expects ${this.embeddingDimension}D. Please rebuild the vector index with the current embedding model.`;
+        const errorMsg = `[Dimension] Mismatch: query has ${queryVector.length}D but database expects ${this.embeddingDimension}D. Please rebuild the vector index with the current embedding model.`;
         Logger.error(`${errorMsg}`);
         
         // Show user-friendly notice
@@ -858,7 +1082,7 @@ export class OramaManager implements IVectorDatabase {
       });
 
       // Convert to DocItem format
-      const docItems: DocItem[] = results.hits.map((hit: any) => {
+      const docItems: DocItem[] = results.hits.map((hit: unknown) => {
         const doc = hit.document;
         return {
           id: doc.id,
@@ -881,6 +1105,91 @@ export class OramaManager implements IVectorDatabase {
       return docItems;
     } catch (error) {
       Logger.error('Failed to perform hybrid search:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Search by vector directly with optional text query
+   * Uses hybrid search when term is provided, otherwise falls back to vector-only search
+   */
+  async searchByVector(queryVector: number[], topK: number = 5, term?: string): Promise<DocItem[]> {
+    if (!this.db) {
+      throw new Error('Orama not initialized');
+    }
+
+    try {
+      // Validate query vector
+      if (!queryVector || !Array.isArray(queryVector) || queryVector.length === 0) {
+        Logger.error('Invalid query vector:', { 
+          hasVector: !!queryVector,
+          isArray: Array.isArray(queryVector),
+          length: queryVector?.length 
+        });
+        throw new Error('Invalid query vector format');
+      }
+      
+      const searchMode = term ? 'hybrid' : 'vector';
+      Logger.debug(`Performing ${searchMode} search with ${queryVector.length}D embedding${term ? ` and term: "${term}"` : ''}`);
+      
+      // Check if query embedding dimension matches database dimension
+      if (queryVector.length !== this.embeddingDimension) {
+        const errorMsg = `[Dimension] Mismatch: query has ${queryVector.length}D but database expects ${this.embeddingDimension}D`;
+        Logger.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // Perform hybrid or vector-only search
+      const searchConfig: any = {
+        mode: searchMode,
+        vector: {
+          value: queryVector,
+          property: 'embedding'
+        },
+        limit: topK,
+        includeVectors: false,
+        similarity: 0.3 // Minimum similarity score (0-1)
+      };
+
+      // Add hybrid search parameters if term is provided
+      if (term) {
+        searchConfig.term = term;
+        searchConfig.boost = {
+          content: 2,
+          filePath: 1
+        };
+        searchConfig.hybridWeights = {
+          text: 0.3,
+          vector: 0.7
+        };
+      }
+
+      const results = await search(this.db, searchConfig);
+
+      // Convert to DocItem format
+      const docItems: DocItem[] = results.hits.map((hit: any) => {
+        const doc = hit.document;
+        return {
+          id: doc.id,
+          filePath: doc.filePath,
+          chunkIndex: doc.chunkIndex,
+          content: doc.content,
+          score: hit.score,
+          metadata: {
+            contentHash: doc.contentHash,
+            timestamp: doc.timestamp
+          }
+        };
+      });
+
+      Logger.debug(`${searchMode === 'hybrid' ? 'Hybrid' : 'Vector'} search returned ${docItems.length} results (total hits: ${results.count})`);
+      if (docItems.length > 0) {
+        Logger.debug(`Top result score: ${docItems[0].score.toFixed(4)}`);
+      }
+      
+      return docItems;
+    } catch (error) {
+      Logger.error(`Failed to perform ${term ? 'hybrid' : 'vector'} search:`, error);
       throw error;
     }
   }
@@ -974,19 +1283,39 @@ export class OramaManager implements IVectorDatabase {
       const persistencePath = this.getPersistencePath();
       
       // Backup the old database file (if exists) before rebuilding
-      const backupPath = `${persistencePath}.backup`;
+      // Use timestamp in backup filename to preserve history
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5); // Format: 2025-01-28T14-30-52
+      const backupPath = `${persistencePath}.backup-${timestamp}`;
+      let oldFileExists = false;
       try {
         await fs.copyFile(persistencePath, backupPath);
         Logger.debug(`Created backup of existing database at "${backupPath}"`);
+        oldFileExists = true;
+        
+        // Delete the original file to prevent conflicts with new schema
+        await fs.unlink(persistencePath);
+        Logger.debug('Deleted original database file (backup preserved)');
       } catch (error) {
         // File might not exist, that's ok
         Logger.debug('No existing database file to backup');
       }
 
-      // IMPORTANT: Do NOT re-detect embedding dimension here!
-      // Use the existing dimension that was set during initialize()
-      // This prevents re-downloading the model during rebuild
-      Logger.debug(`Reusing existing embedding dimension: ${this.embeddingDimension}`);
+      // IMPORTANT: Always re-detect embedding dimension during rebuild!
+      // This ensures we use the correct dimension even if the user switched embedding models
+      // without restarting the plugin
+      const oldDimension = this.embeddingDimension;
+      
+      // Force fresh dimension detection (ignore cached value)
+      this.embeddingDimension = await this.detectEmbeddingDimension();
+      
+      Logger.info(`[Dimension] Rebuild using model: ${this.model?.modelName}`);
+      Logger.info(`[Dimension] Configured: ${this.model?.embeddingDimension || 'auto-detect'}D`);
+      Logger.info(`[Dimension] Detected: ${this.embeddingDimension}D`);
+      
+      if (oldDimension !== this.embeddingDimension) {
+        Logger.warn(`[Dimension] Changed: ${oldDimension}D -> ${this.embeddingDimension}D`);
+        Logger.warn(`[Dimension] This usually happens when switching embedding models`);
+      }
 
       // Recreate database in memory (doesn't affect file yet)
       this.db = await create({
@@ -1016,20 +1345,45 @@ export class OramaManager implements IVectorDatabase {
   }
 
   /**
-   * Clean up backup file after successful rebuild
+   * Clean up old backup files, keeping only the most recent one
    */
   async cleanupBackup(): Promise<void> {
     try {
       const persistencePath = this.getPersistencePath();
-      const backupPath = `${persistencePath}.backup`;
+      const dirPath = path.dirname(persistencePath);
+      const baseName = path.basename(persistencePath);
       
-      try {
-        await fs.unlink(backupPath);
-        Logger.debug(`Deleted backup file "${backupPath}"`);
-      } catch (error) {
-        // Backup file might not exist
-        Logger.debug('No backup file to delete');
+      // Find all backup files for this database
+      const files = await fs.readdir(dirPath);
+      const backupFiles = files
+        .filter(f => f.startsWith(baseName + '.backup-'))
+        .map(f => path.join(dirPath, f));
+      
+      if (backupFiles.length === 0) {
+        Logger.debug('No backup files to cleanup');
+        return;
       }
+      
+      // Sort by modification time (newest first)
+      const filesWithStats = await Promise.all(
+        backupFiles.map(async (file) => ({
+          file,
+          mtime: (await fs.stat(file)).mtime
+        }))
+      );
+      filesWithStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+      
+      // Keep the most recent backup, delete the rest
+      for (let i = 1; i < filesWithStats.length; i++) {
+        try {
+          await fs.unlink(filesWithStats[i].file);
+          Logger.debug(`Deleted old backup file "${filesWithStats[i].file}"`);
+        } catch (error) {
+          Logger.warn(`Failed to delete old backup file "${filesWithStats[i].file}":`, error);
+        }
+      }
+      
+      Logger.debug(`Cleanup complete. Kept most recent backup: "${filesWithStats[0].file}"`);
     } catch (error) {
       Logger.error('Failed to cleanup backup:', error);
       // Don't throw - this is not critical
@@ -1037,20 +1391,36 @@ export class OramaManager implements IVectorDatabase {
   }
 
   /**
-   * Restore database from backup after failed rebuild
+   * Restore database from the most recent backup after failed rebuild
    */
   async restoreBackup(): Promise<void> {
     try {
       const persistencePath = this.getPersistencePath();
-      const backupPath = `${persistencePath}.backup`;
+      const dirPath = path.dirname(persistencePath);
+      const baseName = path.basename(persistencePath);
       
-      // Check if backup exists
-      try {
-        await fs.access(backupPath);
-      } catch (error) {
+      // Find all backup files for this database
+      const files = await fs.readdir(dirPath);
+      const backupFiles = files
+        .filter(f => f.startsWith(baseName + '.backup-'))
+        .map(f => path.join(dirPath, f));
+      
+      if (backupFiles.length === 0) {
         Logger.debug('No backup file to restore from');
         return;
       }
+      
+      // Sort by modification time (newest first)
+      const filesWithStats = await Promise.all(
+        backupFiles.map(async (file) => ({
+          file,
+          mtime: (await fs.stat(file)).mtime
+        }))
+      );
+      filesWithStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+      
+      // Use the most recent backup
+      const backupPath = filesWithStats[0].file;
       
       // Restore backup to original location
       await fs.copyFile(backupPath, persistencePath);
@@ -1058,12 +1428,40 @@ export class OramaManager implements IVectorDatabase {
       
       // Reload the database from restored file
       const data = await fs.readFile(persistencePath, 'utf-8');
-      this.db = await restore('json', data) as Orama<OramaSchema>;
-      Logger.debug('Database reloaded from restored file');
       
-      // Clean up backup
-      await fs.unlink(backupPath);
-      Logger.debug('Backup file cleaned up after restore');
+      // IMPORTANT: Extract dimension from backup data BEFORE restoring
+      // This ensures this.embeddingDimension matches the actual database schema
+      let dimensionChanged = false;
+      try {
+        const parsedData = JSON.parse(data);
+        const embeddingProperty = parsedData?.index?.searchablePropertiesWithTypes?.embedding;
+        if (embeddingProperty && typeof embeddingProperty === 'string') {
+          const match = embeddingProperty.match(/vector\[(\d+)\]/);
+          if (match) {
+            const backupDimension = parseInt(match[1], 10);
+            if (backupDimension !== this.embeddingDimension) {
+              Logger.warn(`[Dimension] Backup: ${backupDimension}D differs from current: ${this.embeddingDimension}D`);
+              Logger.warn(`[Dimension] Updating dimension to match restored database`);
+              this.embeddingDimension = backupDimension;
+              dimensionChanged = true;
+            }
+          }
+        }
+      } catch (parseError) {
+        Logger.error('Failed to parse backup dimension, keeping current dimension:', parseError);
+      }
+      
+      this.db = await restore('json', data);
+      Logger.debug(`Database reloaded from restored file with ${this.embeddingDimension}D embeddings`);
+      
+      Logger.debug('Backup restored successfully (backup file preserved)');
+      
+      // Show user-friendly notice if dimension changed (rebuild failed due to dimension mismatch)
+      if (dimensionChanged) {
+        const message = this.i18n?.t('vectorDatabase.dimensionMismatch') || 
+          'Vector database dimension mismatch. Please rebuild the index in settings.';
+        new Notice(message, 10000);
+      }
     } catch (error) {
       Logger.error('Failed to restore backup:', error);
       throw error;
@@ -1140,10 +1538,76 @@ export class OramaManager implements IVectorDatabase {
         Logger.error('Failed to persist on shutdown:', error);
       }
 
+      // Clear database reference
       this.db = null;
     }
 
+    // Clear callbacks to prevent memory leaks
+    this.embeddingProgressCallback = null;
+    this.connectionUpdateCallback = null;
+    
+    // Clear connection and model references
+    this.connection = null;
+    this.model = null;
+
     Logger.debug('Orama shutdown complete');
+  }
+
+  /**
+   * Get memory usage statistics
+   */
+  async getMemoryStats(): Promise<{
+    documentCount: number;
+    maxDocuments: number;
+    usagePercentage: number;
+    warningThreshold: number;
+    isNearLimit: boolean;
+  }> {
+    const count = await this.count();
+    return {
+      documentCount: count,
+      maxDocuments: this.MAX_DOCUMENTS,
+      usagePercentage: (count / this.MAX_DOCUMENTS) * 100,
+      warningThreshold: this.WARNING_THRESHOLD,
+      isNearLimit: count >= this.WARNING_THRESHOLD
+    };
+  }
+
+  /**
+   * Cleanup old documents based on timestamp
+   * @param daysToKeep Number of days to keep documents
+   * @returns Number of documents deleted
+   */
+  async cleanupOldDocuments(daysToKeep: number = 90): Promise<number> {
+    if (!this.db) {
+      // Silently skip if not initialized yet (e.g., during plugin startup)
+      Logger.debug('[OramaManager] Skipping cleanup - database not initialized yet');
+      return 0;
+    }
+
+    try {
+      const cutoffTime = Date.now() - (daysToKeep * 24 * 60 * 60 * 1000);
+      
+      // Search for old documents (using regular search since where clause might not work)
+      const allResults = await search(this.db, {
+        term: '',
+        limit: this.MAX_DOCUMENTS
+      });
+
+      const idsToDelete = allResults.hits
+        .filter((hit: any) => hit.document.timestamp < cutoffTime)
+        .map((hit: any) => hit.document.id);
+      
+      if (idsToDelete.length > 0) {
+        await this.delete(idsToDelete);
+        Logger.info(`[OramaManager] Cleaned up ${idsToDelete.length} old documents`);
+      }
+
+      return idsToDelete.length;
+    } catch (error) {
+      Logger.error('[OramaManager] Failed to cleanup old documents:', error);
+      return 0;
+    }
   }
   
 }

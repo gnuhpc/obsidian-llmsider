@@ -3,6 +3,54 @@ import { Logger } from './../utils/logger';
 import LLMSiderPlugin from '../main';
 import { I18nManager } from '../i18n/i18n-manager';
 
+// Type definitions for tool execution
+interface ToolCall {
+	type: string;
+	function?: {
+		name: string;
+		arguments: string | Record<string, unknown>;
+	};
+}
+
+interface LLMResponse {
+	toolCalls?: ToolCall[];
+	content?: string | Array<{ type: string; text?: string; resource?: { uri?: string } }>;
+}
+
+interface Tool {
+	name: string;
+	server?: string;
+}
+
+interface ToolExecution {
+	id: string;
+	toolName: string;
+	server?: string;
+	parameters: unknown;
+	status: 'running' | 'completed' | 'failed';
+	timestamp: number;
+	result?: unknown;
+	error?: string;
+	executionTime?: number;
+}
+
+interface ToolData {
+	toolCalls: Array<{ tool: string; parameters: unknown }>;
+	toolResults: Array<{ tool: string; request: unknown; response: unknown; error?: string }>;
+}
+
+interface ToolResult {
+	success: boolean;
+	result?: {
+		content?: Array<{ type: string; text?: string; resource?: { uri?: string } }>;
+	} | string;
+	error?: string;
+}
+
+interface MessageData {
+	toolExecutionData?: unknown;
+}
+
 export class ToolExecutionManager {
 	private plugin: LLMSiderPlugin;
 	private messageContainer: HTMLElement;
@@ -13,31 +61,51 @@ export class ToolExecutionManager {
 	// Tool execution queue to ensure sequential processing
 	private toolExecutionQueue: Array<() => Promise<void>> = [];
 	private isProcessingQueue: boolean = false;
+	// Memory manager for conversation history (optional)
+	private memoryManager?: unknown;
+	private currentThreadId?: string;
 
-	constructor(plugin: LLMSiderPlugin, messageContainer: HTMLElement) {
+	constructor(
+		plugin: LLMSiderPlugin,
+		messageContainer: HTMLElement,
+		memoryManager?: unknown,
+		threadId?: string
+	) {
 		this.plugin = plugin;
 		this.messageContainer = messageContainer;
 		this.i18n = plugin.getI18nManager()!; // Get i18n instance from plugin
+		this.memoryManager = memoryManager;
+		this.currentThreadId = threadId;
+	}
+
+	/**
+	 * Update memory manager and thread ID (for session changes)
+	 */
+	setMemoryContext(memoryManager?: unknown, threadId?: string): void {
+		this.memoryManager = memoryManager;
+		this.currentThreadId = threadId;
+		Logger.debug('[ToolExecutionManager] Memory context updated:', {
+			hasMemory: !!memoryManager,
+			threadId
+		});
 	}
 
 	/**
 	 * Add a tool execution task to the queue for sequential processing
 	 */
 	private async enqueueToolExecution(task: () => Promise<void>): Promise<void> {
-		return new Promise((resolve, reject) => {
-			this.toolExecutionQueue.push(async () => {
-				try {
-					await task();
-					resolve();
-				} catch (error) {
-					reject(error);
-				}
-			});
-			this.processQueue();
+	return new Promise((resolve, reject) => {
+		this.toolExecutionQueue.push(async () => {
+			try {
+				await task();
+				resolve();
+			} catch (error) {
+				reject(error instanceof Error ? error : new Error(String(error)));
+			}
 		});
-	}
-
-	/**
+		this.processQueue();
+	});
+}	/**
 	 * Process the tool execution queue sequentially
 	 */
 	private async processQueue(): Promise<void> {
@@ -65,12 +133,12 @@ export class ToolExecutionManager {
 	 */
 	recordToolCallRequest(
 		toolName: string,
-		parameters: any,
+		parameters: unknown,
 		server?: string,
 		messageId?: string,
 		source: 'user' | 'system' | 'auto' = 'user'
 	): string {
-		const recordId = `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+		const recordId = `tool_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
 		const toolCallRecord: ToolCallRecord = {
 			id: recordId,
@@ -114,10 +182,10 @@ export class ToolExecutionManager {
 	 */
 	recordToolCallResponse(
 		recordId: string,
-		result: any,
-		error?: any,
+		result: unknown,
+		error?: unknown,
 		statusCode?: number,
-		metadata?: any
+		metadata?: unknown
 	): void {
 		const record = this.toolCallRecords.get(recordId);
 		if (!record) {
@@ -158,8 +226,55 @@ export class ToolExecutionManager {
 			timestamp: new Date(responseTimestamp).toISOString()
 		});
 
+		// Save tool execution to conversation history
+		if (this.memoryManager && this.currentThreadId) {
+			this.saveToolExecutionToHistory(record).catch(err => {
+				Logger.warn('[ToolExecutionManager] Failed to save tool execution to history:', err);
+			});
+		}
+
 		// Update UI to show completion/failure
 		this.updateToolExecutionIndicator(recordId);
+	}
+
+	/**
+	 * Save tool execution record to conversation history
+	 */
+	private async saveToolExecutionToHistory(record: ToolCallRecord): Promise<void> {
+		if (!this.memoryManager || !this.currentThreadId) {
+			return;
+		}
+
+		try {
+			// Format tool execution as a conversation message
+			const toolMessage = {
+				role: 'tool',
+				content: JSON.stringify({
+					tool: record.toolName,
+					server: record.server,
+					request: record.request.parameters,
+					response: record.response?.result,
+					error: record.response?.error,
+					executionTime: record.response?.executionTime,
+					timestamp: record.response?.timestamp
+				}, null, 2)
+			};
+
+			// Use type assertion to call the method
+			await (this.memoryManager as any).addConversationMessage(
+				toolMessage,
+				this.currentThreadId
+			);
+
+			Logger.debug('[ToolExecutionManager] Saved tool execution to conversation history:', {
+				tool: record.toolName,
+				threadId: this.currentThreadId,
+				success: !record.response?.error
+			});
+		} catch (error) {
+			Logger.error('[ToolExecutionManager] Failed to save tool execution:', error);
+			throw error;
+		}
 	}
 
 	/**
@@ -245,8 +360,8 @@ export class ToolExecutionManager {
 	/**
 	 * Parse XML-style MCP tool calls from message content
 	 */
-	parseXMLToolCalls(messageContent: string): Array<{tool: string, parameters: any}> {
-		const toolCalls: Array<{tool: string, parameters: any}> = [];
+	parseXMLToolCalls(messageContent: string): Array<{tool: string, parameters: unknown}> {
+		const toolCalls: Array<{tool: string, parameters: unknown}> = [];
 
 		Logger.debug('Parsing XML tool calls from content');
 
@@ -269,7 +384,7 @@ export class ToolExecutionManager {
 			Logger.debug('Extracted tool name from wrapper:', toolName);
 
 			// Extract parameters from remaining content
-			let parameters: any = {};
+			let parameters: unknown = {};
 
 			// Strategy 1: Look for <arguments> tags first (preferred format)
 			const argumentsMatch = toolContent.match(/<arguments>([\s\S]*?)<\/arguments>/);
@@ -365,7 +480,7 @@ export class ToolExecutionManager {
 
 				// Look for direct tool calls using available tool names
 				for (const tool of availableTools) {
-					const toolName = tool.name;
+					const toolName = (tool as Tool).name;
 					// Create regex to match <toolname>content</toolname>
 					const directToolRegex = new RegExp(`<${toolName.replace(/[-_]/g, '[-_]')}>(.*?)<\\/${toolName.replace(/[-_]/g, '[-_]')}>`, 'g');
 					let directMatch;
@@ -374,7 +489,7 @@ export class ToolExecutionManager {
 						const toolContent = directMatch[1].trim();
 						Logger.debug(`Found direct tool call for ${toolName}:`, toolContent);
 
-						let parameters: any = {};
+						let parameters: unknown = {};
 
 						// Parse the content inside the tool tags
 						if (toolContent) {
@@ -442,7 +557,7 @@ export class ToolExecutionManager {
 			try {
 				const availableTools = mcpManager.getAllAvailableTools();
 				for (const tool of availableTools) {
-					const toolName = tool.name;
+					const toolName = (tool as Tool).name;
 					const directToolRegex = new RegExp(`<${toolName.replace(/[-_]/g, '[-_]')}>.*?<\\/${toolName.replace(/[-_]/g, '[-_]')}>`, 'g');
 					cleanedContent = cleanedContent.replace(directToolRegex, '');
 				}
@@ -504,7 +619,7 @@ export class ToolExecutionManager {
 	/**
 	 * Process native tool calls from provider responses
 	 */
-	async processNativeToolCalls(response: any): Promise<void> {
+	async processNativeToolCalls(response: unknown): Promise<void> {
 		try {
 			const mcpManager = this.plugin.getMCPManager();
 			if (!mcpManager) {
@@ -513,14 +628,15 @@ export class ToolExecutionManager {
 			}
 
 			// Check if response contains tool calls
-			let toolCalls: any[] = [];
+			const llmResponse = response as LLMResponse;
+			let toolCalls: ToolCall[] = [];
 
 			// If response is a direct LLMResponse with toolCalls
-			if (response && response.toolCalls && Array.isArray(response.toolCalls)) {
-				toolCalls = response.toolCalls;
+			if (llmResponse && llmResponse.toolCalls && Array.isArray(llmResponse.toolCalls)) {
+				toolCalls = llmResponse.toolCalls;
 			}
 			// If response is streaming result, check for accumulated tool calls
-			else if (response && response.content && typeof response.content === 'string') {
+			else if (llmResponse && llmResponse.content && typeof llmResponse.content === 'string') {
 				// Try to parse tool calls from final response content if provider doesn't support native tool calls
 				return; // Let processMCPToolCalls handle this case
 			}
@@ -561,14 +677,15 @@ export class ToolExecutionManager {
 			for (const [index, toolCall] of toolCalls.entries()) {
 				if (toolCall.type === 'function' && toolCall.function) {
 					const toolName = toolCall.function.name;
-					let parameters: any = {};
+					let parameters: unknown = {};
 
 					try {
 						// Parse arguments if they're a JSON string
-						if (typeof toolCall.function.arguments === 'string') {
-							parameters = JSON.parse(toolCall.function.arguments);
+						const args = toolCall.function.arguments;
+						if (typeof args === 'string') {
+							parameters = JSON.parse(args);
 						} else {
-							parameters = toolCall.function.arguments || {};
+							parameters = args || {};
 						}
 					} catch (parseError) {
 						Logger.error(`Failed to parse tool arguments for ${toolName}:`, parseError);
@@ -639,17 +756,19 @@ export class ToolExecutionManager {
 	/**
 	 * Execute MCP tool with progress feedback and comprehensive logging
 	 */
-	async executeMCPToolWithProgress(tool: any, parameters: any, currentIndex: number, totalCount: number, messageId?: string): Promise<void> {
+	async executeMCPToolWithProgress(tool: unknown, parameters: unknown, currentIndex: number, totalCount: number, messageId?: string): Promise<void> {
 		const mcpManager = this.plugin.getMCPManager();
 		if (!mcpManager) {
 			throw new Error('MCP Manager not available');
 		}
 
+		const typedTool = tool as Tool;
+
 		// Record the tool call request
 		const recordId = this.recordToolCallRequest(
-			tool.name,
+			typedTool.name,
 			parameters,
-			tool.server,
+			typedTool.server,
 			messageId,
 			'system'
 		);
@@ -661,12 +780,12 @@ export class ToolExecutionManager {
 		const headerText = executionContainer?.querySelector('.mcp-tool-text') as HTMLElement;
 
 		// Create tool execution record for persistence (legacy compatibility)
-		const toolExecution: any = {
+		const toolExecution: ToolExecution = {
 			id: recordId,
-			toolName: tool.name,
-			server: tool.server,
+			toolName: typedTool.name,
+			server: typedTool.server,
 			parameters: parameters,
-			status: 'running' as const,
+			status: 'running',
 			timestamp: Date.now()
 		};
 
@@ -684,7 +803,11 @@ export class ToolExecutionManager {
 
 			// Update header text
 			if (headerText) {
-				headerText.textContent = `正在执行工具 ${currentIndex}/${totalCount}: ${tool.name}`;
+				headerText.textContent = this.i18n.t('chatView.executingToolProgress', {
+					current: currentIndex.toString(),
+					total: totalCount.toString(),
+					name: typedTool.name
+				});
 			}
 
 			// Add tool start indicator
@@ -693,8 +816,8 @@ export class ToolExecutionManager {
 				toolStartEl.className = 'mcp-tool-result-item mcp-tool-executing';
 				toolStartEl.innerHTML = `
 					<div class="mcp-tool-result-header">
-						<span class="mcp-tool-name">${tool.name}</span>
-						<span class="mcp-tool-server">(${tool.server})</span>
+						<span class="mcp-tool-name">${typedTool.name}</span>
+						<span class="mcp-tool-server">(${typedTool.server || 'unknown'})</span>
 						<span class="mcp-tool-status">正在执行...</span>
 					</div>
 				`;
@@ -708,7 +831,7 @@ export class ToolExecutionManager {
 				throw new Error('Tool manager not available');
 			}
 
-			const result = await toolManager.executeTool(tool.name, parameters);
+			const result = await toolManager.executeTool(typedTool.name, parameters) as ToolResult;
 			const executionTime = Date.now() - startTime;
 
 			// Check if the tool execution was successful
@@ -719,7 +842,7 @@ export class ToolExecutionManager {
 				// Record the error response
 				this.recordToolCallResponse(recordId, null, errorMessage, 500, {
 					executionTime,
-					server: tool.server,
+					server: typedTool.server,
 					errorType: 'tool_execution_failed'
 				});
 
@@ -735,7 +858,7 @@ export class ToolExecutionManager {
 			// Record the successful response
 			this.recordToolCallResponse(recordId, result.result, null, 200, {
 				executionTime,
-				server: tool.server,
+				server: typedTool.server,
 				resultType: typeof result.result
 			});
 
@@ -774,8 +897,8 @@ export class ToolExecutionManager {
 					// Update the tool result display
 					toolEl.innerHTML = `
 						<div class="mcp-tool-result-header">
-							<span class="mcp-tool-name">${tool.name}</span>
-							<span class="mcp-tool-server">(${tool.server})</span>
+							<span class="mcp-tool-name">${typedTool.name}</span>
+							<span class="mcp-tool-server">(${typedTool.server})</span>
 							<span class="mcp-tool-status mcp-tool-success">✅ 已完成</span>
 						</div>
 						<div class="mcp-tool-result-content">
@@ -793,7 +916,9 @@ export class ToolExecutionManager {
 
 			// Update header if this is the last tool
 			if (currentIndex === totalCount && headerText) {
-				headerText.textContent = `已完成 ${totalCount} 个工具${totalCount > 1 ? '' : ''}`;
+				headerText.textContent = this.i18n.t('chatView.completedToolsProgress', {
+					total: totalCount.toString()
+				});
 
 				// Remove spinner
 				const spinner = executionContainer?.querySelector('.mcp-tool-spinner');
@@ -807,7 +932,7 @@ export class ToolExecutionManager {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			this.recordToolCallResponse(recordId, null, errorMessage, 500, {
 				executionTime: Date.now() - toolExecution.timestamp,
-				server: tool.server,
+				server: typedTool.server,
 				errorType: typeof error
 			});
 
@@ -863,8 +988,8 @@ export class ToolExecutionManager {
 
 					toolEl.innerHTML = `
 						<div class="mcp-tool-result-header">
-							<span class="mcp-tool-name">${tool.name}</span>
-							<span class="mcp-tool-server">(${tool.server})</span>
+							<span class="mcp-tool-name">${typedTool.name}</span>
+							<span class="mcp-tool-server">(${typedTool.server})</span>
 							<span class="mcp-tool-status mcp-tool-error">❌ 执行失败</span>
 						</div>
 						<div class="mcp-tool-result-content mcp-tool-error-content">
@@ -877,7 +1002,11 @@ export class ToolExecutionManager {
 
 			// Update header text with error
 			if (headerText) {
-				headerText.textContent = `工具执行失败 ${currentIndex}/${totalCount}: ${tool.name}`;
+				headerText.textContent = this.i18n.t('chatView.toolExecutionFailedProgress', {
+					current: currentIndex.toString(),
+					total: totalCount.toString(),
+					name: typedTool.name
+				});
 			}
 
 			throw error;
@@ -909,11 +1038,11 @@ export class ToolExecutionManager {
 	 * Now uses a queue system to ensure sequential execution
 	 */
 	async executeToolCallsOrchestration(
-		toolCalls: Array<{tool: string, parameters: any}>,
+		toolCalls: Array<{tool: string, parameters: unknown}>,
 		currentContent: string,
-		assistantMessage: any,
+		assistantMessage: unknown,
 		workingMessageEl: HTMLElement | null,
-		messages: any[],
+		messages: unknown[],
 		messageId?: string
 	): Promise<void> {
 		// Enqueue this orchestration to ensure sequential processing
@@ -939,7 +1068,7 @@ export class ToolExecutionManager {
 
 				// Execute all tool calls sequentially and collect results
 				const toolResults: Array<{tool: string, result: string}> = [];
-				const detailedToolResults: Array<{tool: string, request: any, response: any, error?: string}> = [];
+				const detailedToolResults: Array<{tool: string, request: unknown, response: unknown, error?: string}> = [];
 
 				for (const [index, toolCall] of toolCalls.entries()) {
 					const recordId = recordIds[index];
@@ -960,7 +1089,7 @@ export class ToolExecutionManager {
 						// Update the record with server information
 						const record = this.getToolCallRecord(recordId);
 						if (record) {
-							record.server = tool.server;
+							record.server = (tool as Tool).server;
 						}
 
 						// Update indicator to show current tool execution
@@ -985,7 +1114,7 @@ export class ToolExecutionManager {
 						// Record successful response
 						this.recordToolCallResponse(recordId, result, null, 200, {
 							executionTime,
-							server: tool.server,
+							server: (tool as Tool).server,
 							resultType: typeof result,
 							orchestrationIndex: index + 1,
 							orchestrationTotal: toolCalls.length
@@ -1074,30 +1203,35 @@ export class ToolExecutionManager {
 	/**
 	 * Execute a single tool using unified tool manager
 	 */
-	private async executeMCPTool(tool: any, parameters: any): Promise<string> {
+	private async executeMCPTool(tool: unknown, parameters: unknown): Promise<string> {
 		const toolManager = this.plugin.getToolManager();
 		if (!toolManager) {
 			throw new Error('Tool Manager not available');
 		}
 
+		const typedTool = tool as Tool;
+
 		try {
 			// Execute the tool using unified tool manager
-			const result = await toolManager.executeTool(tool.name, parameters);
+			const result = await toolManager.executeTool(typedTool.name, parameters);
 
 			// Format result content
 			let resultContent = '';
 			if (result.success && result.result) {
 				// Handle unified tool manager result format
-				if (result.result.content && Array.isArray(result.result.content)) {
-					resultContent = result.result.content.map((item: any) => {
-						if (item.type === 'text') {
-							return item.text;
-						} else if (item.type === 'resource') {
-							return `Resource: ${item.resource?.uri || 'Unknown'}`;
-						} else {
-							return JSON.stringify(item);
-						}
-					}).join('\n');
+				if (typeof result.result === 'object' && result.result !== null && 'content' in result.result) {
+					const resultObj = result.result as { content?: Array<{ type: string; text?: string; resource?: { uri?: string } }> };
+					if (resultObj.content && Array.isArray(resultObj.content)) {
+						resultContent = resultObj.content.map((item) => {
+							if (item.type === 'text') {
+								return item.text;
+							} else if (item.type === 'resource') {
+								return `Resource: ${item.resource?.uri || 'Unknown'}`;
+							} else {
+								return JSON.stringify(item);
+							}
+						}).join('\n');
+					}
 				} else if (typeof result.result === 'string') {
 					resultContent = result.result;
 				} else {
@@ -1111,7 +1245,7 @@ export class ToolExecutionManager {
 			return resultContent;
 
 		} catch (error) {
-			Logger.error(`Error executing tool ${tool.name}:`, error);
+			Logger.error(`Error executing tool ${typedTool.name}:`, error);
 			throw error;
 		}
 	}
@@ -1122,7 +1256,7 @@ export class ToolExecutionManager {
 	private createOrUpdateToolExecutionIndicator(
 		phase: 'detection' | 'executing' | 'completed' | 'failed',
 		data: {
-			toolCalls?: Array<{tool: string, parameters: any}>;
+			toolCalls?: Array<{tool: string, parameters: unknown}>;
 			currentTool?: string;
 			currentIndex?: number;
 			totalCount?: number;
@@ -1141,12 +1275,13 @@ export class ToolExecutionManager {
 			});
 
 			// Store tool execution data on the indicator for expandable functionality
-			(indicator as any).toolExecutionData = {
+			const indicatorWithData = indicator as HTMLElement & { toolExecutionData: ToolData };
+			indicatorWithData.toolExecutionData = {
 				toolCalls: [],
 				toolResults: [],
 				phase: phase,
 				recordIds: []
-			};
+			} as ToolData & { phase: string; recordIds: string[] };
 
 			// Insert before the working message if it exists, otherwise at the end
 			if (workingMessageEl && workingMessageEl.parentNode === this.messageContainer) {
@@ -1162,16 +1297,15 @@ export class ToolExecutionManager {
 		}
 
 		// Update stored data
-		const storedData = (indicator as any).toolExecutionData;
+		const indicatorWithData = indicator as HTMLElement & { toolExecutionData: ToolData & { phase: string; recordIds: string[] } };
+		const storedData = indicatorWithData.toolExecutionData;
 		if (data.toolCalls) {
 			storedData.toolCalls = data.toolCalls;
 		}
 		if (data.recordIds) {
 			storedData.recordIds = data.recordIds;
 		}
-		storedData.phase = phase;
-
-		// Update indicator content based on phase
+		storedData.phase = phase;		// Update indicator content based on phase
 		indicator.innerHTML = '';
 
 		const content = indicator.createDiv({ cls: 'llmsider-tool-indicator-content' });
@@ -1232,7 +1366,7 @@ export class ToolExecutionManager {
 				}
 				break;
 
-			case 'failed':
+			case 'failed': {
 				const failedHeaderEl = content.createDiv({ cls: 'tool-indicator-header tool-indicator-clickable' });
 				failedHeaderEl.innerHTML = `
 					<span class="tool-indicator-icon">❌</span>
@@ -1247,26 +1381,25 @@ export class ToolExecutionManager {
 				const failedToolResults = this.buildToolResultsFromRecords(data.recordIds || [], data.toolCalls || []);
 				this.renderToolExecutionDetails(failedDetailsEl, { toolCalls: data.toolCalls || [], toolResults: failedToolResults });
 
-				// Add click handler for expand/collapse
-				failedHeaderEl.addEventListener('click', () => {
-					const isCollapsed = failedDetailsEl.classList.contains('collapsed');
-					failedDetailsEl.classList.toggle('collapsed', !isCollapsed);
-					const toggleIcon = failedHeaderEl.querySelector('.tool-indicator-toggle') as HTMLElement;
-					if (toggleIcon) {
-						toggleIcon.textContent = isCollapsed ? '▲' : '▼';
-					}
-				});
-				break;
+			// Add click handler for expand/collapse
+			failedHeaderEl.addEventListener('click', () => {
+				const isCollapsed = failedDetailsEl.classList.contains('collapsed');
+				failedDetailsEl.classList.toggle('collapsed', !isCollapsed);
+				const toggleIcon = failedHeaderEl.querySelector('.tool-indicator-toggle') as HTMLElement;
+				if (toggleIcon) {
+					toggleIcon.textContent = isCollapsed ? '▲' : '▼';
+				}
+			});
+			break;
 		}
-
-		return indicator;
 	}
 
-	/**
+	return indicator;
+}	/**
 	 * Build tool results from records for display
 	 */
-	private buildToolResultsFromRecords(recordIds: string[], toolCalls: Array<{tool: string, parameters: any}>): Array<{tool: string, request: any, response: any, error?: string}> {
-		const toolResults: Array<{tool: string, request: any, response: any, error?: string}> = [];
+	private buildToolResultsFromRecords(recordIds: string[], toolCalls: Array<{tool: string, parameters: unknown}>): Array<{tool: string, request: unknown, response: unknown, error?: string}> {
+		const toolResults: Array<{tool: string, request: unknown, response: unknown, error?: string}> = [];
 		
 		for (const recordId of recordIds) {
 			const record = this.getToolCallRecord(recordId);
@@ -1276,7 +1409,7 @@ export class ToolExecutionManager {
 				tool: record.toolName,
 				request: record.request.parameters,
 				response: record.response?.result || null,
-				error: record.response?.error
+				error: record.response?.error as string | undefined
 			});
 		}
 		
@@ -1298,7 +1431,7 @@ export class ToolExecutionManager {
 	/**
 	 * Render tool execution details in expandable section
 	 */
-	private renderToolExecutionDetails(container: HTMLElement, toolData: { toolCalls: Array<{tool: string, parameters: any}>, toolResults: Array<{tool: string, request: any, response: any, error?: string}> }): void {
+	private renderToolExecutionDetails(container: HTMLElement, toolData: { toolCalls: Array<{tool: string, parameters: unknown}>, toolResults: Array<{tool: string, request: unknown, response: unknown, error?: string}> }): void {
 		if (!toolData.toolCalls || toolData.toolCalls.length === 0) {
 			container.createEl('div', { cls: 'tool-detail-empty', text: '暂无工具调用详情' });
 			return;
@@ -1391,7 +1524,7 @@ export class ToolExecutionManager {
 
 		const toggleButton = detailsContainer.createEl('button', {
 			cls: 'tool-records-simple-toggle',
-			text: '查看详细记录'
+			text: this.i18n.t('chatView.viewDetails')
 		});
 
 		const detailsContent = detailsContainer.createDiv({
@@ -1422,7 +1555,7 @@ export class ToolExecutionManager {
 
 			// Request section
 			const requestSection = toolCard.createDiv({ cls: 'tool-record-section' });
-			requestSection.createEl('h4', { text: '请求参数', cls: 'tool-record-section-title' });
+			requestSection.createEl('h4', { text: this.i18n.t('ui.toolExecution.requestParams'), cls: 'tool-record-section-title' });
 
 			const requestContent = requestSection.createEl('pre', {
 				text: JSON.stringify(record.request.parameters, null, 2),
@@ -1432,11 +1565,11 @@ export class ToolExecutionManager {
 			// Response section
 			if (record.response) {
 				const responseSection = toolCard.createDiv({ cls: 'tool-record-section' });
-				responseSection.createEl('h4', { text: '响应结果', cls: 'tool-record-section-title' });
+				responseSection.createEl('h4', { text: this.i18n.t('ui.toolExecution.responseResult'), cls: 'tool-record-section-title' });
 
 				if (record.response.error) {
 					const errorContent = responseSection.createDiv({ cls: 'tool-record-error' });
-					errorContent.textContent = record.response.error;
+					errorContent.textContent = String(record.response.error);
 				} else if (record.response.result) {
 					const responseContent = responseSection.createEl('pre', {
 						text: JSON.stringify(record.response.result, null, 2),
@@ -1444,7 +1577,7 @@ export class ToolExecutionManager {
 					});
 				} else {
 					const noContent = responseSection.createDiv({ cls: 'tool-record-no-content' });
-					noContent.textContent = '无返回内容';
+					noContent.textContent = this.i18n.t('chatView.noReturnContent');
 				}
 			}
 		}
@@ -1453,7 +1586,7 @@ export class ToolExecutionManager {
 		toggleButton.addEventListener('click', () => {
 			const isHidden = detailsContent.style.display === 'none';
 			detailsContent.style.display = isHidden ? 'block' : 'none';
-			toggleButton.textContent = isHidden ? '隐藏详细记录' : '查看详细记录';
+			toggleButton.textContent = isHidden ? this.i18n.t('chatView.hideDetails') : this.i18n.t('chatView.viewDetails');
 		});
 	}
 
@@ -1520,7 +1653,7 @@ export class ToolExecutionManager {
 	/**
 	 * Add tool execution record to current assistant message (legacy compatibility)
 	 */
-	private addToolExecutionToCurrentMessage(toolExecution: any): void {
+	private addToolExecutionToCurrentMessage(toolExecution: unknown): void {
 		// This would need to be implemented by the main ChatView class
 		// For now, we store the record in our enhanced system
 		Logger.debug('Tool execution record:', toolExecution);
@@ -1529,7 +1662,7 @@ export class ToolExecutionManager {
 	/**
 	 * Update tool execution record in current assistant message (legacy compatibility)
 	 */
-	private updateToolExecutionInCurrentMessage(toolExecution: any): void {
+	private updateToolExecutionInCurrentMessage(toolExecution: unknown): void {
 		// This would need to be implemented by the main ChatView class
 		// The new system handles this through recordToolCallResponse
 		Logger.debug('Updated tool execution record:', toolExecution);

@@ -36,12 +36,17 @@ export const enToolCallPrompter = {
 export const enAutocomplete = {
   enabled: 'Enable Autocomplete',
   enabledDesc: 'Enable AI-powered text completion suggestions while writing',
+  model: 'Completion Model',
+  modelDesc: 'Select a specific model for autocompletion (leave empty to use default model)',
+  useDefaultModel: 'Use default model',
   granularity: 'Completion Granularity',
   granularityDesc: 'Choose the length of completion suggestions',
   tone: 'Tone',
   toneDesc: 'Set the tone for completion suggestions',
+  tonePlaceholder: 'e.g., formal, casual, professional',
   domain: 'Domain',
   domainDesc: 'Specify a professional domain for context-aware completions',
+  domainPlaceholder: 'e.g., technical, academic, creative',
   triggerDelay: 'Trigger Delay',
   triggerDelayDesc: 'Delay in milliseconds before showing suggestions',
   maxSuggestions: 'Max Suggestions',
@@ -63,14 +68,27 @@ export const enAutocomplete = {
 export const enQuickChat = {
   enabled: 'Enable Quick Chat',
   enabledDesc: 'Show floating input box on text selection for quick AI interactions',
-  showOnSelection: 'Show on Selection',
-  showOnSelectionDesc: 'Automatically show Quick Chat when text is selected',
+  showOnSelection: 'Show Quick Chat Button on Selection',
+  showOnSelectionDesc: 'Automatically show Quick Chat button when text is selected',
   enableDiffPreview: 'Enable Diff Preview',
   enableDiffPreviewDesc: 'Show diff preview when applying Quick Chat changes',
   enabledNotice: 'Quick Chat enabled! Press {key} to use it.',
-  disabledNotice: 'Quick Chat disabled',
-  showQuickChatButton: 'Show Quick Chat Button',
-  showQuickChatButtonDesc: 'Display Quick Chat button when text is selected'
+  disabledNotice: 'Quick Chat disabled'
+};
+
+// Auto-Summarize settings and UI
+export const enAutoSummarize = {
+  settingName: 'Auto-Summarize on Note Open',
+  settingDesc: 'Show a confirmation dialog to summarize note content when opening a new note',
+  enabled: 'Auto-summarize enabled',
+  disabled: 'Auto-summarize disabled',
+  modalTitle: 'Summarize Note?',
+  modalDescription: 'Would you like to summarize the content of "{noteName}"?',
+  dontAskFor24Hours: "Don't ask for 24 hours",
+  dontAskFor24HoursDesc: 'Skip the confirmation dialog for 24 hours',
+  chatViewNotFound: 'Chat view not found. Please open the chat view first.',
+  promptNotFound: 'Summarize prompt not found',
+  failed: 'Failed to summarize note'
 };
 
 // Selection popup
@@ -92,11 +110,18 @@ export const enQuickChatUI = {
   inputPlaceholder: '✨ Ask AI for help... (Enter to submit, ESC to close)',
   inputPlaceholderContinue: '✨ Continue the conversation or accept (✓) / reject (✕) changes',
   loadingPlaceholder: '⏳ Generating...',
+  loadingPrompts: 'Loading prompts...',
+  failedToLoadPrompts: 'Failed to load prompts',
   quickActionsAvailable: 'Quick Actions ({count} available)',
   quickActionsMatching: 'Quick Actions (matching {count})',
   noMatchingPrompts: 'No matching prompts found',
   chatInputPlaceholder: 'Add context (@), built-in prompts (#)',
-  editModePlaceholder: 'Tell me how to modify the note...'
+  editModePlaceholder: 'Tell me how to modify the note...',
+  insertBefore: 'Insert before selection',
+  insertAfter: 'Insert after selection',
+  recentPrompts: 'Recent',
+  builtInPrompts: 'Built-in Actions',
+  addToBuiltIn: 'Add to built-in prompts'
 };
 
 // Mermaid diagrams
@@ -115,6 +140,7 @@ export const enMermaid = {
 // Vector database
 export const enVectorDatabase = {
   dimensionChanged: 'Vector database dimension changed. Please rebuild the index with the new embedding model.',
+  dimensionMismatch: 'Vector database dimension mismatch. Please rebuild the index in settings.',
   databaseCorrupted: 'Vector database was corrupted and has been automatically reset. Please rebuild the index.',
   rebuildRequired: 'Rebuild required'
 };

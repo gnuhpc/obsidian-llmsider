@@ -90,7 +90,7 @@ export class DiffProcessor {
 	/**
 	 * Generate enhanced diff using jsdiff with fine-grained character-level detection
 	 */
-	private generateEnhancedDiff(originalContent: string, modifiedContent: string): any {
+	private generateEnhancedDiff(originalContent: string, modifiedContent: string): unknown {
 		Logger.debug('Generating enhanced diff with fine-grained inline detection');
 		
 		// Check if Intl.Segmenter is available for better word boundary detection
@@ -105,7 +105,7 @@ export class DiffProcessor {
 		let diffOptions = {};
 		if (hasSegmenter) {
 			try {
-				const segmenter = new (Intl as any).Segmenter('zh-CN', { granularity: 'word' });
+				const segmenter = new (Intl as unknown).Segmenter('zh-CN', { granularity: 'word' });
 				diffOptions = { intlSegmenter: segmenter };
 				Logger.debug('Created Intl.Segmenter for Chinese text');
 			} catch (error) {
@@ -133,14 +133,14 @@ export class DiffProcessor {
 
 		// Calculate change statistics
 		const stats = {
-			charactersAdded: charDiff.filter((part: any) => part.added).reduce((sum: any, part: any) => sum + part.value.length, 0),
-			charactersRemoved: charDiff.filter((part: any) => part.removed).reduce((sum: any, part: any) => sum + part.value.length, 0),
-			wordsAdded: wordDiff.filter((part: any) => part.added).length,
-			wordsRemoved: wordDiff.filter((part: any) => part.removed).length,
-			linesAdded: lineDiff.filter((part: any) => part.added).reduce((sum: any, part: any) => sum + part.value.split('\n').length - 1, 0),
-			linesRemoved: lineDiff.filter((part: any) => part.removed).reduce((sum: any, part: any) => sum + part.value.split('\n').length - 1, 0),
-			sentencesAdded: sentenceDiff.filter((part: any) => part.added).length,
-			sentencesRemoved: sentenceDiff.filter((part: any) => part.removed).length
+			charactersAdded: charDiff.filter((part: unknown) => part.added).reduce((sum: unknown, part: unknown) => sum + part.value.length, 0),
+			charactersRemoved: charDiff.filter((part: unknown) => part.removed).reduce((sum: unknown, part: unknown) => sum + part.value.length, 0),
+			wordsAdded: wordDiff.filter((part: unknown) => part.added).length,
+			wordsRemoved: wordDiff.filter((part: unknown) => part.removed).length,
+			linesAdded: lineDiff.filter((part: unknown) => part.added).reduce((sum: unknown, part: unknown) => sum + part.value.split('\n').length - 1, 0),
+			linesRemoved: lineDiff.filter((part: unknown) => part.removed).reduce((sum: unknown, part: unknown) => sum + part.value.split('\n').length - 1, 0),
+			sentencesAdded: sentenceDiff.filter((part: unknown) => part.added).length,
+			sentencesRemoved: sentenceDiff.filter((part: unknown) => part.removed).length
 		};
 
 		const hasChanges = stats.charactersAdded > 0 || stats.charactersRemoved > 0;
@@ -166,10 +166,10 @@ export class DiffProcessor {
 	 * Merge adjacent diff parts of the same type for better readability
 	 * This prevents showing every single character as a separate change
 	 */
-	private mergeAdjacentDiffs(diffs: any[]): any[] {
+	private mergeAdjacentDiffs(diffs: unknown[]): unknown[] {
 		if (!diffs || diffs.length === 0) return diffs;
 
-		const merged: any[] = [];
+		const merged: unknown[] = [];
 		let current = { ...diffs[0] };
 
 		for (let i = 1; i < diffs.length; i++) {
@@ -221,7 +221,7 @@ export class DiffProcessor {
 	/**
 	 * Generate diff using jsdiff with Intl.Segmenter for better word segmentation
 	 */
-	generateJSDiff(originalContent: string, modifiedContent: string): any {
+	generateJSDiff(originalContent: string, modifiedContent: string): unknown {
 		Logger.debug('Starting enhanced diff generation with Intl.Segmenter');
 		Logger.debug('Original content length:', originalContent?.length || 0);
 		Logger.debug('Modified content length:', modifiedContent?.length || 0);
@@ -254,7 +254,7 @@ export class DiffProcessor {
 	/**
 	 * Generate a human-readable summary of changes
 	 */
-	private generateChangesSummary(stats: any): string {
+	private generateChangesSummary(stats: unknown): string {
 		const changes = [];
 		const i18n = this.plugin.i18n;
 		
@@ -283,7 +283,7 @@ export class DiffProcessor {
 	/**
 	 * Render JSDiff visualization with clean inline display
 	 */
-	renderJSDiffVisualization(contentEl: HTMLElement, diffResult: any, originalContent: string, modifiedContent: string, selectedTextContext?: any): void {
+	renderJSDiffVisualization(contentEl: HTMLElement, diffResult: unknown, originalContent: string, modifiedContent: string, selectedTextContext?: unknown): void {
 		Logger.debug('Starting inline diff visualization');
 		Logger.debug('diffResult:', diffResult);
 		Logger.debug('originalContent length:', originalContent?.length || 0);
@@ -315,7 +315,7 @@ export class DiffProcessor {
 	 * Render inline diff with proper highlighting and formatting
 	 * Creates a fine-grained inline diff view showing additions and deletions within the same paragraph
 	 */
-	private renderInlineDiff(container: HTMLElement, wordDiff: any[]): void {
+	private renderInlineDiff(container: HTMLElement, wordDiff: unknown[]): void {
 		Logger.debug('renderInlineDiff called');
 		Logger.debug('wordDiff input:', wordDiff);
 		Logger.debug('wordDiff is array:', Array.isArray(wordDiff));
@@ -323,7 +323,8 @@ export class DiffProcessor {
 
 		if (!wordDiff || !Array.isArray(wordDiff)) {
 			Logger.error('Invalid wordDiff data:', wordDiff);
-			container.createEl('div', { text: 'Error: Invalid diff data' });
+			const i18n = this.plugin?.getI18nManager();
+			container.createEl('div', { text: i18n?.t('ui.errorInvalidDiffData') || 'Error: Invalid diff data' });
 			return;
 		}
 
@@ -534,7 +535,7 @@ export class DiffProcessor {
 		try {
 			const activeFile = this.app.workspace.getActiveFile();
 			if (!activeFile) {
-				new Notice('No active note found to apply changes to.');
+				new Notice(this.plugin.getI18nManager()?.t('notifications.diff.noActiveNote') || 'No active note found to apply changes to.');
 				return;
 			}
 
@@ -547,15 +548,14 @@ export class DiffProcessor {
 				if (!proceed) return;
 			}
 
-			// Apply the improvements
-			await this.app.vault.modify(activeFile, modifiedContent);
-			new Notice(`Applied improvements to "${activeFile.basename}"`);
+		// Apply the improvements
+		await this.app.vault.modify(activeFile, modifiedContent);
+		new Notice(this.plugin.getI18nManager()?.t('notifications.diff.appliedImprovements', { filename: activeFile.basename }) || `Applied improvements to "${activeFile.basename}"`);
 
-			Logger.debug('Successfully applied changes');
-
-		} catch (error) {
+		Logger.debug('Successfully applied changes');		} catch (error) {
 			Logger.error('Failed to apply changes:', error);
-			new Notice('Failed to apply changes: ' + (error instanceof Error ? error.message : 'Unknown error'));
+			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+			new Notice(this.plugin.getI18nManager()?.t('notifications.diff.applyFailed', { error: errorMsg }) || 'Failed to apply changes: ' + errorMsg);
 		}
 	}
 
@@ -563,13 +563,13 @@ export class DiffProcessor {
 	 * Copy content as Markdown
 	 */
 	private async copyAsMarkdown(content: string): Promise<void> {
-		try {
-			await navigator.clipboard.writeText(content);
-			new Notice('Content copied to clipboard');
-			Logger.debug('Copied content to clipboard:', content.length + ' characters');
+	try {
+		await navigator.clipboard.writeText(content);
+		new Notice(this.plugin.getI18nManager()?.t('notifications.diff.copiedToClipboard') || 'Content copied to clipboard');
+		Logger.debug('Copied content to clipboard:', content.length + ' characters');
 		} catch (error) {
 			Logger.error('Failed to copy to clipboard:', error);
-			new Notice('Failed to copy to clipboard');
+			new Notice(this.plugin.getI18nManager()?.t('notifications.diff.copyFailed') || 'Failed to copy to clipboard');
 		}
 	}
 
@@ -584,22 +584,29 @@ export class DiffProcessor {
 				content: content.substring(0, 100)
 			});
 
-			// Validate content
-			if (!content || content.trim().length < 10) {
-				new Notice('Content too short to generate note');
-				return;
-			}
-			
-			const provider = this.plugin.getActiveProvider();
+		// Validate content
+		if (!content || content.trim().length < 10) {
+			new Notice(this.plugin.getI18nManager()?.t('notifications.diff.contentTooShort') || 'Content too short to generate note');
+			return;
+		}			const provider = this.plugin.getActiveProvider();
 			if (!provider) {
-				new Notice('No AI provider available');
+				new Notice(this.plugin.getI18nManager()?.t('notifications.diff.noAIProvider') || 'No AI provider available');
 				return;
 			}
 
-			// Show loading notice
-			notice = new Notice('Generating note title...', 0); // 0 means it won't auto-dismiss
+		// Show loading notice
+		notice = new Notice(this.plugin.getI18nManager()?.t('notifications.diff.generatingTitle') || 'Generating note title...', 0); // 0 means it won't auto-dismiss
 
-		// Generate title using AI with better prompt
+	// Generate title using AI with better prompt
+		// Extract final answer by removing thinking sections for title generation
+		let contentForTitle = content;
+		// Remove thinking callout sections (e.g., "> [!tip] 思考过程\n> ...")
+		// Pattern works for both collapsed [!tip]- and expanded [!tip] formats
+		contentForTitle = contentForTitle.replace(/^>\s*\[!\w+\][^\n]*思考[^\n]*\n(>\s*[^\n]*\n)*\n*/gm, '');
+		// Remove any remaining > quoted blocks at the start
+		contentForTitle = contentForTitle.replace(/^(>\s*[^\n]*\n)+\n*/m, '');
+		contentForTitle = contentForTitle.trim();
+		
 		const titlePrompt = `Based on the following content, generate a concise, descriptive title in Chinese that captures the main topic or key insight. The title should be:
 - Maximum 10 Chinese characters OR 30 English letters/numbers
 - Clear and informative
@@ -607,7 +614,7 @@ export class DiffProcessor {
 - Return ONLY the title, no quotes or additional text
 
 Content:
-${content.substring(0, 800)}`;
+${contentForTitle.substring(0, 800)}`;
 		
 		// Get title from AI
 		let generatedTitle = 'AI生成的笔记';
@@ -619,35 +626,33 @@ ${content.substring(0, 800)}`;
 				timestamp: Date.now()
 			}];
 
-			let titleContent = '';
-			await provider.sendStreamingMessage(titleMessages, (chunk) => {
+		let titleContent = '';
+		await provider.sendStreamingMessage(
+			titleMessages, 
+			(chunk) => {
 				if (chunk.delta) {
-					titleContent += chunk.delta;
-				}
-			});
-
-			if (titleContent.trim()) {
-				generatedTitle = titleContent.trim()
-					.replace(/[<>:"/\\|?*]/g, '') // Remove invalid filename characters
-					.replace(/^["']|["']$/g, ''); // Remove quotes
-				
-				// Apply smart length limit: 10 Chinese chars OR 30 English/numbers
-				let chineseCount = 0;
-				let englishCount = 0;
-				let result = '';
-				
-				for (const char of generatedTitle) {
-					if (/[\u4e00-\u9fa5]/.test(char)) {
-						if (chineseCount + englishCount >= 10 && chineseCount > 0) break;
-						chineseCount++;
-					} else if (/[a-zA-Z0-9]/.test(char)) {
-						if (englishCount >= 30 || (chineseCount > 0 && chineseCount + englishCount >= 10)) break;
-						englishCount++;
+					// Skip thinking content during streaming
+					if (chunk.metadata?.type !== 'thinking') {
+						titleContent += chunk.delta;
 					}
-					result += char;
 				}
+			},
+			undefined, // abortSignal
+			undefined, // tools - explicitly undefined to avoid tool calling
+			'' // systemMessage - empty to avoid plan generation prompts
+		);			if (titleContent.trim()) {
+				generatedTitle = titleContent.trim();
 				
-				generatedTitle = result || generatedTitle.substring(0, 30);
+				// Remove thinking callout sections if any leaked through
+				generatedTitle = generatedTitle.replace(/^>\s*\[!\w+\][^\n]*思考[^\n]*\n(>\s*[^\n]*\n)*\n*/gm, '');
+				generatedTitle = generatedTitle.replace(/^(>\s*[^\n]*\n)+\n*/m, '');
+				
+				// Clean up for filename
+				generatedTitle = generatedTitle
+					.replace(/[<>:"/\\|?*]/g, '') // Remove invalid filename characters
+					.replace(/^["']|["']$/g, '') // Remove quotes
+					.trim();
+				
 				Logger.debug('Generated title:', generatedTitle);
 			}
 		} catch (error) {

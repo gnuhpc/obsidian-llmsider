@@ -6,19 +6,81 @@ import { ChatMessage, LLMResponse, StreamingResponse, AnthropicProvider } from '
 import { UnifiedTool } from '../tools/unified-tool-manager';
 
 export class AnthropicProviderImpl extends BaseLLMProvider {
+	private supportsVisionOverride?: boolean;
 
 	constructor(config: AnthropicProvider) {
 		super(config);
+		this.supportsVisionOverride = config.supportsVision;
 		this.initializeModelConfig();
 	}
 
 	protected initializeModelConfig(): void {
 		this.model_config = createAnthropic({
-			apiKey: this.apiKey
+			apiKey: this.apiKey,
+			fetch: this.createCustomFetch()
 		});
 	}
+	
+	/**
+	 * Create a custom fetch wrapper with timeout and Keep-Alive support
+	 */
+	private createCustomFetch() {
+		const originalFetch = global.fetch || fetch;
+		
+		return async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+			// Clone init to avoid mutation
+			const fetchInit = { ...init };
+			
+			// Add timeout control
+			const isStreaming = fetchInit.body?.toString().includes('"stream":true');
+			const timeoutMs = isStreaming ? 120000 : 60000;
+			
+			// Add Keep-Alive header
+			fetchInit.headers = {
+				...fetchInit.headers,
+				'Connection': 'keep-alive',
+				'Keep-Alive': 'timeout=120, max=100'
+			};
+			
+			// Create AbortController for timeout
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => {
+				Logger.warn(`[Anthropic] Request timeout after ${timeoutMs}ms for ${url}`);
+				controller.abort();
+			}, timeoutMs);
+			
+			// Merge abort signals
+			if (fetchInit.signal) {
+				const originalSignal = fetchInit.signal;
+				originalSignal.addEventListener('abort', () => {
+					controller.abort();
+				});
+			}
+			fetchInit.signal = controller.signal;
+			
+			try {
+				const response = await originalFetch(url, fetchInit);
+				clearTimeout(timeoutId);
+				return response;
+			} catch (error) {
+				clearTimeout(timeoutId);
+				
+				Logger.error('[Anthropic] Fetch error:', {
+					url: url.toString(),
+					error: error.message,
+					code: error.code,
+					name: error.name
+				});
+				
+				if (error.name === 'AbortError') {
+					throw new Error(`Request timeout after ${timeoutMs}ms for ${url}`);
+				}
+				throw error;
+			}
+		};
+	}
 
-	protected getAISDKModel(): any {
+	protected getAISDKModel(): unknown {
 		return this.model_config.chat(this.model);
 	}
 
@@ -89,17 +151,15 @@ export class AnthropicProviderImpl extends BaseLLMProvider {
 	}
 
 	supportsVision(): boolean {
-		// Claude 3 models support vision
-		const visionModels = [
-			'claude-3-opus',
-			'claude-3-sonnet',
-			'claude-3-haiku',
-			'claude-3.5-sonnet',
-			'claude-3-5-sonnet'
-		];
+		// Only use user's explicit configuration
+		if (this.supportsVisionOverride !== undefined) {
+			Logger.debug(`[Anthropic] Using user vision configuration for ${this.model}:`, this.supportsVisionOverride);
+			return this.supportsVisionOverride;
+		}
 
-		const modelName = this.model.toLowerCase();
-		return visionModels.some(visionModel => modelName.includes(visionModel));
+		// Default to false if not configured
+		Logger.debug(`[Anthropic] No vision configuration set for ${this.model}, defaulting to false`);
+		return false;
 	}
 
 	// Anthropic-specific methods using AI SDK
@@ -141,7 +201,7 @@ export class AnthropicProviderImpl extends BaseLLMProvider {
 			Logger.debug('Total models returned:', allModels.length);
 			
 			const models = allModels
-				.map((model: any) => model.id)
+				.map((model: unknown) => model.id)
 				.sort();
 
 			Logger.debug('Available models:', models);
@@ -160,6 +220,9 @@ export class AnthropicProviderImpl extends BaseLLMProvider {
 
 	updateConfig(config: Partial<AnthropicProvider>): void {
 		super.updateConfig(config);
+		if (config.supportsVision !== undefined) {
+			this.supportsVisionOverride = config.supportsVision;
+		}
 
 		// Reinitialize the client with new config
 		this.initializeModelConfig();

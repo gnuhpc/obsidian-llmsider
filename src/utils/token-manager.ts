@@ -21,6 +21,69 @@ export class TokenManager {
     public static readonly MAX_CONTEXT_TOKENS = 120000;  // Conservative limit below 128k - now public
     private static readonly BUFFER_TOKENS = 8000;        // Reserve for response
 
+    // Model-specific token limits (both context window and rate limits)
+    private static readonly MODEL_LIMITS: Record<string, { contextWindow: number; rateLimit?: number }> = {
+        // Groq models with strict rate limits (TPM)
+        'moonshotai/kimi-k2-instruct': { contextWindow: 8192, rateLimit: 10000 },
+        'llama-3.3-70b-versatile': { contextWindow: 128000, rateLimit: 20000 },
+        'llama-3.1-70b-versatile': { contextWindow: 128000, rateLimit: 20000 },
+        'llama-3.1-8b-instant': { contextWindow: 128000, rateLimit: 20000 },
+        'mixtral-8x7b-32768': { contextWindow: 32768, rateLimit: 20000 },
+        'gemma2-9b-it': { contextWindow: 8192, rateLimit: 15000 },
+        // Common models
+        'gpt-4': { contextWindow: 8192 },
+        'gpt-4-turbo': { contextWindow: 128000 },
+        'gpt-4o': { contextWindow: 128000 },
+        'gpt-3.5-turbo': { contextWindow: 16385 },
+        'claude-3-opus': { contextWindow: 200000 },
+        'claude-3-sonnet': { contextWindow: 200000 },
+        'claude-3-haiku': { contextWindow: 200000 },
+    };
+
+    /**
+     * Get effective token limit for a specific model
+     * Returns the more restrictive of context window or rate limit
+     */
+    static getModelTokenLimit(modelName: string): number {
+        const modelKey = Object.keys(this.MODEL_LIMITS).find(key => 
+            modelName.toLowerCase().includes(key.toLowerCase())
+        );
+
+        if (modelKey) {
+            const limits = this.MODEL_LIMITS[modelKey];
+            // Use the more restrictive limit (rate limit is per minute, so we use 80% of it for safety)
+            const effectiveRateLimit = limits.rateLimit ? Math.floor(limits.rateLimit * 0.8) : Infinity;
+            return Math.min(limits.contextWindow, effectiveRateLimit);
+        }
+
+        // Default to conservative limit
+        return this.MAX_CONTEXT_TOKENS;
+    }
+
+    /**
+     * Convert token limit to character limit for file text extraction
+     * Uses conservative text ratio (4 chars per token) to avoid token overflow
+     * @param tokenLimit - Token limit from model context window
+     * @returns Character limit for extractTextWithLimit
+     */
+    static tokenLimitToCharacterLimit(tokenLimit: number): number {
+        // Use inverse of TOKENS_PER_CHAR_TEXT ratio for conservative estimation
+        // 0.25 tokens/char => 4 chars/token
+        const CHARS_PER_TOKEN = 1 / this.TOKENS_PER_CHAR_TEXT;
+        return Math.floor(tokenLimit * CHARS_PER_TOKEN);
+    }
+
+    /**
+     * Get character limit for a specific model
+     * Convenience method that combines getModelTokenLimit and tokenLimitToCharacterLimit
+     * @param modelName - Name of the model
+     * @returns Character limit suitable for extractTextWithLimit
+     */
+    static getModelCharacterLimit(modelName: string): number {
+        const tokenLimit = this.getModelTokenLimit(modelName);
+        return this.tokenLimitToCharacterLimit(tokenLimit);
+    }
+
     /**
      * Estimate token count for text content
      */
@@ -60,7 +123,7 @@ export class TokenManager {
             // Multimodal content
             message.content.forEach((content: MessageContent) => {
                 if (content.type === 'text') {
-                    const textContent = content as TextContent;
+                    const textContent = content;
                     tokenCount += this.estimateTokensForText(textContent.text);
                 } else if (content.type === 'image') {
                     tokenCount += this.TOKENS_PER_IMAGE;
@@ -101,7 +164,8 @@ export class TokenManager {
     static isTokenLimitExceeded(
         messages: ChatMessage[],
         contextPrompt: string = '',
-        tools?: any[]
+        tools?: unknown[],
+        modelName?: string
     ): boolean {
         const messageTokens = this.estimateTokensForMessages(messages);
         const contextTokens = this.estimateTokensForContext(contextPrompt);
@@ -109,6 +173,7 @@ export class TokenManager {
         const bufferTokens = this.BUFFER_TOKENS;
 
         const totalTokens = messageTokens + contextTokens + toolTokens + bufferTokens;
+        const effectiveLimit = modelName ? this.getModelTokenLimit(modelName) : this.MAX_CONTEXT_TOKENS;
 
         Logger.debug('Token usage check:', {
             messageTokens,
@@ -116,17 +181,18 @@ export class TokenManager {
             toolTokens,
             bufferTokens,
             totalTokens,
-            limit: this.MAX_CONTEXT_TOKENS,
-            exceeded: totalTokens > this.MAX_CONTEXT_TOKENS
+            modelName: modelName || 'default',
+            limit: effectiveLimit,
+            exceeded: totalTokens > effectiveLimit
         });
 
-        return totalTokens > this.MAX_CONTEXT_TOKENS;
+        return totalTokens > effectiveLimit;
     }
 
     /**
      * Estimate token count for tools
      */
-    static estimateTokensForTools(tools: any[]): number {
+    static estimateTokensForTools(tools: unknown[]): number {
         if (!tools || tools.length === 0) return 0;
 
         // Rough estimation: each tool definition takes ~50-200 tokens depending on complexity
@@ -140,9 +206,10 @@ export class TokenManager {
     static truncateMessagesToFitTokens(
         messages: ChatMessage[],
         contextPrompt: string = '',
-        tools?: any[]
+        tools?: unknown[],
+        modelName?: string
     ): ChatMessage[] {
-        if (!this.isTokenLimitExceeded(messages, contextPrompt, tools)) {
+        if (!this.isTokenLimitExceeded(messages, contextPrompt, tools, modelName)) {
             return messages;
         }
 
@@ -151,7 +218,8 @@ export class TokenManager {
         const contextTokens = this.estimateTokensForContext(contextPrompt);
         const toolTokens = tools ? this.estimateTokensForTools(tools) : 0;
         const bufferTokens = this.BUFFER_TOKENS;
-        const availableTokens = this.MAX_CONTEXT_TOKENS - contextTokens - toolTokens - bufferTokens;
+        const effectiveLimit = modelName ? this.getModelTokenLimit(modelName) : this.MAX_CONTEXT_TOKENS;
+        const availableTokens = effectiveLimit - contextTokens - toolTokens - bufferTokens;
 
         // Always keep the last user message (most recent)
         if (messages.length === 0) return messages;
@@ -216,7 +284,7 @@ export class TokenManager {
 
             for (const content of message.content) {
                 const contentTokens = content.type === 'text'
-                    ? this.estimateTokensForText((content as TextContent).text)
+                    ? this.estimateTokensForText((content).text)
                     : this.TOKENS_PER_IMAGE;
 
                 if (totalTokens + contentTokens <= maxTokens) {
@@ -228,7 +296,7 @@ export class TokenManager {
                     const maxChars = Math.floor(remainingTokens / this.TOKENS_PER_CHAR_TEXT);
 
                     if (maxChars > 100) { // Only include if meaningful amount of text can fit
-                        const textContent = content as TextContent;
+                        const textContent = content;
                         truncatedContent.push({
                             ...textContent,
                             text: textContent.text.substring(0, maxChars) + '\n[Truncated]'

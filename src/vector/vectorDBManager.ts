@@ -33,6 +33,7 @@ export class VectorDBManager {
   private modelLoadProgressCallback: ((progress: number, message: string) => void) | null = null;
   private statsUpdateCallback: (() => void) | null = null;
   private i18n: I18nManager;
+  private allowSearchDuringStartup: boolean = true;
 
   constructor(
     vault: Vault,
@@ -83,7 +84,7 @@ export class VectorDBManager {
       const { connection, model } = this.parseEmbeddingModelId();
 
       // Calculate absolute storage path relative to vault
-      const vaultBasePath = (this.vault.adapter as any).basePath || '';
+      const vaultBasePath = (this.vault.adapter as unknown).basePath || '';
       const absoluteStoragePath = this.settings.storagePath.startsWith('/')
         ? this.settings.storagePath
         : `${vaultBasePath}/${this.settings.storagePath}`;
@@ -115,8 +116,9 @@ export class VectorDBManager {
         this.i18n
       );
 
-      // Initialize Semantic Search Manager
-      this.semanticSearch = new SemanticSearchManager(this.oramaManager);
+      // Initialize Semantic Search Manager with excerpt length configuration
+      const excerptLength = this.settings.contextExcerptLength ?? 500;
+      this.semanticSearch = new SemanticSearchManager(this.oramaManager, excerptLength);
 
       this.isInitialized = true;
 
@@ -164,15 +166,33 @@ export class VectorDBManager {
     try {
       Logger.debug('Shutting down vector database system...');
 
+      // Clear all pending index queue timeouts
+      if (this.indexQueue.size > 0) {
+        Logger.debug(`Clearing ${this.indexQueue.size} pending index queue timeouts...`);
+        for (const timeout of this.indexQueue.values()) {
+          window.clearTimeout(timeout);
+        }
+        this.indexQueue.clear();
+      }
+
       // Save metadata
       if (this.metaStore) {
         await this.metaStore.save();
+        this.metaStore = null; // Clear reference
       }
 
       // Shutdown Orama
       if (this.oramaManager) {
         await this.oramaManager.shutdown();
+        this.oramaManager = null; // Clear reference
       }
+
+      // Clear other references
+      this.indexSync = null;
+      this.semanticSearch = null;
+      this.progressCallback = null;
+      this.modelLoadProgressCallback = null;
+      this.statsUpdateCallback = null;
 
       this.isInitialized = false;
       Logger.debug('Vector database system shutdown complete');
@@ -214,6 +234,18 @@ export class VectorDBManager {
     this.ensureInitialized();
 
     try {
+      // Re-parse embedding model settings before sync
+      // This ensures we use the LATEST model configuration from settings
+      const { connection, model } = this.parseEmbeddingModelId();
+      
+      if (!connection || !model) {
+        throw new Error('No embedding model configured. Please configure an embedding model in settings.');
+      }
+      
+      // Update the OramaManager with latest connection and model
+      this.oramaManager!.updateConnectionModel(connection, model);
+      Logger.debug(`Updated embedding model for sync: ${model.modelName} (dimension: ${model.embeddingDimension || 'auto-detect'})`);
+      
       new Notice(this.i18n.t('notifications.vectorDatabase.updatingIndex'));
       
       // Create wrapper callback to track progress
@@ -261,6 +293,26 @@ export class VectorDBManager {
     this.ensureInitialized();
 
     try {
+      // CRITICAL: Re-parse embedding model settings before rebuild
+      // This ensures we use the LATEST model configuration from settings
+      const { connection, model } = this.parseEmbeddingModelId();
+      
+      if (!connection || !model) {
+        throw new Error('No embedding model configured. Please configure an embedding model in settings.');
+      }
+      
+      // Update the OramaManager with latest connection and model
+      this.oramaManager!.updateConnectionModel(connection, model);
+      
+      // Show detailed model information to user
+      const modelInfo = `Rebuild starting with:\n` +
+        `Connection: ${connection.name} (${connection.type})\n` +
+        `Model: ${model.modelName}\n` +
+        `Configured Dimension: ${model.embeddingDimension || 'auto-detect'}`;
+      Logger.info(modelInfo);
+      
+      // Show user-friendly notice with model info
+      new Notice(`Rebuilding index with ${model.modelName} (${model.embeddingDimension || 'auto'}D)`, 5000);
       new Notice(this.i18n.t('notifications.vectorDatabase.rebuildingIndex'));
       
       // Create wrapper callback to track progress
@@ -439,7 +491,21 @@ export class VectorDBManager {
     return this.isInitialized;
   }
 
+  /**
+   * Enable searches after plugin startup is complete
+   * Call this from main.ts after all initialization is done
+   */
+  public enableSearches(): void {
+    this.allowSearchDuringStartup = true;
+    Logger.warn('[VectorDB] ✅ Search functionality ENABLED - plugin startup complete');
+  }
 
+  /**
+   * Check if searches are currently enabled
+   */
+  public isSearchEnabled(): boolean {
+    return this.allowSearchDuringStartup;
+  }
 
   /**
    * Ensure system is initialized

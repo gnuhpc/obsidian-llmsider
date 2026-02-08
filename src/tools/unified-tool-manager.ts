@@ -1,9 +1,10 @@
 // Unified Tool Manager
 // Manages both built-in tools and MCP tools with consistent interface and schema validation
 
-import { MCPTool, LLMSiderSettings } from '../types';
+import { MCPTool } from '../types';
 import { Logger } from './../utils/logger';
 import { MCPManager } from '../mcp/mcp-manager';
+import { ConfigDatabase } from '../utils/config-db';
 import { getAllBuiltInTools, getBuiltInTool, executeBuiltInTool, isBuiltInTool, BuiltInTool } from './built-in-tools';
 
 export interface UnifiedTool {
@@ -11,16 +12,18 @@ export interface UnifiedTool {
   description: string;
   inputSchema: {
     type: 'object';
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required: string[];
   };
+  outputSchema?: unknown; // JSON Schema for output, same format as inputSchema
   source: 'built-in' | 'mcp';
   server?: string; // For MCP tools
+  category?: string; // Tool category for grouping
 }
 
 export interface ToolExecutionResult {
   success: boolean;
-  result?: any;
+  result?: unknown;
   error?: string;
   toolName: string;
   source: 'built-in' | 'mcp';
@@ -30,11 +33,11 @@ export interface ToolExecutionResult {
 
 export class UnifiedToolManager {
   private mcpManager: MCPManager | null = null;
-  private settings: LLMSiderSettings | null = null;
+  private configDb: ConfigDatabase | null = null;
 
-  constructor(mcpManager?: MCPManager, settings?: LLMSiderSettings) {
+  constructor(mcpManager?: MCPManager, configDb?: ConfigDatabase) {
     this.mcpManager = mcpManager || null;
-    this.settings = settings || null;
+    this.configDb = configDb || null;
   }
 
   /**
@@ -45,32 +48,24 @@ export class UnifiedToolManager {
   }
 
   /**
-   * Set the settings instance for permission checking
+   * Set the ConfigDatabase instance for permission checking
    */
-  setSettings(settings: LLMSiderSettings): void {
-    this.settings = settings;
+  setConfigDb(configDb: ConfigDatabase): void {
+    this.configDb = configDb;
   }
 
   /**
    * Check if a built-in tool is enabled
+   * Directly queries database for real-time permission state
    */
   private isBuiltInToolEnabled(toolName: string): boolean {
-    if (!this.settings || !this.settings.builtInToolsPermissions) {
-      Logger.debug(`No settings for tool ${toolName}, defaulting to enabled`);
-      return true; // Default to enabled if no settings
-    }
-    // Check if tool has explicit setting
-    const toolPermission = this.settings.builtInToolsPermissions[toolName];
-    // If undefined or not set, default to true (enabled)
-    // If explicitly set to false, disable it
-    // If explicitly set to true, enable it
-    const isEnabled = toolPermission !== false;
-    
-    // Log only when permission is explicitly false or when debugging
-    if (toolPermission === false || this.settings.debugMode) {
-     // Logger.debug(`Tool ${toolName} enabled check: ${isEnabled}, value: ${toolPermission}`);
+    if (!this.configDb) {
+      Logger.warn(`[UnifiedToolManager] ConfigDB not initialized, defaulting to disabled for ${toolName}`);
+      return false;
     }
     
+    const isEnabled = this.configDb.isBuiltInToolEnabled(toolName);
+    Logger.debug(`[UnifiedToolManager] isBuiltInToolEnabled("${toolName}") = ${isEnabled} [caller: ${new Error().stack?.split('\n')[2]?.trim()}]`);
     return isEnabled;
   }
 
@@ -91,16 +86,11 @@ export class UnifiedToolManager {
    */
   async getAllTools(): Promise<UnifiedTool[]> {
     const startTime = Date.now();
-    Logger.debug('⏱️ [START] getAllTools - Fetching real-time tool permissions...', new Date().toISOString());
+    Logger.debug('⏱️ [START] getAllTools - Fetching real-time tool permissions from database...', new Date().toISOString());
     
-    // Debug: Log settings state
-    if (this.settings) {
-      const permissionCount = Object.keys(this.settings.builtInToolsPermissions || {}).length;
-      const enabledCount = Object.values(this.settings.builtInToolsPermissions || {}).filter(v => v === true).length;
-      const disabledCount = Object.values(this.settings.builtInToolsPermissions || {}).filter(v => v === false).length;
-      Logger.debug(`🔄 Real-time permission check: ${permissionCount} tools tracked, ${enabledCount} explicitly enabled, ${disabledCount} explicitly disabled`);
-    } else {
-      Logger.debug('WARNING: No settings available!');
+    if (!this.configDb) {
+      Logger.warn('[UnifiedToolManager] ConfigDB not initialized, returning empty tools array');
+      return [];
     }
     
     const tools: UnifiedTool[] = [];
@@ -114,17 +104,24 @@ export class UnifiedToolManager {
     
     const builtInFilterStartTime = Date.now();
     for (const tool of builtInTools) {
+      // Auto-initialize tool settings if not exists in database
+      // This ensures new tools added to code are automatically enabled
+      this.configDb.initializeBuiltInToolSettings(tool.name);
+      
       // Check if the built-in tool is enabled
       if (this.isBuiltInToolEnabled(tool.name) && !toolNames.has(tool.name)) {
+        Logger.debug(`[getAllTools] ✅ Built-in tool ENABLED: ${tool.name}`);
         tools.push({
           name: tool.name,
           description: tool.description,
           inputSchema: this.validateAndFixSchema(tool.inputSchema, tool.name),
-          source: 'built-in'
+          outputSchema: tool.outputSchema, // Include output schema if available
+          source: 'built-in',
+          category: tool.category
         });
         toolNames.add(tool.name);
       } else if (!this.isBuiltInToolEnabled(tool.name)) {
-        // Logger.debug(`Built-in tool disabled by permissions: ${tool.name}`);
+        Logger.debug(`[getAllTools] ❌ Built-in tool DISABLED: ${tool.name}`);
       } else {
         // Logger.warn(`Duplicate tool name detected and skipped: ${tool.name} (built-in)`);
       }
@@ -180,7 +177,8 @@ export class UnifiedToolManager {
         name: tool.name,
         description: tool.description,
         inputSchema: this.validateAndFixSchema(tool.inputSchema, tool.name),
-        source: 'built-in' as const
+        source: 'built-in' as const,
+        category: tool.category
       }));
   }
   
@@ -263,8 +261,17 @@ export class UnifiedToolManager {
   /**
    * Execute a tool by name with permission checking
    */
-  async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
+  async executeTool(name: string, args: unknown, runtimeContext?: unknown): Promise<ToolExecutionResult> {
     const startTime = Date.now();
+
+    // Debug: Log tool execution attempt with detailed args
+    Logger.debug(`🎯 [executeTool] Attempting to execute tool: ${name}`);
+    Logger.debug(`🎯 [executeTool] Args type: ${typeof args}`);
+    Logger.debug(`🎯 [executeTool] Args value:`, JSON.stringify(args, null, 2));
+    if (args && typeof args === 'object') {
+      Logger.debug(`🎯 [executeTool] Args keys:`, Object.keys(args));
+      Logger.debug(`🎯 [executeTool] Args entries:`, Object.entries(args));
+    }
 
     try {
       // Check if it's a built-in tool (now includes file editing tools)
@@ -282,7 +289,7 @@ export class UnifiedToolManager {
         }
 
         Logger.debug(`Executing built-in tool: ${name}`);
-        const result = await executeBuiltInTool(name, args);
+        const result = await executeBuiltInTool(name, args, runtimeContext);
 
         // Check if the tool result itself indicates failure
         const isSuccess = result && typeof result === 'object' && 'success' in result 
@@ -295,7 +302,7 @@ export class UnifiedToolManager {
           toolName: name,
           source: 'built-in',
           executionTime: Date.now() - startTime,
-          error: !isSuccess && result?.error ? result.error : undefined
+          error: !isSuccess && result && typeof result === 'object' && 'error' in result ? (result as any).error : undefined
         };
       }
 
@@ -387,11 +394,20 @@ export class UnifiedToolManager {
   /**
    * Validate and fix tool input schema to ensure it's compatible with AI SDK
    */
-  private validateAndFixSchema(schema: any, toolName: string): {
+  private validateAndFixSchema(schema: unknown, toolName: string): {
     type: 'object';
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required: string[];
   } {
+    // Special tools like for_each are meta-tools, skip validation
+    if (toolName === 'for_each') {
+      return schema as {
+        type: 'object';
+        properties: Record<string, unknown>;
+        required: string[];
+      };
+    }
+    
     // If schema is null, undefined, or has invalid type
     if (!schema || typeof schema !== 'object') {
       Logger.warn(`Invalid schema for tool ${toolName}, using default`);
@@ -402,35 +418,47 @@ export class UnifiedToolManager {
       };
     }
 
+    // Cast schema to access properties
+    const schemaObj = schema as Record<string, any>;
+
     // Check for invalid type values - add more comprehensive checks
-    if (schema.type === 'None' || schema.type === null || schema.type === 'none' ||
-        schema.type === undefined || schema.type === '' ||
-        (typeof schema.type === 'string' && schema.type.toLowerCase() === 'none')) {
-      Logger.warn(`Tool ${toolName} has invalid schema type: ${schema.type}, fixing to object type`);
+    // Note: undefined type is common for tools with no parameters, so don't warn for that case alone
+    if (schemaObj.type === 'None' || schemaObj.type === null || schemaObj.type === 'none' ||
+        schemaObj.type === '' || (typeof schemaObj.type === 'string' && schemaObj.type.toLowerCase() === 'none')) {
+      Logger.warn(`Tool ${toolName} has invalid schema type: ${schemaObj.type}, fixing to object type`);
       return {
         type: 'object',
-        properties: schema.properties || {},
-        required: Array.isArray(schema.required) ? schema.required : []
+        properties: schemaObj.properties || {},
+        required: Array.isArray(schemaObj.required) ? schemaObj.required : []
+      };
+    }
+
+    // If type is undefined, treat it as an empty object schema (common for tools with no parameters)
+    if (schemaObj.type === undefined) {
+      return {
+        type: 'object',
+        properties: schemaObj.properties || {},
+        required: Array.isArray(schemaObj.required) ? schemaObj.required : []
       };
     }
 
     // If type is not 'object', wrap the schema
-    if (schema.type !== 'object') {
-      Logger.warn(`Tool ${toolName} schema type is not 'object' (${schema.type}), wrapping`);
+    if (schemaObj.type !== 'object') {
+      Logger.warn(`Tool ${toolName} schema type is not 'object' (${schemaObj.type}), wrapping`);
       return {
         type: 'object',
         properties: {
-          input: schema
+          input: schemaObj
         },
         required: []
       };
     }
 
     // Validate properties and fix any invalid property schemas
-    const validatedProperties: Record<string, any> = {};
-    if (schema.properties && typeof schema.properties === 'object') {
-      for (const [propName, propSchema] of Object.entries(schema.properties)) {
-        const prop = propSchema as any;
+    const validatedProperties: Record<string, unknown> = {};
+    if (schemaObj.properties && typeof schemaObj.properties === 'object') {
+      for (const [propName, propSchema] of Object.entries(schemaObj.properties)) {
+        const prop = propSchema as Record<string, any>;
 
         // Fix invalid property types
         if (!prop || typeof prop !== 'object') {
@@ -476,7 +504,7 @@ export class UnifiedToolManager {
     const validatedSchema = {
       type: 'object' as const,
       properties: validatedProperties,
-      required: Array.isArray(schema.required) ? schema.required : []
+      required: Array.isArray(schemaObj.required) ? schemaObj.required : []
     };
 
     // Logger.debug(`Validated schema for ${toolName}: type=${validatedSchema.type}, properties=${Object.keys(validatedProperties).length}`);
@@ -486,8 +514,8 @@ export class UnifiedToolManager {
   /**
    * Convert unified tools to AI SDK format
    */
-  convertToAISDKFormat(tools: UnifiedTool[]): Record<string, any> {
-    const aiSDKTools: Record<string, any> = {};
+  convertToAISDKFormat(tools: UnifiedTool[]): Record<string, unknown> {
+    const aiSDKTools: Record<string, unknown> = {};
     const processedNames = new Set<string>();
 
     for (const tool of tools) {
@@ -527,7 +555,7 @@ export class UnifiedToolManager {
   /**
    * Convert unified tools to provider format (OpenAI compatible)
    */
-  convertToProviderFormat(tools: UnifiedTool[]): any[] {
+  convertToProviderFormat(tools: UnifiedTool[]): unknown[] {
     return tools.map(tool => {
       // Double-check schema validation before conversion
       const validatedSchema = this.validateAndFixSchema(tool.inputSchema, tool.name);
@@ -578,9 +606,9 @@ export class UnifiedToolManager {
     return stats.total > 0;
   }
   
-  /**
-   * Get tool by name and return its source information
-   */
+/**
+    * Get tool by name and return its source information
+    */
   async getToolInfo(name: string): Promise<{
     exists: boolean;
     source?: 'built-in' | 'mcp';
@@ -599,5 +627,14 @@ export class UnifiedToolManager {
       server: tool.server,
       description: tool.description
     };
+  }
+
+  /**
+    * Get all available tool names
+    * Returns an array of tool names from both built-in and MCP tools
+    */
+  async getToolNames(): Promise<string[]> {
+    const tools = await this.getAllTools();
+    return tools.map(tool => tool.name);
   }
 }

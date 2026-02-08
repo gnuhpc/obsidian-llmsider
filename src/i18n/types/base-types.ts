@@ -7,8 +7,12 @@ export interface MessageActionsTranslation {
   applyChanges: string;
   copyAsMarkdown: string;
   generateNewNote: string;
+  insertAtCursor: string;
+  updateNoteTitle: string;
   copyMessage: string;
   editAndResend: string;
+  editMessage: string;
+  regenerate: string;
 }
 
 export interface BaseTranslationKeys {

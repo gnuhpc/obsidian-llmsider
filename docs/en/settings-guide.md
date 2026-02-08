@@ -394,6 +394,14 @@ Options: All enabled chat models
 Default: Default chat model
 ```
 
+#### Show On Selection
+```yaml
+Setting: Show On Selection
+Type: Toggle
+Default: Off
+Effect: Shows Quick Chat button when text is selected
+```
+
 #### Show Diff Preview
 ```yaml
 Setting: Show Diff Preview
@@ -459,6 +467,124 @@ Enabled: Toggle on/off
 **Enable all in category:** Click category header toggle
 
 **Search tools:** Use search box to filter
+
+---
+
+## 🧠 Memory Settings
+
+**Location**: Settings → LLMSider → Memory Settings
+
+### Working Memory
+
+#### Enable Working Memory
+```yaml
+Setting: Enable Working Memory
+Type: Toggle
+Default: On
+Effect: Allows AI to maintain context of current task/resource
+```
+
+#### Working Memory Scope
+```yaml
+Setting: Working Memory Scope
+Type: Dropdown
+Options:
+  - Resource (Global)
+  - Thread (Per-conversation)
+Default: Resource
+Effect: Determines if memory is shared across conversations or isolated
+```
+
+### Conversation History
+
+#### Enable Conversation History
+```yaml
+Setting: Enable Conversation History
+Type: Toggle
+Default: On
+Effect: Stores past messages for context
+```
+
+#### Conversation History Limit
+```yaml
+Setting: Conversation History Limit
+Type: Slider
+Default: 10
+Range: 5-1000
+Description: Number of messages to keep in active context
+```
+
+### Conversation Compaction
+
+#### Enable Compaction
+```yaml
+Setting: Enable Compaction
+Type: Toggle
+Default: On
+Effect: Automatically summarizes old messages to save tokens
+```
+
+#### Compaction Threshold
+```yaml
+Setting: Compaction Threshold
+Type: Number
+Default: 8000
+Unit: Tokens
+Description: Trigger compaction when conversation exceeds this size
+```
+
+#### Compaction Target
+```yaml
+Setting: Compaction Target
+Type: Number
+Default: 4000
+Unit: Tokens
+Description: Target size after compaction
+```
+
+#### Preserve Recent Count
+```yaml
+Setting: Preserve Recent Count
+Type: Number
+Default: 4
+Description: Number of most recent messages to keep uncompressed
+```
+
+#### Compaction Model
+```yaml
+Setting: Compaction Model
+Type: Dropdown
+Options: All enabled chat models
+Default: First available model
+Description: Model used to generate summaries
+```
+
+---
+
+## 📝 Prompt Management
+
+**Location**: Settings → LLMSider → Prompt Management
+
+### Custom Prompts
+
+Manage your personal prompt library.
+
+- **Add Prompt**: Create a new custom prompt
+- **Edit**: Modify existing prompts
+- **Delete**: Remove custom prompts
+
+**Prompt Fields:**
+- **Name**: Display name
+- **Description**: What the prompt does
+- **Content**: The actual prompt text (supports placeholders)
+- **Tags**: For categorization
+
+### Built-in Prompts
+
+View and manage visibility of system-provided prompts.
+
+- **Toggle Visibility**: Hide built-in prompts you don't use
+- **View Content**: See the underlying prompt text
 
 ---
 
@@ -609,6 +735,37 @@ Note: Free tier available
 
 **Location**: Settings → LLMSider → Advanced
 
+### Plan Execution Mode
+```yaml
+Setting: Plan Execution Mode
+Type: Dropdown
+Options:
+  - Sequential (Default)
+  - DAG (Parallel)
+Effect: Controls how Agent Mode executes complex tasks
+```
+- **Sequential**: Steps run one after another (safer, easier to debug)
+- **DAG**: Independent steps run in parallel (faster for complex tasks)
+
+### Tool Selection Limits
+
+#### Max Built-in Tools Selection
+```yaml
+Setting: Max Built-in Tools Selection
+Type: Number
+Default: 64
+Description: Maximum number of built-in tools active simultaneously
+Note: Higher limits may exceed model context windows
+```
+
+#### Max MCP Tools Selection
+```yaml
+Setting: Max MCP Tools Selection
+Type: Number
+Default: 64
+Description: Maximum number of MCP tools active simultaneously
+```
+
 ### Debug Mode
 ```yaml
 Setting: Debug Mode
@@ -740,10 +897,10 @@ Settings:
 ## 📚 Related Guides
 
 - [Connections & Models](connections-and-models.md) - Detailed provider setup
-- [Vector Database](vector-database.md) - Semantic search guide
+- [Search Enhancement](search-enhancement.md) - Semantic search guide
 - [Built-in Tools](built-in-tools.md) - Complete tool reference
 - [MCP Integration](mcp-integration.md) - External tool setup
 
 ---
 
-**Questions?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [Discord](https://discord.gg/llmsider)
+**Questions?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)

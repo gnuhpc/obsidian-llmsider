@@ -35,7 +35,7 @@ export interface StructuredToolResult {
   };
   result: {
     summary: string;
-    details: any;
+    details: unknown;
     artifacts?: string[];
   };
   context: {
@@ -120,7 +120,7 @@ ${additionalContext}
   createStructuredToolResultMessage(
     stepId: string,
     toolName: string,
-    result: any,
+    result: unknown,
     status: 'success' | 'error' = 'success',
     summary?: string
   ): ChatMessage {
@@ -223,7 +223,7 @@ ${JSON.stringify(toolResult, null, 2)}
    * @param seen - WeakSet to track seen objects
    * @returns Sanitized object safe for JSON.stringify
    */
-  private sanitizeCircularReferences(obj: any, seen = new WeakSet()): any {
+  private sanitizeCircularReferences(obj: unknown, seen = new WeakSet()): unknown {
     // Handle primitives and null
     if (obj === null || typeof obj !== 'object') {
       return obj;
@@ -242,7 +242,7 @@ ${JSON.stringify(toolResult, null, 2)}
     }
 
     // Handle objects
-    const sanitized: any = {};
+    const sanitized: unknown = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
         try {
@@ -261,7 +261,7 @@ ${JSON.stringify(toolResult, null, 2)}
    * @param obj - Object to check
    * @returns true if circular references detected
    */
-  private hasCircularReferences(obj: any): boolean {
+  private hasCircularReferences(obj: unknown): boolean {
     try {
       JSON.stringify(obj);
       return false;
@@ -273,7 +273,7 @@ ${JSON.stringify(toolResult, null, 2)}
   /**
    * Generate a concise summary of tool execution result
    */
-  private generateResultSummary(toolName: string, result: any, status: 'success' | 'error'): string {
+  private generateResultSummary(toolName: string, result: unknown, status: 'success' | 'error'): string {
     if (status === 'error') {
       return `Tool ${toolName} failed: ${result?.error || 'Unknown error'}`;
     }
@@ -290,8 +290,7 @@ ${JSON.stringify(toolResult, null, 2)}
       case 'create':
         return `Created file: ${result?.path || 'unknown'} with ${result?.content?.length || 0} characters`;
 
-      case 'search_files':
-      case 'search_content':
+      case 'search_notes':
         return `Search completed: found ${result?.results?.length || 0} matches`;
 
       case 'fetch_web_content':
@@ -313,7 +312,7 @@ ${JSON.stringify(toolResult, null, 2)}
   /**
    * Extract artifacts (file paths, URLs, etc.) from tool results
    */
-  private extractArtifacts(result: any): string[] {
+  private extractArtifacts(result: unknown): string[] {
     const artifacts: string[] = [];
 
     if (typeof result === 'object' && result !== null) {
@@ -326,10 +325,10 @@ ${JSON.stringify(toolResult, null, 2)}
 
       // Extract arrays of paths or URLs
       if (Array.isArray(result.files)) {
-        artifacts.push(...result.files.filter((f: any) => typeof f === 'string'));
+        artifacts.push(...result.files.filter((f: unknown) => typeof f === 'string'));
       }
       if (Array.isArray(result.results)) {
-        result.results.forEach((r: any) => {
+        result.results.forEach((r: unknown) => {
           if (r.path) artifacts.push(r.path);
           if (r.file) artifacts.push(r.file);
         });
@@ -376,7 +375,7 @@ ${JSON.stringify(toolResult, null, 2)}
   /**
    * Create final answer prompt that includes full context
    */
-  createFinalAnswerPrompt(executionResults: any[]): string {
+  createFinalAnswerPrompt(executionResults: unknown[]): string {
     // Create a concise execution summary (max ~300 words)
     // Only include: step purpose, success/failure status, and user task
     

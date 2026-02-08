@@ -8,8 +8,17 @@
 @import './layout.css';
 @import './messages.css';
 @import './input.css';
+@import './context-menu.css';
 @import './diff.css';
 @import './prompt-selector.css';
+@import './chat-history.css';
 @import './plan-execute.css';
+@import './plan-execute-dag.css';
+@import './tool-execution-indicator.css';
+@import './error-action-panel.css';
+@import './selection-toolbar.css';
+@import './settings.css';
+@import './builtin-tools.css';
 @import './accessibility.css';
 @import './responsive.css';
+@import './components/speed-reading.css';

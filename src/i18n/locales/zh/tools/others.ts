@@ -3,6 +3,10 @@
  */
 
 export const zhOthersTools = {
+	generate_content: {
+		name: '生成内容',
+		description: '综合已有信息生成报告或文本内容的内置步骤'
+	},
 	getMovieBoxOfficeRealtime: {
 			name: '获取电影实时票房',
 			description: '获取当前上映电影的实时票房数据，包括今日票房、累计票房、上映天数和排名。'
@@ -453,7 +457,7 @@ export const zhOthersTools = {
 			name: '获取美股历史数据',
 			description: '获取美股日线历史数据，包括前复权因子。支持代码如"AAPL"(苹果)、"TSLA"(特斯拉)、"MSFT"(微软)。'
 		},
-		getUsStockName: {
+		getUSStockName: {
 			name: '获取美股代码列表',
 			description: '获取纽交所和纳斯达克所有上市公司的完整股票代码和名称列表。'
 		},
@@ -753,15 +757,15 @@ export const zhOthersTools = {
 			name: '获取业绩说明会记录索引',
 			description: '获取业绩说明会记录索引，包含关键议题、管理层语调分析和问答要点。'
 		},
-		getUsExtendedHoursQuotes: {
+		getUSExtendedHoursQuotes: {
 			name: '获取美股盘前盘后行情',
 			description: '获取美股盘前和盘后交易行情，显示盘外交易的价格、成交量和变化。'
 		},
-		getUsStockSplitsCalendar: {
+		getUSStockSplitsCalendar: {
 			name: '获取美股拆股日历',
 			description: '获取美股拆股日历，显示拆股比例、公告日期和生效日期。'
 		},
-		getHkBuybackAnnouncements: {
+		getHKBuybackAnnouncements: {
 			name: '获取港股回购公告',
 			description: '获取港股回购公告，显示回购金额、进度和日期。'
 		},
@@ -1861,7 +1865,6 @@ export const zhOthersTools = {
 			name: '获取外汇储备',
 			description: '获取中国外汇储备数据'
 		},
-		// 另类数据工具
 		getAnalystConsensus: {
 			name: '分析师共识',
 			description: '获取分析师共识评级，显示买入/持有/卖出分布、平均目标价、价格区间'
@@ -1938,59 +1941,59 @@ export const zhOthersTools = {
 		name: '获取外汇Tick数据',
 		description: '获取货币对实时Tick数据'
 	},
-        getUsEarningsCalendar: {
+        getUSEarningsCalendar: {
                 name: '获取美股财报日历',
                 description: '获取美股财报发布日历'
         },
-        getUsInstitutionalHoldings: {
+        getUSInstitutionalHoldings: {
                 name: '获取美股机构持仓',
                 description: '获取美股机构持仓数据，来自13F文件'
         },
-        getUsInsiderTrading: {
+        getUSInsiderTrading: {
                 name: '获取美股内部交易',
                 description: '从Form 4文件获取美股内部人交易数据，显示高管买卖、交易日期、价格'
         },
-        getUsDividendCalendar: {
+        getUSDividendCalendar: {
                 name: '获取美股分红日历',
                 description: '获取美股分红日历，显示除息日、支付日、分红金额、收益率'
         },
-        getAdrData: {
+        getADRData: {
                 name: '获取ADR数据',
                 description: '获取美国存托凭证(ADR)数据，包括兑换比例、标的股票信息、套利机会'
         },
-        getHkConnectQuotaUsage: {
+        getHKConnectQuotaUsage: {
                 name: '获取港股通额度使用情况',
                 description: '获取港股通(南向交易)每日额度使用和剩余额度'
         },
-        getHkIpoCalendar: {
+        getHKIPOCalendar: {
                 name: '获取港股IPO日历',
                 description: '获取香港股票IPO日历，显示上市日期、发行价、认购详情'
         },
-        getHkMajorShareholders: {
+        getHKMajorShareholders: {
                 name: '获取港股主要股东',
                 description: '从大股东权益披露(5%+持股)获取香港股票主要股东数据'
         },
-        getHkWarrantData: {
+        getHKWarrantData: {
                 name: '获取港股窝轮数据',
                 description: '获取香港窝轮(牛熊证/认股证)数据，包括行权价、到期日、杠杆比率'
         },
-        getUsConferenceCallSchedule: {
+        getUSConferenceCallSchedule: {
                 name: '获取美股电话会议日程',
                 description: '获取美股业绩电话会议日程，包含日期、时间、接入信息'
         },
-        getUsAnalystEstimates: {
+        getUSAnalystEstimates: {
                 name: '获取美股分析师预测',
                 description: '获取美股分析师一致预期，显示营收、EPS、增长预测和预测区间'
         },
-        getUsOptionsExpirationCalendar: {
+        getUSOptionsExpirationCalendar: {
                 name: '获取美股期权到期日历',
                 description: '获取美股期权到期日历，显示月度和周度到期日'
         },
-        getHkShortSellingData: {
+        getHKShortSellingData: {
                 name: '获取港股卖空数据',
                 description: '获取香港股票卖空数据，显示卖空成交额、卖空占比'
         },
-        getAhPremiumTracking: {
+        getAHPremiumTracking: {
                 name: '获取AH股溢价跟踪',
                 description: '获取A股相对H股溢价/折价跟踪，显示双重上市股票的价格差异'
         },
@@ -2002,7 +2005,7 @@ export const zhOthersTools = {
                 name: '获取银行存贷比',
                 description: '获取银行业存贷比，显示流动性管理和放贷能力'
         },
-        getBankNplRatio: {
+        getBankNPLRatio: {
                 name: '获取银行不良贷款率',
                 description: '获取银行业不良贷款率(NPL)，显示资产质量和信用风险'
         },
@@ -2050,7 +2053,7 @@ export const zhOthersTools = {
                 name: '获取医院运营指标',
                 description: '获取医院运营指标，显示患者量、床位使用率、床均收入、运营效率'
         },
-        getReitsPerformance: {
+        getREITsPerformance: {
                 name: '获取REITs表现',
                 description: '获取房地产投资信托基金(REITs)表现，显示净值、分红收益率、溢价率'
         },
@@ -2110,4 +2113,109 @@ export const zhOthersTools = {
                 name: '获取Alpha生成分析',
                 description: '获取股票Alpha生成分析，显示相对基准的超额收益及因子归因'
         },
+	// 豆瓣搜索工具
+	searchDoubanMovies: {
+		name: '搜索豆瓣电影',
+		description: '通过关键词搜索豆瓣电影，返回电影名称、评分、年份和ID'
+	},
+	searchDoubanBooksByTag: {
+		name: '按标签搜索豆瓣图书',
+		description: '按标签/类型搜索豆瓣图书（如科幻、文学、历史、哲学）'
+	},
+	searchDoubanBooks: {
+		name: '搜索豆瓣图书',
+		description: '通过关键词搜索豆瓣图书（书名、作者、ISBN等）'
+	},
+	searchDoubanMusicByTag: {
+		name: '按标签搜索豆瓣音乐',
+		description: '按标签/流派搜索豆瓣音乐（如流行、摇滚、民谣、古典、电子、爵士）'
+	},
+	searchDoubanMusic: {
+		name: '搜索豆瓣音乐',
+		description: '通过关键词搜索豆瓣音乐专辑（艺术家名称、专辑名称等）'
+	},
+	searchDoubanGroups: {
+		name: '搜索豆瓣小组',
+		description: '通过关键词搜索豆瓣小组（小组名称、话题等）'
+	},
+	searchDoubanPeople: {
+		name: '搜索豆瓣人物',
+		description: '通过关键词搜索豆瓣人物（姓名、名人等）'
+	},
+	searchDoubanStage: {
+		name: '搜索豆瓣舞台剧',
+		description: '通过关键词搜索豆瓣舞台剧、话剧和音乐剧'
+	},
+	searchDoubanGames: {
+		name: '搜索豆瓣游戏',
+		description: '通过关键词搜索豆瓣游戏（游戏名称、系列等）'
+	},
+	searchDoubanPodcasts: {
+		name: '搜索豆瓣播客',
+		description: '通过关键词搜索豆瓣播客（播客名称、话题等）'
+	},
+	searchDoubanEvents: {
+		name: '搜索豆瓣同城活动',
+		description: '通过关键词搜索豆瓣同城活动（地点、活动类型等）'
+	},
+	searchDoubanNotes: {
+		name: '搜索豆瓣日记',
+		description: '通过关键词搜索豆瓣用户日记和笔记'
+	},
+	getGitHubTrendingDevelopers: {
+		name: '获取GitHub热门开发者',
+		description: '获取GitHub热门开发者列表。'
+	},
+	getGitHubTrendingRepos: {
+		name: '获取GitHub热门仓库',
+		description: '获取GitHub热门仓库列表。'
+	},
+	searchGitHubTopics: {
+		name: '搜索GitHub主题',
+		description: '搜索GitHub主题和仓库。'
+	},
+	hnGetAskStores: {
+		name: '获取Hacker News提问',
+		description: '获取Hacker News Ask HN故事。'
+	},
+	searchIMDB: {
+		name: '搜索IMDB',
+		description: '在IMDB上搜索电影、电视剧和人物。'
+	},
+	searchSymbol: {
+		name: '搜索股票代码',
+		description: '搜索股票代码和证券。'
+	},
+	getBBCNews: {
+		name: '获取BBC新闻',
+		description: '获取BBC最新新闻。'
+	},
+	getNPRNews: {
+		name: '获取NPR新闻',
+		description: '获取NPR最新新闻。'
+	},
+	baiduSearch: {
+		name: '百度搜索',
+		description: '使用百度搜索引擎搜索。'
+	},
+	bingSearch: {
+		name: '必应搜索',
+		description: '使用必应搜索引擎搜索。'
+	},
+	getTVSchedule: {
+		name: '获取电视节目表',
+		description: '获取电视节目时间表和列表。'
+	},
+	getTVShowDetails: {
+		name: '获取电视节目详情',
+		description: '获取电视节目详细信息。'
+	},
+	searchPeople: {
+		name: '搜索人物',
+		description: '搜索娱乐行业人物。'
+	},
+	searchTVShows: {
+		name: '搜索电视节目',
+		description: '搜索电视节目和剧集。'
+	},
 };

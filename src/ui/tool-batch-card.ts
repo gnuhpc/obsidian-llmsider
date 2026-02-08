@@ -8,9 +8,9 @@ import { i18n } from '../i18n/i18n-manager';
 
 export interface ToolCallData {
 	name: string;
-	parameters: Record<string, any>;
+	parameters: Record<string, unknown>;
 	id?: string;
-	rawToolCall?: any;
+	rawToolCall?: unknown;
 }
 
 export class ToolBatchCard {
@@ -211,7 +211,7 @@ export class ToolBatchCard {
 		}
 	}
 
-	private formatValue(value: any): string {
+	private formatValue(value: unknown): string {
 		if (typeof value === 'string') return value;
 		if (typeof value === 'number' || typeof value === 'boolean') return String(value);
 		if (Array.isArray(value)) return JSON.stringify(value);

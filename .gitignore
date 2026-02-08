@@ -58,6 +58,13 @@ Thumbs.db
 *.db
 config.db
 
+# Configuration files with sensitive data
+mcp-config.json
+*.local.json
+
+# Memory and conversation data
+memory-data/
+
 # Release packages
 *.tar.gz
 *.zip

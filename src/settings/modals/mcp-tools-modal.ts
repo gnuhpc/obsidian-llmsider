@@ -27,7 +27,8 @@ export class MCPToolsModal {
 			const tools = await mcpManager.listAllTools();
 			
 			if (tools.length === 0) {
-				new Notice('No MCP tools available');
+				const i18n = plugin.getI18nManager();
+				new Notice(i18n?.t('notifications.settingsHandlers.noMCPToolsAvailable') || 'No MCP tools available');
 				return;
 			}
 
@@ -36,7 +37,8 @@ export class MCPToolsModal {
 			modal.style.display = 'flex';
 			
 			const container = modal.createDiv({ cls: 'llmsider-mcp-tools-container' });
-			container.createEl('h2', { text: `Available MCP Tools (${tools.length})` });
+			const i18n = plugin.getI18nManager();
+			container.createEl('h2', { text: `${i18n?.t('settingsPage.availableMCPTools') || 'Available MCP Tools'} (${tools.length})` });
 			
 			const toolsList = container.createDiv({ cls: 'llmsider-tools-list' });
 			
@@ -50,14 +52,15 @@ export class MCPToolsModal {
 				if (e.target === modal) modal.remove();
 			};
 		} catch (error) {
-			new Notice(`Failed to list tools: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			const i18n = plugin.getI18nManager();
+			new Notice(i18n?.t('notifications.settingsHandlers.failedToListTools', { error: error instanceof Error ? error.message : 'Unknown error' }) || `Failed to list tools: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}
 
 	/**
 	 * Render a single tool card in the modal
 	 */
-	private renderToolCard(toolsList: HTMLElement, tool: any, mcpManager: any): void {
+	private renderToolCard(toolsList: HTMLElement, tool: unknown, mcpManager: unknown): void {
 		const isToolEnabled = mcpManager.getToolEnabled(tool.server, tool.name);
 		const requireConfirmation = mcpManager.getToolRequireConfirmation(tool.server, tool.name);
 		
@@ -100,7 +103,7 @@ export class MCPToolsModal {
 	/**
 	 * Render tool information (name, description, schema)
 	 */
-	private renderToolInfo(mainContent: HTMLElement, tool: any): void {
+	private renderToolInfo(mainContent: HTMLElement, tool: unknown): void {
 		const toolInfo = mainContent.createDiv({ cls: 'llmsider-modern-tool-info' });
 		toolInfo.style.cssText = 'flex: 1 !important; min-width: 0 !important;';
 
@@ -134,8 +137,8 @@ export class MCPToolsModal {
 	 */
 	private renderToolControls(
 		mainContent: HTMLElement,
-		tool: any,
-		mcpManager: any,
+		tool: unknown,
+		mcpManager: unknown,
 		isToolEnabled: boolean,
 		requireConfirmation: boolean
 	): void {

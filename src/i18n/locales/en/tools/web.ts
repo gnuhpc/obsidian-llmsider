@@ -7,13 +7,17 @@ export const enWebTools = {
 			name: 'Fetch Web Content',
 			description: 'Fetch and extract readable content from web pages, including title, metadata, and visible text content. No content length limits.'
 		},
-fetchYouTubeTranscript: {
-			name: 'Fetch YouTube Transcript',
-			description: 'Fetch complete transcript/subtitles from YouTube videos using Supadata API. No length limits on transcripts.'
+	getYouTubeTranscript: {
+			name: 'Get YouTube Transcript',
+			description: 'Get YouTube video transcript/subtitles directly from YouTube InnerTube API. Supports multiple languages, auto-generated and manual captions. Returns full transcript without third-party API dependencies.'
 		},
 webSearch: {
 			name: 'Web Search',
-			description: 'Search the web using multiple search backends. Supports: Google Custom Search API, SerpAPI, Tavily AI Search (optimized for AI with free tier), or DuckDuckGo (free, no API key). Returns search results with titles, links, and snippets.'
+			description: 'The most powerful web search tool that aggregates results from multiple search engines (DuckDuckGo, Google, Tavily, SerpAPI, Baidu, Bing). Supports text, images, news, and video search with intelligent ranking and deduplication.'
+		},
+googleSearch: {
+			name: 'Google Search',
+			description: 'Search the web using Google (via Custom Search API or SerpAPI). Also supports Tavily and DuckDuckGo as backends. Useful for specific Google search queries.'
 		},
 enhancedSearch: {
 			name: 'Enhanced Search',
@@ -1994,4 +1998,60 @@ duckduckgoTextSearch: {
     name: 'Web Fetch',
     description: '🚀 Recommended for fetching web content - Converts HTML to clean markdown format. Supports single URL (string) and multiple URLs (array). Multiple URLs are fetched in parallel for maximum efficiency. When search results have 2+ URLs, please pass them as an array to this tool at once (max 10 URLs)'
   },
+  // GitHub Trending Tools
+  get_github_trending_repos: {
+    name: 'Get GitHub Trending Repositories',
+    description: 'Get trending repositories from GitHub showing popular projects developers are starring. Filter by programming language and time range (daily/weekly/monthly).'
+  },
+  get_github_trending_developers: {
+    name: 'Get GitHub Trending Developers',
+    description: 'Get trending developers on GitHub showing developers the community is following. Filter by programming language and time range.'
+  },
+  search_github_topics: {
+    name: 'Search GitHub Topics',
+    description: 'Search GitHub topics and get trending repositories in that topic. Discover projects organized by technology or subject.'
+  },
+  // Product Hunt Tools
+  get_product_hunt_today: {
+    name: 'Get Product Hunt Today\'s Products',
+    description: 'Get today\'s featured products from Product Hunt showing the hottest new product launches with upvotes and comments.'
+  },
+  search_product_hunt: {
+    name: 'Search Product Hunt',
+    description: 'Search Product Hunt for products by keyword or topic. Find products, tools, and apps in various categories.'
+  },
+  get_product_hunt_collections: {
+    name: 'Get Product Hunt Collections',
+    description: 'Browse Product Hunt collections organized by topic (AI, productivity, design, developer tools, etc.).'
+  },
+  // Dev.to Tools
+  get_devto_latest_articles: {
+    name: 'Get Dev.to Latest Articles',
+    description: 'Get the latest articles from Dev.to community showing recently published technical articles and blog posts.'
+  },
+  get_devto_top_articles: {
+    name: 'Get Dev.to Top Articles',
+    description: 'Get top articles from Dev.to based on reactions and engagement. Filter by time period (today/week/month/year).'
+  },
+  search_devto_by_tag: {
+    name: 'Search Dev.to by Tag',
+    description: 'Search Dev.to articles by tag (javascript, python, webdev, tutorial, etc.). Find articles on specific technologies or topics.'
+  },
+  get_devto_article_details: {
+    name: 'Get Dev.to Article Details',
+    description: 'Get detailed information about a specific Dev.to article including content, reactions, and comments.'
+  },
+  get_devto_user_articles: {
+    name: 'Get Dev.to User Articles',
+    description: 'Get all articles published by a specific Dev.to user. Browse author\'s content and contributions.'
+  },
+  // SerpAPI-based search tools
+  baidu_search: {
+    name: 'Baidu Search (SerpAPI)',
+    description: 'Search using Baidu search engine powered by SerpAPI. Returns high-quality search results with titles, links, and snippets. Requires SerpAPI key.'
+  },
+  bing_search: {
+    name: 'Bing Search (SerpAPI)',
+    description: 'Search using Bing search engine powered by SerpAPI. Returns high-quality search results with titles, links, and snippets. Requires SerpAPI key.'
+  }
 };

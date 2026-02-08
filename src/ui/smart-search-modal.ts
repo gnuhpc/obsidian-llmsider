@@ -36,7 +36,7 @@ export class SmartSearchModal extends Modal {
 		contentEl.addClass('llmsider-smart-search-modal');
 
 		// Hide the default close button and title area
-		const modalEl = (this as any).modalEl as HTMLElement;
+		const modalEl = (this as unknown).modalEl as HTMLElement;
 		if (modalEl) {
 			const closeButton = modalEl.querySelector('.modal-close-button');
 			if (closeButton) {
@@ -110,7 +110,7 @@ export class SmartSearchModal extends Modal {
 		};
 
 		// Store reference to button container for later use
-		(this as any).buttonContainer = buttonContainer;
+		(this as unknown).buttonContainer = buttonContainer;
 
 		// Focus on search input
 		this.searchInput.focus();
@@ -162,7 +162,7 @@ export class SmartSearchModal extends Modal {
 				text: this.i18n.t('ui.noSearchResults') || '未找到相关笔记'
 			});
 			// Hide buttons when no results
-			const buttonContainer = (this as any).buttonContainer as HTMLElement;
+			const buttonContainer = (this as unknown).buttonContainer as HTMLElement;
 			if (buttonContainer) {
 				buttonContainer.style.display = 'none';
 			}
@@ -170,7 +170,7 @@ export class SmartSearchModal extends Modal {
 		}
 
 		// Show buttons when there are results
-		const buttonContainer = (this as any).buttonContainer as HTMLElement;
+		const buttonContainer = (this as unknown).buttonContainer as HTMLElement;
 		if (buttonContainer) {
 			buttonContainer.style.display = 'flex';
 		}

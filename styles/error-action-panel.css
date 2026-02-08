@@ -1,0 +1,220 @@
+/**
+ * Error Action Panel Styles
+ * Inline panel for error handling actions (Skip, Retry, Regenerate)
+ */
+
+/* Error panel container */
+.llmsider-error-panel {
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	width: 100%;
+	margin-top: 12px;
+	padding: 0;
+	animation: llmsider-error-panel-slidein 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+	overflow: hidden;
+}
+
+.llmsider-error-panel.inline-mode {
+	position: relative;
+	z-index: 10;
+}
+
+@keyframes llmsider-error-panel-slidein {
+	from {
+		transform: translateY(-10px);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+/* Header */
+.llmsider-error-panel-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+}
+
+.llmsider-error-panel-icon {
+	color: var(--color-red);
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+}
+
+.llmsider-error-panel-icon svg {
+	width: 18px;
+	height: 18px;
+}
+
+.llmsider-error-panel-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+/* Error message */
+.llmsider-error-panel-message {
+	padding: 12px 16px;
+}
+
+.llmsider-error-panel-step-info {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.llmsider-error-panel-step-label {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--text-muted);
+}
+
+.llmsider-error-panel-step-tool {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-normal);
+	font-family: var(--font-monospace);
+	background-color: var(--background-secondary);
+	padding: 2px 8px;
+	border-radius: 4px;
+}
+
+.llmsider-error-panel-error-text {
+	font-size: 12px;
+	color: var(--text-error);
+	background-color: var(--background-secondary);
+	padding: 10px;
+	border-radius: 6px;
+	border-left: 3px solid var(--color-red);
+	line-height: 1.4;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 150px;
+	overflow-y: auto;
+}
+
+/* Action buttons */
+.llmsider-error-panel-actions {
+	display: flex;
+	gap: 8px;
+	padding: 12px;
+	border-top: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+	border-radius: 0 0 12px 12px;
+	flex-wrap: wrap;
+}
+
+.llmsider-error-action-btn {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 8px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	cursor: pointer;
+	transition: all 0.2s ease;
+	font-size: 12px;
+	font-weight: 500;
+	min-width: fit-content;
+}
+
+.llmsider-error-action-btn:hover {
+	background-color: var(--interactive-hover);
+	border-color: var(--interactive-accent);
+	transform: translateY(-1px);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.llmsider-error-action-btn:active {
+	transform: translateY(0);
+}
+
+.llmsider-error-action-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	transform: none;
+}
+
+/* Primary action button (Regenerate) */
+.llmsider-error-action-btn.primary {
+	background: linear-gradient(135deg, 
+		var(--interactive-accent) 0%, 
+		var(--interactive-accent-hover) 100%);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+	font-weight: 600;
+}
+
+.llmsider-error-action-btn.primary:hover {
+	background: linear-gradient(135deg, 
+		var(--interactive-accent-hover) 0%, 
+		var(--interactive-accent) 100%);
+	box-shadow: 0 4px 12px rgba(var(--interactive-accent-rgb), 0.3);
+}
+
+/* Processing state */
+.llmsider-error-action-btn.processing {
+	pointer-events: none;
+}
+
+.llmsider-error-action-btn.processing .llmsider-error-action-icon {
+	animation: llmsider-error-action-spin 1s linear infinite;
+}
+
+@keyframes llmsider-error-action-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.llmsider-error-action-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.llmsider-error-action-label {
+	white-space: nowrap;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+	.llmsider-error-panel {
+		min-width: 90vw;
+		max-width: 90vw;
+	}
+	
+	.llmsider-error-panel-actions {
+		flex-direction: column;
+	}
+	
+	.llmsider-error-action-btn {
+		width: 100%;
+	}
+}
+
+/* Dark mode adjustments */
+.theme-dark .llmsider-error-panel {
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.theme-dark .llmsider-error-panel-header {
+	background: linear-gradient(135deg, 
+		rgba(255, 82, 82, 0.15) 0%, 
+		transparent 100%);
+}

@@ -16,6 +16,11 @@ export interface PlanExecuteTranslation {
   completed: string;
   failed: string;
 
+  // Toggle Markdown rendering
+  toggleMarkdown: string;
+  showMarkdown: string;
+  showPlainText: string;
+
   // Actions
   viewPlan: string;
   hidePlan: string;

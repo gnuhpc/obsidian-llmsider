@@ -10,7 +10,7 @@ import { CHUNK_SIZE_MIN, CHUNK_SIZE_MAX, CHUNK_OVERLAP_MIN, CHUNK_OVERLAP_MAX } 
 // Import from modularized settings utilities
 import { categoryMap, getCategoryDisplayName } from './settings/utils/category-utils';
 import { getCategoryIcon } from './settings/utils/tool-icons';
-import { PROVIDER_TYPE_NAMES, PROVIDER_CARD_LOGOS, getProviderTypeName, getProviderLogo } from './settings/utils/provider-logos';
+import { PROVIDER_TYPE_NAMES, getProviderTypeName } from './settings/utils/provider-logos';
 import { getMCPServerIcon, getMCPServerCommand } from './settings/utils/mcp-utils';
 import { MCPCardUpdater } from './settings/utils/mcp-card-updater';
 // Import handlers
@@ -32,6 +32,8 @@ import { MCPSettingsRenderer } from './settings/renderers/mcp-settings-renderer'
 import { MCPInlineEditor } from './settings/renderers/mcp-inline-editor';
 import { AdvancedSettingsRenderer } from './settings/renderers/advanced-settings-renderer';
 import { ToolManagementSectionRenderer } from './settings/renderers/tool-management-section-renderer';
+import { PromptManagementRenderer } from './settings/renderers/prompt-management-renderer';
+import { MemorySettingsRenderer } from './settings/renderers/memory-settings-renderer';
 // Import modals
 import { MCPToolsModal } from './settings/modals/mcp-tools-modal';
 import { MCPToolDetailsModal } from './settings/modals/mcp-tool-details-modal';
@@ -64,6 +66,8 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 	private mcpInlineEditor: MCPInlineEditor;
 	private advancedSettingsRenderer: AdvancedSettingsRenderer;
 	private toolManagementSectionRenderer: ToolManagementSectionRenderer;
+	private promptManagementRenderer: PromptManagementRenderer;
+	private memorySettingsRenderer: MemorySettingsRenderer;
 	// Utils
 	private mcpCardUpdater: MCPCardUpdater;
 	// Modals
@@ -76,7 +80,7 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 		this.i18n = plugin.getI18nManager()!;
 		
 		// Initialize handlers first
-		this.connectionHandler = new ConnectionHandler(this.app, this.plugin, () => this.display());
+		this.connectionHandler = new ConnectionHandler(this.app, this.plugin, this.i18n, () => this.display());
 		this.modelHandler = new ModelHandler(this.app, this.plugin, this.i18n, () => this.display());
 		this.toolPermissionHandler = new ToolPermissionHandler(this.plugin, this.i18n, () => this.display());
 		
@@ -88,8 +92,8 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 		this.mcpHandler = new MCPHandler(this.app, this.plugin, this.i18n, () => this.display(), async () => await this.updateAllMCPCards());
 		
 		// Initialize MCP components (need mcpHandler)
-		this.mcpServerCard = new MCPServerCard(this.i18n, this.mcpHandler, this.toolButtonControls, this.plugin);
-		this.mcpServerDetails = new MCPServerDetails(this.i18n, this.toolButtonControls, this.plugin, () => this.display());
+		this.mcpServerCard = new MCPServerCard(this.i18n, this.mcpHandler, this.toolButtonControls, this.plugin, this.toolPermissionHandler);
+		this.mcpServerDetails = new MCPServerDetails(this.i18n, this.toolButtonControls, this.plugin, () => this.display(), this.toolPermissionHandler);
 		
 		// Initialize utils (need mcpServerCard)
 		this.mcpCardUpdater = new MCPCardUpdater(this.plugin, this.mcpServerCard);
@@ -105,6 +109,8 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 		this.mcpInlineEditor = new MCPInlineEditor(this.plugin, this.i18n, this.mcpHandler);
 		this.advancedSettingsRenderer = new AdvancedSettingsRenderer(this.plugin, this.i18n, this.connectionModelRenderer);
 		this.toolManagementSectionRenderer = new ToolManagementSectionRenderer(this.i18n, this.builtInToolsRenderer);
+		this.promptManagementRenderer = new PromptManagementRenderer(this.plugin, this.i18n, () => this.display());
+		this.memorySettingsRenderer = new MemorySettingsRenderer(this.app, this.plugin, this.i18n);
 		
 		// Initialize modals
 		this.mcpToolsModal = new MCPToolsModal(this.plugin, this.i18n, this.toolButtonControls);
@@ -144,7 +150,7 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 		this.eventHandler.setupMCPEventListeners();
 
 		// Header
-		const mainHeader = containerEl.createEl('h1', { text: this.i18n.t('settingsPage.title') });
+		const mainHeader = containerEl.createDiv({ cls: 'llmsider-settings-header' });
 		mainHeader.style.marginBottom = '20px';
 
 		// Connection + Model Settings Section (New Architecture)
@@ -167,6 +173,12 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 
 		// Tool Management Section (Independent - manages both built-in and MCP tools)
 		this.renderToolManagementSection(containerEl);
+
+		// Prompt Management Section
+		await this.promptManagementRenderer.render(containerEl);
+
+		// Memory Settings Section
+		await this.memorySettingsRenderer.render(containerEl);
 
 		// Vector Database Settings Section
 		await this.vectorDBRenderer.render(containerEl);

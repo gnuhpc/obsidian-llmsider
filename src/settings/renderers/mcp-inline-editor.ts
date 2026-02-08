@@ -135,7 +135,7 @@ export class MCPInlineEditor {
 			const textarea = container.createEl('textarea', {
 				cls: 'llmsider-mcp-inline-textarea',
 				attr: {
-					placeholder: 'Enter MCP configuration in JSON format...',
+					placeholder: this.i18n.t('notifications.mcp.configPlaceholder'),
 					spellcheck: 'false'
 				}
 			});
@@ -179,7 +179,8 @@ export class MCPInlineEditor {
 			return textarea;
 			
 		} catch (error) {
-			new Notice(`Failed to load MCP configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			const i18n = this.plugin.getI18nManager();
+			new Notice(i18n?.t('notifications.settingsHandlers.failedToLoadMCPConfig', { error: error instanceof Error ? error.message : 'Unknown error' }) || `Failed to load MCP configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
 			return null;
 		}
 	}

@@ -31,15 +31,66 @@ export class InlineCompletionHandler {
 	private suggestionCache: Map<string, { suggestions: string[], timestamp: number }> = new Map();
 	private readonly CACHE_DURATION = 60000; // 60 seconds cache for better hit rate
 	private readonly MAX_CACHE_SIZE = 100; // Increased cache size
+	
+	// Session reuse for free models (to avoid creating new session for each completion)
+	private completionProviderCache: WeakMap<any, { lastUsed: number }> = new WeakMap();
+	private readonly SESSION_REUSE_DURATION = 300000; // 5 minutes - reuse session if used within this time
+	private sessionCleanupInterval: NodeJS.Timeout | null = null;
 
 	constructor(plugin: LLMSiderPlugin) {
 		this.plugin = plugin;
+		this.startSessionCleanup();
+	}
+	
+	/**
+	 * Start periodic cleanup of expired sessions
+	 */
+	private startSessionCleanup(): void {
+		// Clean up expired sessions every 5 minutes
+		this.sessionCleanupInterval = setInterval(() => {
+			this.cleanupExpiredSessions();
+		}, 300000); // 5 minutes
+	}
+	
+	/**
+	 * Clean up expired sessions for free models
+	 */
+	private cleanupExpiredSessions(): void {
+		// Note: WeakMap doesn't allow iteration, but sessions are automatically
+		// garbage collected when providers are no longer referenced
+		Logger.debug('[Completion] Session cleanup check completed');
+	}
+	
+	/**
+	 * Clear all cached sessions (useful when switching models)
+	 */
+	clearSessionCache(): void {
+		// WeakMap will be automatically cleaned up
+		// We just need to create a new instance
+		this.completionProviderCache = new WeakMap();
+		Logger.info('[Completion] Session cache cleared');
+	}
+	
+	/**
+	 * Cleanup when handler is destroyed
+	 */
+	destroy(): void {
+		if (this.sessionCleanupInterval) {
+			clearInterval(this.sessionCleanupInterval);
+			this.sessionCleanupInterval = null;
+		}
+		if (this.debounceTimer) {
+			clearTimeout(this.debounceTimer);
+			this.debounceTimer = null;
+		}
 	}
 
 	/**
 	 * Handle document changes (called on every keystroke)
 	 */
 	async handleDocumentChange(view: EditorView) {
+		// console.log('[Completion] handleDocumentChange called');
+		
 		// Clear any existing debounce timer
 		if (this.debounceTimer) {
 			clearTimeout(this.debounceTimer);
@@ -67,6 +118,7 @@ export class InlineCompletionHandler {
 		// If user is actively accepting words and there's an active suggestion, 
 		// don't clear it or trigger new generation
 		if (isActivelyAccepting && hasActiveSuggestion) {
+			Logger.debug('[Completion] User is actively accepting words, skipping trigger');
 			return;
 		}
 
@@ -83,25 +135,14 @@ export class InlineCompletionHandler {
 		const textAfterCursor = lineText.substring(cursorInLine);
 
 		const atEndOfLine = cursorInLine === lineText.length;
-		
-		Logger.debug('Trigger check:', {
-			atEndOfLine,
-			textBefore: textBeforeCursor.slice(-20),
-			textAfter: textAfterCursor.slice(0, 20),
-			cursorPos: cursorInLine,
-			lineLength: lineText.length
-		});
 
 		// Get current token (word/text before cursor)
 		// Split by spaces and common punctuation
 		const currentToken = textBeforeCursor.split(/[\s\-\*\.\,\;:\!\?\(\)\[\]\{\}]/).pop() || '';
 
-		Logger.debug('Current token:', currentToken, 'length:', currentToken.length);
-
 		// Minimal check: only require at least 1 character to trigger
 		// This allows completion anywhere: after bullet points, mid-text, end of line, etc.
 		if (currentToken.length < 1 && textBeforeCursor.trim().length === 0) {
-			Logger.debug('Empty line, skipping');
 			clearInlineSuggestion(view);
 			return;
 		}
@@ -111,8 +152,11 @@ export class InlineCompletionHandler {
 		const baseDelay = Math.max(100, settings.triggerDelay || 100); // Minimum 100ms
 		const delay = isRecentlyAccepting ? this.EXTENDED_DELAY : baseDelay;
 
+		Logger.debug(`[Completion] Triggering in ${delay}ms (currentToken: "${currentToken}")`);
+
 		// Debounce: wait for user to stop typing
 		this.debounceTimer = setTimeout(async () => {
+			Logger.debug('[Completion] Debounce timer fired, generating suggestion...');
 			await this.generateSuggestion(view);
 		}, delay);
 	}
@@ -122,15 +166,53 @@ export class InlineCompletionHandler {
 	 */
 	private async generateSuggestion(view: EditorView) {
 		if (this.isGenerating) {
+			Logger.debug('[Completion] Already generating, skipping');
 			return;
 		}
 
 		this.isGenerating = true;
+		
+		// Track timing (declare outside try block so finally can access it)
+		const startTime = Date.now();
 
 		try {
-			const provider = this.plugin.getActiveProvider();
+			// Try to get specific autocompletion model, fall back to active provider
+			const completionModelId = this.plugin.settings.autocomplete.modelId;
+			const provider = completionModelId 
+				? this.plugin.getProviderByModelId(completionModelId) || this.plugin.getActiveProvider()
+				: this.plugin.getActiveProvider();
+			
 			if (!provider) {
+				Logger.warn('[Completion] No provider found for autocomplete');
 				return;
+			}
+
+			// Set a stable thread ID for autocomplete to reuse sessions in free models
+			provider.setThreadId('autocomplete-session');
+
+			Logger.debug(`[Completion] Using provider: ${provider.getProviderName()} (Model: ${completionModelId || 'default'})`);
+			
+			// For free models (free-qwen, free-deepseek, hugging-chat), reuse existing session
+			// to avoid creating a new session for each completion request
+			const providerName = provider.getProviderName();
+			const isFreeModel = providerName === 'free-qwen' || 
+			                    providerName === 'free-deepseek' || 
+			                    providerName === 'hugging-chat';
+			
+			if (isFreeModel) {
+				// Check if we have cached this provider recently
+				const cached = this.completionProviderCache.get(provider);
+				const now = Date.now();
+				
+				if (cached && (now - cached.lastUsed) < this.SESSION_REUSE_DURATION) {
+					// Session is still fresh, update last used time
+					cached.lastUsed = now;
+					Logger.debug(`[Completion] Reusing ${providerName} session (last used ${Math.round((now - cached.lastUsed) / 1000)}s ago)`);
+				} else {
+					// First time or session expired, mark for reuse
+					this.completionProviderCache.set(provider, { lastUsed: now });
+					Logger.debug(`[Completion] Initializing ${providerName} session for reuse`);
+				}
 			}
 
 			// Get context
@@ -142,36 +224,53 @@ export class InlineCompletionHandler {
 			const cacheKey = this.getCacheKey(contextInfo.before);
 			const cached = this.suggestionCache.get(cacheKey);
 			if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
+				Logger.debug('[Completion] Cache hit, showing cached suggestions');
 				// Use cached suggestions
 				showInlineSuggestion(view, cached.suggestions);
 				this.isGenerating = false;
 				return;
 			}
 
-			// Show loading indicator
-			showLoadingIndicator(view);
+		// Show loading indicator
+		showLoadingIndicator(view);
 
-			// Build prompt for multiple suggestions
-			const settings = this.plugin.settings.autocomplete;
-			const prompt = this.buildPrompt(contextInfo.before, contextInfo.after, contextInfo.hasAfter, settings);
+		// Build prompt for multiple suggestions
+		const settings = this.plugin.settings.autocomplete;
+		const prompt = this.buildPrompt(contextInfo.before, contextInfo.after, contextInfo.hasAfter, contextInfo.isNewSentence, settings);
+		
+		Logger.debug('[Completion] Prompt built:', prompt);
 
-			// Call LLM with streaming - show suggestion immediately as it comes
+		// Track timing for chunks
+		let firstChunkTime = 0;
+		let lastChunkTime = 0;
+		let chunkCount = 0;
+
+		// Call LLM with streaming - show suggestion immediately as it comes
 			let completion = '';
 			let displayedSomething = false;
 			let currentWord = '';
 			const MIN_DISPLAY_LENGTH = 3; // Minimum characters before showing
 			
+			Logger.debug('[Completion] Sending streaming request...');
+			
 			await provider.sendStreamingMessage(
 				[{ role: 'user', content: prompt, id: '', timestamp: Date.now() }],
 				(chunk) => {
 					if (chunk.delta) {
-						Logger.debug('Received chunk:', {
-							delta: chunk.delta,
-							deltaLength: chunk.delta.length,
-							charCodes: Array.from(chunk.delta).map(c => c.charCodeAt(0)),
-							hasRealNewline: chunk.delta.includes('\n'),
-							hasLiteralBackslashN: chunk.delta.includes('\\n')
-						});
+						// Track timing
+						chunkCount++;
+						const now = Date.now();
+						if (firstChunkTime === 0) {
+							firstChunkTime = now;
+							Logger.debug('[Completion] Time to first chunk:', (firstChunkTime - startTime), 'ms');
+						}
+						lastChunkTime = now;
+						
+						// Logger.debug('[Completion] Chunk #' + chunkCount + ':', {
+						// 	delta: chunk.delta,
+						// 	deltaLength: chunk.delta.length,
+						// 	elapsed: (now - startTime) + 'ms'
+						// });
 						
 						completion += chunk.delta;
 						
@@ -203,6 +302,8 @@ export class InlineCompletionHandler {
 				}
 			);
 
+			Logger.debug('[Completion] Streaming finished. Total chunks:', chunkCount, 'Total time:', (Date.now() - startTime), 'ms');
+
 			// Don't trim the completion to preserve line breaks for list markers
 			// Only remove trailing whitespace
 			completion = completion.replace(/\s+$/, '');
@@ -221,13 +322,15 @@ export class InlineCompletionHandler {
 				} else {
 					// No valid suggestions, hide loading
 					hideLoadingIndicator(view);
+					Logger.warn('[Completion] No valid suggestions after parsing');
 				}
 			} else {
 				// No completion, hide loading
 				hideLoadingIndicator(view);
+				Logger.warn('[Completion] ⚠️ Empty completion received');
 			}
 		} catch (error) {
-			Logger.error('❌ Error:', error);
+			Logger.error('[Completion] Error during completion:', error);
 			// Hide loading on error
 			hideLoadingIndicator(view);
 		} finally {
@@ -300,181 +403,232 @@ export class InlineCompletionHandler {
 	}
 
 	/**
-	 * Get context from document (ultra-optimized for speed)
+	 * Get context from document (optimized for 2-sentence context)
+	 * Smart logic:
+	 * - Extract up to 2 sentences before cursor
+	 * - Extract up to 2 sentences after cursor
+	 * - If cursor is at sentence boundary (start): use previous sentences as before context
+	 * - If cursor is at sentence boundary (end): use next sentences as after context
+	 * @returns Object with before, after, hasAfter, and isNewSentence flag
 	 */
-	/**
-	 * Get context before and after cursor
-	 * @returns Object with before, after, and combined context
-	 */
-	private getContext(state: any, pos: number): { before: string; after: string; hasAfter: boolean } {
+	private getContext(state: { doc: { toString(): string } }, pos: number): { before: string; after: string; hasAfter: boolean; isNewSentence: boolean } {
 		const doc = state.doc;
-		const currentLine = doc.lineAt(pos);
 		
-		// Ultra-fast: only use current line + previous line for minimal context
-		const MAX_CONTEXT_CHARS = 150; // Reduced to 150 chars for speed
+		// Get all text in the document
+		const fullText = doc.toString();
 		
-		const cursorInLine = pos - currentLine.from;
-		const currentLineTextBefore = currentLine.text.substring(0, cursorInLine);
-		const currentLineTextAfter = currentLine.text.substring(cursorInLine);
+		// Sentence delimiters (Chinese and English)
+		const sentenceDelimiters = /[.!?。！？\n\r]/;
 		
-		// Get text after cursor (same line only, limited length)
-		const textAfter = currentLineTextAfter.substring(0, 100).trim();
-		const hasTextAfter = textAfter.length > 0;
-		
-		// Build context before cursor
-		let contextBefore = currentLineTextBefore;
-		
-		// If current line is long enough, just use it
-		if (currentLineTextBefore.length < 50 && currentLine.number > 1) {
-			// Add previous line for more context
-			const prevLine = doc.line(currentLine.number - 1);
-			contextBefore = prevLine.text + '\n' + currentLineTextBefore;
+	// Find sentence boundaries around cursor - collect up to 2 sentences before and after
+	const sentenceBoundaries: number[] = [0]; // Start with document beginning
+	
+	// Scan entire text to find all sentence delimiters
+	for (let i = 0; i < fullText.length && i < pos + 1000; i++) {
+		if (sentenceDelimiters.test(fullText[i])) {
+			sentenceBoundaries.push(i + 1);
 		}
-		
-		// Limit context before cursor
-		contextBefore = contextBefore.slice(-MAX_CONTEXT_CHARS);
-		
-		return {
-			before: contextBefore,
-			after: textAfter,
-			hasAfter: hasTextAfter
-		};
 	}
-
-	/**
-	 * Build prompt for LLM to generate suggestions (optimized for speed)
+	sentenceBoundaries.push(fullText.length); // End with document end
+	
+	// Find which sentence the cursor is in
+	let cursorSentenceIndex = 0;
+	for (let i = 0; i < sentenceBoundaries.length - 1; i++) {
+		if (pos >= sentenceBoundaries[i] && pos <= sentenceBoundaries[i + 1]) {
+			cursorSentenceIndex = i;
+			break;
+		}
+	}
+	
+	// Extract up to 2 sentences before cursor position
+	const beforeStartIndex = Math.max(0, cursorSentenceIndex - 1);
+	const beforeStart = sentenceBoundaries[beforeStartIndex];
+	let contextBefore = fullText.substring(beforeStart, pos).trim();
+	
+	// Extract up to 2 sentences after cursor position
+	const afterEndIndex = Math.min(sentenceBoundaries.length - 1, cursorSentenceIndex + 3);
+	const afterEnd = sentenceBoundaries[afterEndIndex];
+	let contextAfter = fullText.substring(pos, afterEnd).trim();
+	
+	// Check if cursor is at sentence start
+	const sentenceStart = sentenceBoundaries[cursorSentenceIndex];
+	const foundStartDelimiter = cursorSentenceIndex > 0;
+	
+	// Special case: If cursor is at the start of a sentence (contextBefore is empty in current sentence)
+	// Extend to include previous 2 complete sentences
+	if (contextBefore.length === 0 && foundStartDelimiter && cursorSentenceIndex > 0) {
+		const extendedStartIndex = Math.max(0, cursorSentenceIndex - 2);
+		const extendedStart = sentenceBoundaries[extendedStartIndex];
+		contextBefore = fullText.substring(extendedStart, sentenceStart).trim();
+	}
+	
+	// Special case: If cursor is at the end of a sentence (contextAfter is empty in current sentence)
+	// Extend to include next 2 complete sentences
+	const currentSentenceEnd = sentenceBoundaries[cursorSentenceIndex + 1];
+	if (contextAfter.length === 0 && cursorSentenceIndex < sentenceBoundaries.length - 2) {
+		const extendedEndIndex = Math.min(sentenceBoundaries.length - 1, cursorSentenceIndex + 3);
+		const extendedEnd = sentenceBoundaries[extendedEndIndex];
+		contextAfter = fullText.substring(currentSentenceEnd, extendedEnd).trim();
+	}
+	
+	const hasTextAfter = contextAfter.length > 0;
+	
+	// Check if this is a new sentence start:
+	// 1. Found a delimiter before cursor (foundStartDelimiter = true)
+	// 2. No text before cursor in current sentence (original contextBefore was empty)
+	// 3. We used previous sentence as context (contextBefore comes from previous sentence)
+	const isNewSentence = foundStartDelimiter && sentenceStart === pos;
+	
+	return {
+		before: contextBefore,
+		after: contextAfter,
+		hasAfter: hasTextAfter,
+		isNewSentence: isNewSentence
+	};
+}	/**
+	 * Build prompt for LLM to generate suggestions (optimized for speed and clarity)
 	 * @param contextBefore Text before cursor
 	 * @param contextAfter Text after cursor (empty if at end of line)
 	 * @param hasAfter Whether there is text after cursor
+	 * @param isNewSentence Whether this is the start of a new sentence
 	 * @param settings Autocomplete settings
 	 */
-	private buildPrompt(contextBefore: string, contextAfter: string, hasAfter: boolean, settings: any): string {
-		// Detect language based on context
-		const isEnglish = /[a-zA-Z]/.test(contextBefore) && !/[\u4e00-\u9fa5]/.test(contextBefore);
+	private buildPrompt(contextBefore: string, contextAfter: string, hasAfter: boolean, isNewSentence: boolean, settings: unknown): string {
+		// Detect language based on context - check for Chinese characters
+		const hasChinese = /[\u4e00-\u9fa5]/.test(contextBefore);
+		const hasEnglish = /[a-zA-Z]/.test(contextBefore);
 		
-		// Check if context ends with a space (for English)
+		// Determine primary language (Chinese takes priority in mixed content)
+		const isChinese = hasChinese;
+		const isEnglish = !hasChinese && hasEnglish;
+		
+		// Check if context ends with a space (for spacing logic)
 		const endsWithSpace = contextBefore.endsWith(' ');
 		
-		// Check if context ends with punctuation that suggests sentence completion
-		const endsWithSentencePunctuation = /[.!?。！？]$/.test(contextBefore.trim());
-		const endsWithPausePunctuation = /[,;:，；：]$/.test(contextBefore.trim());
-		
 		// Get granularity setting to control suggestion length
-		const granularity = settings.granularity || 'phrase';
+		const granularity = (settings as { granularity?: string }).granularity || 'phrase';
 		
-		// Get number of suggestions (default to 1 for speed, configurable)
-		const numSuggestions = settings.maxSuggestions || 1; // Changed default to 1 for speed
+		// Get number of suggestions (default to 1 for speed)
+		const numSuggestions = (settings as { maxSuggestions?: number }).maxSuggestions || 1;
 		
-		// Define length instructions based on granularity
-		let lengthInstruction: string;
-		let lengthExample: string;
-		let punctuationNote: string;
+		// Define length limits based on granularity
+		let lengthLimit: string;
 		
-		if (isEnglish) {
-			// Punctuation guidance for English
-			if (endsWithSentencePunctuation) {
-				punctuationNote = 'Start a new sentence with proper capitalization';
-			} else if (endsWithPausePunctuation) {
-				punctuationNote = 'Continue the sentence naturally, add punctuation when needed';
-			} else {
-				punctuationNote = 'Include punctuation marks (commas, periods, etc.) when appropriate for natural flow';
+		if (isChinese) {
+			if (granularity === 'phrase') {
+		lengthLimit = '3-6字';
+	} else if (granularity === 'long-sentence') {
+		// Randomly pick a sub-range within 15-30 for variety
+		const minLen = 15 + Math.floor(Math.random() * 6); // 15-20
+		const maxLen = minLen + 8 + Math.floor(Math.random() * 4); // +8 to +11
+		const commaNote = Math.random() > 0.5 ? '，可以包含逗号' : '';
+		lengthLimit = `${minLen}-${maxLen}字${commaNote}`;
+	} else {
+		lengthLimit = '8-15字';
 			}
-			
-			switch (granularity) {
-				case 'word':
-					lengthInstruction = 'Generate VERY SHORT suggestions: only 1-2 words each';
-					lengthExample = 'Examples: "beautiful", "important document", "quickly"';
-					break;
-				case 'phrase':
-					lengthInstruction = 'Generate SHORT suggestions: 2-4 words each. When adding list items (bullets -, *, + or numbers 1., 2., or TODO markers), start each item on a new line';
-					lengthExample = 'Examples: "of great importance", "key features:\n- High performance\n- Easy to use\n- Scalable"';
-					break;
-				case 'short-sentence':
-					lengthInstruction = 'Generate MEDIUM suggestions: 6-12 words or up to one short sentence. When adding list items (bullets -, *, + or numbers 1., 2., or TODO markers), start each item on a new line';
-					lengthExample = 'Examples: "is an important topic that needs attention.", "tasks:\n- [ ] Data processing\n- [x] Analytics\nTODO: Review"';
-					break;
-				case 'long-sentence':
-					lengthInstruction = 'Generate LONGER suggestions: 12-25 words or one complete sentence. When adding list items (bullets -, *, + or numbers 1., 2., or TODO markers), start each item on a new line';
-					lengthExample = 'Examples: "represents a fundamental shift in problem-solving.", "features:\n- Advanced capabilities\n- User-friendly\nNOTE: Requires setup"';
-					break;
-				default:
-					lengthInstruction = 'Generate SHORT suggestions: 2-4 words each. When adding list items, start each item on a new line';
-					lengthExample = 'Examples: "of great importance", "in the morning"';
+		} else if (isEnglish) {
+			if (granularity === 'phrase') {
+		lengthLimit = '2-5 words';
+	} else if (granularity === 'long-sentence') {
+		// Randomly pick a sub-range within 12-25 for variety
+		const minLen = 12 + Math.floor(Math.random() * 5); // 12-16
+		const maxLen = minLen + 7 + Math.floor(Math.random() * 4); // +7 to +10
+		const commaNote = Math.random() > 0.5 ? ', may include commas' : '';
+		lengthLimit = `${minLen}-${maxLen} words${commaNote}`;
+	} else {
+		lengthLimit = '6-12 words';
 			}
 		} else {
-			// Punctuation guidance for Chinese
-			if (endsWithSentencePunctuation) {
-				punctuationNote = '开始新的句子';
-			} else if (endsWithPausePunctuation) {
-				punctuationNote = '自然延续句子，在合适的地方添加标点符号';
+			// Mixed or unknown language, use generic guidance
+			if (granularity === 'phrase') {
+				lengthLimit = 'a short phrase';
+			} else if (granularity === 'long-sentence') {
+				lengthLimit = 'one complete sentence';
 			} else {
-				punctuationNote = '在适当的地方包含标点符号（逗号、句号等），使语句通顺自然';
-			}
-			
-			switch (granularity) {
-				case 'word':
-					lengthInstruction = '生成非常简短的建议：每个建议只有1-2个字';
-					lengthExample = '示例："是"、"的"、"了"、"很好"';
-					break;
-				case 'phrase':
-					lengthInstruction = '生成简短的建议：每个建议3-6个字。添加列表项（项目符号-、*、+，序号1.、2.，或TODO等标记）时，每项另起一行';
-					lengthExample = '示例："是一个重要的"、"主要特点：\n- 高性能\n- 易于使用\n- 可扩展"';
-					break;
-				case 'short-sentence':
-					lengthInstruction = '生成中等长度的建议：每个建议8-15个字或一个短句。添加列表项（项目符号-、*、+，序号1.、2.，或TODO等标记）时，每项另起一行';
-					lengthExample = '示例："是一个需要深入探讨的重要问题。"、"任务：\n- [ ] 数据处理\n- [x] 分析功能\nTODO: 审查"';
-					break;
-				case 'long-sentence':
-					lengthInstruction = '生成较长的建议：每个建议15-30个字或一个完整句子。添加列表项（项目符号-、*、+，序号1.、2.，或TODO等标记）时，每项另起一行';
-					lengthExample = '示例："代表了处理问题解决方案的根本性转变。"、"主要功能：\n- 强大的能力\n- 友好的界面\n注意: 需要配置"';
-					break;
-				default:
-					lengthInstruction = '生成简短的建议：每个建议3-6个字。添加列表项时，每项另起一行';
-					lengthExample = '示例："是一个重要的"、"可以帮助我们"';
+				lengthLimit = 'a short sentence';
 			}
 		}
 		
-		let prompt: string;
-		const suggestionText = numSuggestions === 1 ? '1' : `${numSuggestions}`;
-		
-		// Build prompt based on whether there's text after cursor
-		if (isEnglish) {
-			// Ultra-simplified English prompt for speed
-			const spacingNote = endsWithSpace ? "Start with the word" : "Start with space + word";
-			
-			if (hasAfter) {
-				// When there's text after cursor, provide both contexts
-				prompt = `Complete the text at the cursor position. ${lengthInstruction}. ${punctuationNote}. ${spacingNote}.
+	// Build prompt
+	let prompt: string;
+	
+if (isChinese) {
+	// Chinese prompt - simple and direct
+	if (hasAfter) {
+		const newSentenceNote = isNewSentence ? '\n5. 注意：这是一个新句子的开始，必须包含完整的主谓宾结构，不是前文的延续' : '';
+		const multipleNote = numSuggestions > 1 ? `\n6. 提供${numSuggestions}个不同的续写选项，每个一行` : '';
+		prompt = `续写文本（光标位置）：
+前文：${contextBefore}
+后文：${contextAfter}
 
-Text before cursor: ${contextBefore}
-Text after cursor: ${contextAfter}
+要求：
+1. 长度限制：${lengthLimit}
+2. 保持前后衔接自然流畅
+3. 只输出续写内容，不要解释
+4. 使用中文${newSentenceNote}${multipleNote}
 
-Generate ${suggestionText} natural completion(s) that fit between the before and after text:`;
-			} else {
-				// Normal case: cursor at end of line
-				prompt = `Continue this text with ${suggestionText} short suggestion(s). ${lengthInstruction}. ${punctuationNote}. ${spacingNote}.
+续写：`;
+	} else {
+		const newSentenceNote = isNewSentence ? '\n4. 注意：这是一个新句子的开始，必须包含完整的主谓宾结构，不是前文的延续' : '';
+		const multipleNote = numSuggestions > 1 ? `\n5. 提供${numSuggestions}个不同的续写选项，每个一行` : '';
+		prompt = `续写文本：
+${contextBefore}
 
-Text: ${contextBefore}
+要求：
+1. 长度限制：${lengthLimit}
+2. 只输出续写内容，不要解释
+3. 使用中文${newSentenceNote}${multipleNote}
 
-Output ${suggestionText} continuation(s):`;
-			}
+续写：`;
+		}
+		} else if (isEnglish) {
+	// English prompt - simple and direct
+	const spacingNote = endsWithSpace ? '' : '\n4. Start with a space if continuing the same line';
+	const newSentenceNote = isNewSentence ? '\n5. Note: This is the START of a NEW sentence with complete subject-verb-object structure, not a continuation of the previous one' : '';
+	const multipleNote = numSuggestions > 1 ? `\n6. Provide ${numSuggestions} different options, one per line` : '';
+	
+	if (hasAfter) {
+		prompt = `Continue the text at cursor position:
+Before: ${contextBefore}
+After: ${contextAfter}
+
+Requirements:
+1. Length: ${lengthLimit}
+2. Must connect naturally between before and after text
+3. Output ONLY the continuation, no explanations
+4. Use English${spacingNote}${newSentenceNote}${multipleNote}
+
+Continuation:`;
 		} else {
-			// Ultra-simplified Chinese prompt for speed
+			prompt = `Continue this text:
+${contextBefore}
+
+Requirements:
+1. Length: ${lengthLimit}
+2. Output ONLY the continuation, no explanations
+3. Use English${spacingNote}${newSentenceNote}${multipleNote}
+
+Continuation:`;
+		}
+		} else {
+			// Mixed or generic prompt
 			if (hasAfter) {
-				// When there's text after cursor, provide both contexts
-				prompt = `在光标位置补全文本。${lengthInstruction}。${punctuationNote}。
+				prompt = `Complete text at cursor:
+Before: ${contextBefore}
+After: ${contextAfter}
 
-光标前文本：${contextBefore}
-光标后文本：${contextAfter}
+Length: ${lengthLimit}
+Output only the completion text that naturally connects before and after.
 
-生成${suggestionText}个自然的补全，使前后文本衔接流畅：`;
+Completion:`;
 			} else {
-				// Normal case: cursor at end of line
-				prompt = `续写以下文本，生成${suggestionText}个建议。${lengthInstruction}。${punctuationNote}。
+				prompt = `Continue this text:
+${contextBefore}
 
-文本：${contextBefore}
+Length: ${lengthLimit}
+Output only the continuation text.
 
-输出${suggestionText}个续写：`;
+Continuation:`;
 			}
 		}
 

@@ -81,7 +81,8 @@ export class PromptManager {
             return allPrompts.filter(prompt => {
                 const titleMatch = prompt.title.toLowerCase().includes(searchTerm);
                 const descriptionMatch = prompt.description?.toLowerCase().includes(searchTerm) || false;
-                return titleMatch || descriptionMatch;
+                const keywordMatch = prompt.searchKeywords?.some(kw => kw.toLowerCase().includes(searchTerm)) || false;
+                return titleMatch || descriptionMatch || keywordMatch;
             }).sort((a, b) => {
                 // Sort by relevance and last used
                 const aRelevance = this.calculateRelevance(a, searchTerm);
@@ -104,6 +105,7 @@ export class PromptManager {
         let score = 0;
         const title = prompt.title.toLowerCase();
         const description = prompt.description?.toLowerCase() || '';
+        const keywords = prompt.searchKeywords?.map(kw => kw.toLowerCase()) || [];
 
         // Exact title match gets highest score
         if (title === searchTerm) {
@@ -117,6 +119,17 @@ export class PromptManager {
         else if (title.includes(searchTerm)) {
             score += 25;
         }
+        
+        // Check keywords for exact or partial matches
+        keywords.forEach(keyword => {
+            if (keyword === searchTerm) {
+                score += 40;
+            } else if (keyword.startsWith(searchTerm)) {
+                score += 20;
+            } else if (keyword.includes(searchTerm)) {
+                score += 10;
+            }
+        });
 
         // Description matches
         if (description.includes(searchTerm)) {
@@ -139,7 +152,7 @@ export class PromptManager {
         try {
             const newPrompt: PromptTemplate = {
                 ...prompt,
-                id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
                 isBuiltIn: false
             };
 

@@ -39,17 +39,6 @@ export class SessionManager {
 		Logger.debug('Creating new chat session');
 		Logger.debug('Current sessions count:', this.plugin.settings.chatSessions.length);
 
-		// Check if we've reached the maximum chat history limit
-		if (this.plugin.settings.chatSessions.length >= this.plugin.settings.maxChatHistory) {
-			const shouldProceed = await this.showMaxChatLimitDialog();
-			if (!shouldProceed) {
-				Logger.debug('User cancelled new chat creation due to limit');
-				// Return the current session instead of creating a new one
-				return this.plugin.settings.chatSessions[0];
-			}
-			// User chose to proceed, oldest chat will be automatically removed when we add the new one
-		}
-
 		// Create session without immediate save to improve performance
 		const session: ChatSession = {
 			id: this.plugin.settings.nextSessionId.toString(),
@@ -75,14 +64,6 @@ export class SessionManager {
 		// Add to settings immediately for UI consistency
 		this.plugin.settings.chatSessions.unshift(session);
 		Logger.debug('Session added to front of sessions array');
-
-		// Limit chat history
-		if (this.plugin.settings.chatSessions.length > this.plugin.settings.maxChatHistory) {
-			const removedCount = this.plugin.settings.chatSessions.length - this.plugin.settings.maxChatHistory;
-			this.plugin.settings.chatSessions = this.plugin.settings.chatSessions.slice(0, this.plugin.settings.maxChatHistory);
-			Logger.debug('Trimmed chat history, removed', removedCount, 'old sessions');
-		}
-
 		Logger.debug('Final sessions count:', this.plugin.settings.chatSessions.length);
 
 		// Save settings asynchronously in background
@@ -112,9 +93,12 @@ export class SessionManager {
 	 * Show chat history modal
 	 */
 	showChatHistory(): void {
+		Logger.debug('📜 showChatHistory called');
 		const sessions = this.plugin.settings.chatSessions;
+		Logger.debug('📜 Current sessions count:', sessions.length);
 		if (sessions.length <= 1) {
-			new Notice('No chat history available');
+			Logger.debug('📜 Not enough sessions to show history (need > 1)');
+			new Notice(this.plugin.getI18nManager()?.t('notifications.session.noChatHistory') || 'No chat history available');
 			return;
 		}
 
@@ -122,26 +106,27 @@ export class SessionManager {
 	}
 
 	/**
-	 * Show chat history modal with session list
+	 * Show chat history modal with modern UI and search (beautify-layout inspired)
 	 */
 	private showChatHistoryModal(sessions: ChatSession[]): void {
+		Logger.debug('📜 showChatHistoryModal called with', sessions.length, 'sessions');
 		// Create modal overlay
 		const modal = document.body.createDiv({
 			cls: 'llmsider-chat-history-modal'
 		});
 
-		// Modal container - match prompt selector style
+		// Modal container (card with shadow)
 		const modalContainer = modal.createDiv({
 			cls: 'llmsider-chat-history-container'
 		});
 
-		// Header
+		// Header with title and close button
 		const header = modalContainer.createDiv({
 			cls: 'llmsider-chat-history-header'
 		});
 
 		const title = header.createEl('h2', {
-			text: `Chat History (${sessions.length})`,
+			text: 'Chat History',
 			cls: 'llmsider-chat-history-title'
 		});
 
@@ -149,230 +134,251 @@ export class SessionManager {
 			cls: 'llmsider-chat-history-close',
 			attr: { 'aria-label': 'Close' }
 		});
-		// Use SVG icon instead of emoji
-		closeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		closeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<line x1="18" y1="6" x2="6" y2="18"></line>
 			<line x1="6" y1="6" x2="18" y2="18"></line>
 		</svg>`;
 		closeBtn.onclick = () => modal.remove();
 
-		// Sessions list
-		const sessionsList = modalContainer.createDiv({
+		// Search bar with icon (inside border box)
+		const searchWrapper = modalContainer.createDiv({
+			cls: 'llmsider-chat-history-search-wrapper'
+		});
+
+		const searchContainer = searchWrapper.createDiv({
+			cls: 'llmsider-chat-history-search-container'
+		});
+
+		const searchIcon = searchContainer.createEl('span', {
+			cls: 'llmsider-chat-history-search-icon'
+		});
+		searchIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="11" cy="11" r="8"></circle>
+			<path d="m21 21-4.35-4.35"></path>
+		</svg>`;
+
+		const searchInput = searchContainer.createEl('input', {
+			type: 'text',
+			placeholder: 'Search conversations...',
+			cls: 'llmsider-chat-history-search-input',
+			attr: { 'aria-label': 'Search conversations' }
+		});
+
+		// Conversations list container (with scroll area)
+		const conversationsList = modalContainer.createDiv({
 			cls: 'llmsider-chat-history-list'
 		});
 
-		// Sort sessions by updated time (most recent first)
-		const sortedSessions = [...sessions].sort((a, b) => b.updated - a.updated);
+		// Search state
+		let filteredSessions = sessions;
+		let searchQuery = '';
 
-		// Keyboard navigation state
-		let selectedIndex = -1;
+		// Render function for session list
+		const renderSessions = (sessionsToRender: ChatSession[]) => {
+			conversationsList.empty();
 
-		const updateSelection = () => {
-			const items = sessionsList.querySelectorAll('.llmsider-chat-history-item');
-			items.forEach((item, index) => {
-				if (index === selectedIndex) {
-					item.addClass('keyboard-selected');
-					item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-				} else {
-					item.removeClass('keyboard-selected');
-				}
-			});
-		};
-
-		const selectSession = () => {
-			if (selectedIndex >= 0 && selectedIndex < sortedSessions.length) {
-				const session = sortedSessions[selectedIndex];
-				const currentSession = this.plugin.settings.chatSessions[0];
-				if (session.id !== currentSession?.id) {
-					this.loadChatSession(session);
-					modal.remove();
-				}
+			if (sessionsToRender.length === 0) {
+				// Empty state (beautify-layout style)
+				const emptyState = conversationsList.createDiv({
+					cls: 'llmsider-chat-history-empty'
+				});
+				const emptyIcon = emptyState.createEl('div', {
+					cls: 'llmsider-chat-history-empty-icon'
+				});
+				emptyIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<circle cx="11" cy="11" r="8"></circle>
+					<path d="m21 21-4.35-4.35"></path>
+				</svg>`;
+				emptyState.createEl('p', {
+					text: 'No conversations found',
+					cls: 'llmsider-chat-history-empty-text'
+				});
+				return;
 			}
-		};
 
-		sortedSessions.forEach((session, index) => {
+			// Get current session
 			const currentSession = this.plugin.settings.chatSessions[0];
-			const sessionItem = sessionsList.createDiv({
-				cls: `llmsider-chat-history-item ${session.id === currentSession?.id ? 'current' : ''}`
-			});
 
-			// Item header with title and actions
-			const itemHeader = sessionItem.createDiv({
-				cls: 'llmsider-chat-history-item-header'
-			});
+			// Render each session as a card
+			for (let index = 0; index < sessionsToRender.length; index++) {
+				const session = sessionsToRender[index];
+				const isCurrentSession = session.id === currentSession?.id;
+				
+				// Get message count and preview from session
+				const messageCount = session.messages.length;
+				const firstUserMessage = session.messages.find(msg => msg.role === 'user');
+				const previewText = firstUserMessage?.content 
+					? (typeof firstUserMessage.content === 'string' 
+						? firstUserMessage.content 
+						: firstUserMessage.content.map((c: any) => c.type === 'text' ? c.text : '[Image]').join(' '))
+					: '';
 
-			// Left side: session icon + name
-			const leftSide = itemHeader.createDiv({
-				cls: 'llmsider-chat-history-item-left'
-			});
-
-			// Chat icon (SVG)
-			const chatIcon = leftSide.createEl('span', {
-				cls: 'llmsider-chat-history-item-icon'
-			});
-			chatIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-			</svg>`;
-
-			// Session name
-			const displayName = session.name || `Chat ${index + 1}`;
-			const sessionName = leftSide.createEl('span', {
-				cls: 'llmsider-chat-history-item-name',
-				text: displayName
-			});
-
-			// Right side: actions
-			const actions = itemHeader.createDiv({
-				cls: 'llmsider-chat-history-actions'
-			});
-
-			// Current indicator or Load button (SVG)
-			if (session.id === currentSession?.id) {
-				const currentBadge = actions.createEl('span', {
-					cls: 'llmsider-chat-history-current-badge',
-					attr: { 'aria-label': 'Current session' }
+				// Create card item
+				const cardItem = conversationsList.createDiv({
+					cls: `llmsider-chat-history-card ${isCurrentSession ? 'current-thread' : ''}`
 				});
-				currentBadge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-					<polyline points="20 6 9 17 4 12"></polyline>
-				</svg>`;
-			} else {
-				const loadBtn = actions.createEl('button', {
-					cls: 'llmsider-chat-history-load-btn',
-					attr: { 'aria-label': 'Load session' }
-				});
-				loadBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<polyline points="9 18 15 12 9 6"></polyline>
-				</svg>`;
-				loadBtn.onclick = (e) => {
-					e.stopPropagation();
-					this.loadChatSession(session);
-					modal.remove();
-				};
-			}
 
-			// Delete button (only for non-current sessions, SVG)
-			if (session.id !== currentSession?.id) {
-				const deleteBtn = actions.createEl('button', {
-					cls: 'llmsider-chat-history-delete-btn',
-					attr: { 'aria-label': 'Delete session' }
+				// Current thread indicator (dot)
+				if (isCurrentSession) {
+					cardItem.createDiv({ cls: 'llmsider-chat-history-current-indicator' });
+				}
+
+				// Card content wrapper (flex container)
+				const cardContent = cardItem.createDiv({
+					cls: 'llmsider-chat-history-card-content'
 				});
-				deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<polyline points="3 6 5 6 21 6"></polyline>
-					<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+
+				// Left icon
+				const iconWrapper = cardContent.createDiv({
+					cls: 'llmsider-chat-history-card-icon'
+				});
+				iconWrapper.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
 				</svg>`;
 
-				deleteBtn.onclick = async (e) => {
-					e.stopPropagation();
+				// Main content (middle)
+				const mainContent = cardContent.createDiv({
+					cls: 'llmsider-chat-history-card-main'
+				});
 
-					const confirmDelete = await this.showDeleteConfirmation(displayName);
-					if (confirmDelete) {
-						await this.plugin.deleteChatSession(session.id);
-						// Refresh the modal
+			// Title row (title + metadata)
+			const titleRow = mainContent.createDiv({
+				cls: 'llmsider-chat-history-card-title-row'
+			});
+
+			// Title
+			titleRow.createEl('h3', {
+				text: session.name || 'Untitled Conversation',
+				cls: 'llmsider-chat-history-card-title'
+			});
+
+			// Metadata (message count and date) in title row
+			const cardMeta = titleRow.createDiv({ cls: 'llmsider-chat-history-card-meta' });
+
+			// Message count
+			cardMeta.createEl('span', {
+				cls: 'llmsider-chat-history-meta-count',
+				text: `${messageCount} messages`
+			});
+
+			// Dot separator
+			cardMeta.createEl('span', {
+				cls: 'llmsider-chat-history-meta-separator',
+				text: '•'
+			});
+
+			// Updated time
+			const updatedTime = new Date(session.updated);
+			cardMeta.createEl('span', {
+				cls: 'llmsider-chat-history-meta-date',
+				text: updatedTime.toLocaleDateString()
+			});
+
+			// Actions container (right side, hover-revealed)
+			const cardActions = cardContent.createDiv({
+				cls: 'llmsider-chat-history-card-actions'
+			});				// Navigate/Load button
+				if (!isCurrentSession) {
+					const loadBtn = cardActions.createEl('button', {
+						cls: 'llmsider-chat-history-action-btn',
+						attr: { 'aria-label': 'Load conversation', title: 'Load conversation' }
+					});
+					loadBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>`;
+					loadBtn.onclick = (e) => {
+						e.stopPropagation();
+						this.loadChatSession(session);
 						modal.remove();
-						this.showChatHistory();
+					};
+				}
+
+				// Delete button
+				if (!isCurrentSession) {
+					const deleteBtn = cardActions.createEl('button', {
+						cls: 'llmsider-chat-history-action-btn delete',
+						attr: { 'aria-label': 'Delete conversation', title: 'Delete conversation' }
+					});
+					deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M3 6h18"></path>
+						<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+						<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+					</svg>`;
+					deleteBtn.onclick = async (e) => {
+						e.stopPropagation();
+						const confirmDelete = await this.showDeleteConfirmation(session.name || 'Untitled Conversation');
+						if (confirmDelete) {
+							await this.plugin.deleteChatSession(session.id);
+							new Notice(this.plugin.i18n.t('ui.conversationDeleted'));
+							// Refresh modal
+							modal.remove();
+							this.showChatHistory();
+						}
+					};
+				}
+
+				// Preview text
+				if (previewText) {
+					mainContent.createEl('p', {
+						text: previewText,
+						cls: 'llmsider-chat-history-card-preview'
+					});
+				}
+
+				// Click handler for the entire card
+				cardItem.onclick = () => {
+					if (!isCurrentSession) {
+						this.loadChatSession(session);
+						modal.remove();
 					}
 				};
 			}
+		};
 
-			// Meta info row
-			const metaRow = sessionItem.createDiv({
-				cls: 'llmsider-chat-history-item-meta'
-			});
-
-			// Message count with icon (SVG)
-			const messageCount = metaRow.createEl('span', {
-				cls: 'llmsider-chat-history-meta-item'
-			});
-			messageCount.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-			</svg><span>${session.messages.length}</span>`;
-
-			// Time info with icon (SVG)
-			const updatedTime = new Date(session.updated);
-			const isToday = updatedTime.toDateString() === new Date().toDateString();
-			const timeInfo = metaRow.createEl('span', {
-				cls: 'llmsider-chat-history-meta-item'
-			});
-			timeInfo.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<circle cx="12" cy="12" r="10"></circle>
-				<polyline points="12 6 12 12 16 14"></polyline>
-			</svg><span>${isToday ? updatedTime.toLocaleTimeString() : updatedTime.toLocaleDateString()}</span>`;
-
-			// Preview row (only if there's a message)
-			if (session.messages.length > 0) {
-				const firstUserMessage = session.messages.find(msg => msg.role === 'user');
-				if (firstUserMessage) {
-					const preview = sessionItem.createDiv({
-						cls: 'llmsider-chat-history-preview'
-					});
-
-					const content = typeof firstUserMessage.content === 'string'
-						? firstUserMessage.content
-						: firstUserMessage.content.map(c => c.type === 'text' ? c.text : '[Image]').join(' ');
-
-					preview.textContent = content.length > 80 ? content.substring(0, 80) + '...' : content;
-				}
+		// Search input handler with real-time filtering
+		searchInput.oninput = () => {
+			searchQuery = searchInput.value.trim().toLowerCase();
+			if (!searchQuery) {
+				filteredSessions = sessions;
+			} else {
+				filteredSessions = sessions.filter((session) => {
+					const name = (session.name || '').toLowerCase();
+					const firstMsg = session.messages.find(m => m.role === 'user');
+					const preview = firstMsg?.content ? (typeof firstMsg.content === 'string' ? firstMsg.content : '').toLowerCase() : '';
+					return name.includes(searchQuery) || preview.includes(searchQuery);
+				});
 			}
+			renderSessions(filteredSessions);
+		};
 
-			// Event handlers
-			sessionItem.onclick = () => {
-				if (session.id !== currentSession?.id) {
-					this.loadChatSession(session);
-					modal.remove();
-				}
-			};
+		// Initial render
+		renderSessions(filteredSessions);
 
-			sessionItem.onmouseenter = () => {
-				selectedIndex = index;
-				updateSelection();
-			};
-		});
-
-		// Keyboard event handler
+		// Keyboard event handler for ESC and search focus
 		const keyHandler = (e: KeyboardEvent) => {
-			switch (e.key) {
-				case 'ArrowUp':
-					e.preventDefault();
-					selectedIndex = selectedIndex <= 0 ? sortedSessions.length - 1 : selectedIndex - 1;
-					updateSelection();
-					break;
-				case 'ArrowDown':
-					e.preventDefault();
-					selectedIndex = selectedIndex >= sortedSessions.length - 1 ? 0 : selectedIndex + 1;
-					updateSelection();
-					break;
-				case 'Enter':
-					e.preventDefault();
-					selectSession();
-					break;
-				case 'Escape':
-					e.preventDefault();
-					modal.remove();
-					document.removeEventListener('keydown', keyHandler);
-					break;
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				modal.remove();
 			}
 		};
 
-		// Add keyboard listener
 		document.addEventListener('keydown', keyHandler);
 
-		// Focus the modal for keyboard events
-		modal.tabIndex = -1;
-		modal.focus();
+		// Auto-focus search input
+		setTimeout(() => searchInput.focus(), 100);
 
 		// Click outside to close
 		modal.onclick = (e) => {
 			if (e.target === modal) {
 				modal.remove();
-				document.removeEventListener('keydown', keyHandler);
 			}
 		};
 
 		// Cleanup on close
-		const originalRemove = modal.remove;
+		const originalRemove = modal.remove.bind(modal);
 		modal.remove = () => {
 			document.removeEventListener('keydown', keyHandler);
-			originalRemove.call(modal);
+			originalRemove();
 		};
 	}
 
@@ -437,7 +443,64 @@ export class SessionManager {
 	}
 
 	/**
-	 * Load a specific chat session
+	 * Load thread from Mastra memory and restore to UI
+	 */
+	async loadThreadFromMemory(threadId: string, memoryManager: any): Promise<void> {
+		try {
+			Logger.debug('📥 Loading thread from memory:', threadId);
+
+			// Get conversation history
+			const history = await memoryManager.getConversationHistory(threadId);
+			Logger.debug('📥 Loaded', history.length, 'messages');
+
+			// Set as current thread in memory manager
+			memoryManager.setDefaultThreadId(threadId);
+
+			// Create or update ChatSession for UI compatibility
+			const thread = await memoryManager.getStorageAdapter().getThread({ id: threadId });
+			const session: ChatSession = {
+				id: threadId,
+				name: thread?.title || 'Untitled',
+				messages: history.map((msg: any) => ({
+					role: msg.role,
+					content: msg.content,
+					timestamp: msg.timestamp
+				})),
+				created: thread?.createdAt ? new Date(thread.createdAt).getTime() : Date.now(),
+				updated: thread?.updatedAt ? new Date(thread.updatedAt).getTime() : Date.now(),
+				provider: this.plugin.settings.activeProvider,
+				mode: 'ask'
+			};
+
+			// Update current session in plugin state
+			this.plugin.state.currentSession = threadId;
+			
+			// Move to front of chatSessions array for backwards compatibility
+			const existingIndex = this.plugin.settings.chatSessions.findIndex(s => s.id === threadId);
+			if (existingIndex >= 0) {
+				this.plugin.settings.chatSessions.splice(existingIndex, 1);
+			}
+			this.plugin.settings.chatSessions.unshift(session);
+
+			await this.plugin.saveSettings();
+
+			// Show success message
+			new Notice(this.plugin.getI18nManager()?.t('notifications.session.sessionLoaded', { name: session.name }) || `Loaded: ${session.name}`);
+
+			// Trigger UI refresh
+			if (this.onSessionLoadedCallback) {
+				this.onSessionLoadedCallback(session);
+			}
+
+			Logger.debug('📥 Thread loaded successfully:', threadId);
+		} catch (error) {
+			Logger.error('📥 Failed to load thread:', error);
+			new Notice(this.plugin.i18n.t('ui.failedToLoadConversation'));
+		}
+	}
+
+	/**
+	 * Load a specific chat session (legacy method, kept for compatibility)
 	 */
 	loadChatSession(session: ChatSession): void {
 		// Move session to front of array (make it current)
@@ -448,7 +511,7 @@ export class SessionManager {
 		}
 
 		// Show success message
-		new Notice(`Loaded chat session: ${session.name || 'Untitled'}`);
+		new Notice(this.plugin.getI18nManager()?.t('notifications.session.sessionLoaded', { name: session.name || 'Untitled' }) || `Loaded chat session: ${session.name || 'Untitled'}`);
 
 		// Update plugin's current session in state
 		this.plugin.state.currentSession = session.id;
@@ -480,7 +543,7 @@ export class SessionManager {
 	/**
 	 * Auto-include current note for action mode
 	 */
-	async includeCurrentNoteForAction(contextManager: any): Promise<void> {
+	async includeCurrentNoteForAction(contextManager: unknown): Promise<void> {
 		const result = await contextManager.includeCurrentNote();
 		if (result.success) {
 			Logger.debug('Auto-included current note for action mode:', result.note?.name);
@@ -570,10 +633,10 @@ export class SessionManager {
 			};
 
 			// Cleanup on close
-			const originalRemove = modal.remove;
+			const originalRemove = modal.remove.bind(modal);
 			modal.remove = () => {
 				document.removeEventListener('keydown', keyHandler);
-				originalRemove.call(modal);
+				originalRemove();
 			};
 
 			// Focus the proceed button by default

@@ -23,16 +23,21 @@ export class ModelHandler {
 			async (model: LLMModel) => {
 				// If this is set as default, clear other defaults for this connection
 				if (model.isDefault) {
-					this.plugin.settings.models.forEach(m => {
-						if (m.connectionId === connection.id && m.id !== model.id) {
+					const updatePromises: Promise<void>[] = [];
+					for (const m of this.plugin.settings.models) {
+						if (m.connectionId === connection.id && m.id !== model.id && m.isDefault) {
 							m.isDefault = false;
+							// Save the updated model to DB
+							updatePromises.push(this.plugin.configDb.saveModel(m));
 						}
-					});
+					}
+					await Promise.all(updatePromises);
 				}
 				
 				// Add new model
 				this.plugin.settings.models.push(model);
-				await this.plugin.saveSettings();
+				// Optimize: Save only the new model
+				await this.plugin.configDb.saveModel(model);
 				await this.plugin.reinitializeProviders();
 				
 				this.onUpdate(); // Refresh UI
@@ -55,18 +60,23 @@ export class ModelHandler {
 			async (updatedModel: LLMModel) => {
 				// If this is set as default, clear other defaults for this connection
 				if (updatedModel.isDefault) {
-					this.plugin.settings.models.forEach(m => {
-						if (m.connectionId === connection.id && m.id !== updatedModel.id) {
+					const updatePromises: Promise<void>[] = [];
+					for (const m of this.plugin.settings.models) {
+						if (m.connectionId === connection.id && m.id !== updatedModel.id && m.isDefault) {
 							m.isDefault = false;
+							// Save the updated model to DB
+							updatePromises.push(this.plugin.configDb.saveModel(m));
 						}
-					});
+					}
+					await Promise.all(updatePromises);
 				}
 				
 				// Find and update the model
 				const modelIndex = this.plugin.settings.models.findIndex(m => m.id === updatedModel.id);
 				if (modelIndex !== -1) {
 					this.plugin.settings.models[modelIndex] = updatedModel;
-					await this.plugin.saveSettings();
+					// Optimize: Save only the updated model
+					await this.plugin.configDb.saveModel(updatedModel);
 					await this.plugin.reinitializeProviders();
 					
 					this.onUpdate(); // Refresh UI
@@ -84,10 +94,11 @@ export class ModelHandler {
 			const modelIndex = this.plugin.settings.models.findIndex(m => m.id === model.id);
 			if (modelIndex !== -1) {
 				this.plugin.settings.models.splice(modelIndex, 1);
-				await this.plugin.saveSettings();
+				// Optimize: Delete only the model
+				await this.plugin.configDb.deleteModel(model.id);
 				await this.plugin.reinitializeProviders();
 				
-				new Notice(`Model "${model.name}" deleted`);
+				new Notice(this.i18n.t('notifications.settingsHandlers.modelDeleted', { name: model.name }) || `Model "${model.name}" deleted`);
 				this.onUpdate(); // Refresh UI
 			}
 		}

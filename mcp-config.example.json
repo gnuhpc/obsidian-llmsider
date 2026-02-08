@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "qmd": {
+      "autoApprove": [
+        "qmd_search",
+        "qmd_vsearch",
+        "qmd_query",
+        "qmd_get",
+        "qmd_multi_get",
+        "qmd_status"
+      ],
+      "disabled": false,
+      "timeout": 120,
+      "type": "stdio",
+      "command": "qmd",
+      "args": [
+        "mcp"
+      ],
+      "env": {},
+      "autoConnect": false
+    }
+  }
+}

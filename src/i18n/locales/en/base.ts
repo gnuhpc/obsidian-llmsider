@@ -16,10 +16,16 @@ export const enBase = {
   messageActions: {
     toggleDiffRendering: 'Toggle Diff Rendering',
     applyChanges: 'Apply Changes',
+    copy: 'Copy',
     copyAsMarkdown: 'Copy as Markdown',
+    copyAsPlainText: 'Copy as Plain Text',
     generateNewNote: 'Generate New Note',
+    insertAtCursor: 'Insert at Cursor',
+    updateNoteTitle: 'Update Note Title',
     copyMessage: 'Copy Message',
-    editAndResend: 'Edit and Resend'
+    editAndResend: 'Edit and Resend',
+    editMessage: 'Edit Message',
+    regenerate: 'Regenerate'
   },
 
   // Settings

@@ -24,6 +24,12 @@ export class MCPCardUpdater {
 		// Get parent container
 		const container = oldCard.parentElement;
 		if (!container) return;
+		
+		// Check if tools were expanded before update
+		const toolDetailsRow = container.querySelector('.llmsider-mcp-tool-details-row') as HTMLElement;
+		const wasExpanded = toolDetailsRow && 
+			toolDetailsRow.style.display === 'block' && 
+			toolDetailsRow.getAttribute('data-server-id') === serverId;
 
 		// Get updated server data
 		const state = mcpManager.getState();
@@ -35,7 +41,7 @@ export class MCPCardUpdater {
 		const health = mcpManager.getServerHealth(serverId);
 		// Get all tools and filter by server
 		const allTools = mcpManager.getAllAvailableTools();
-		const tools = allTools.filter((tool: any) => tool.server === serverId);
+		const tools = allTools.filter((tool: unknown) => tool.server === serverId);
 
 		// Create new card element - tool details row not needed for single card update
 		const tempContainer = document.createElement('div');
@@ -46,6 +52,15 @@ export class MCPCardUpdater {
 		if (newCard) {
 			// Replace old card with new card
 			oldCard.replaceWith(newCard);
+			
+			// If tools were expanded, auto-click the tools button to re-expand
+			if (wasExpanded && isConnected && tools.length > 0) {
+				const toolsButton = newCard.querySelector('.llmsider-tools-btn') as HTMLButtonElement;
+				if (toolsButton) {
+					// Use setTimeout to ensure DOM is ready
+					setTimeout(() => toolsButton.click(), 50);
+				}
+			}
 		}
 	}
 

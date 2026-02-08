@@ -1,5 +1,5 @@
 import { ChatMessage, ChatSession } from '../types';
-import { Logger } from './../utils/logger';
+import { Logger } from '../utils/logger';
 import { MessageRenderer } from './message-renderer';
 import { DiffProcessor } from '../utils/diff-processor';
 import { Notice } from 'obsidian';
@@ -13,9 +13,10 @@ export class MessageManager {
 	private diffProcessor: DiffProcessor;
 	private scrollPending: boolean = false;
 	private lastScrollTime: number = 0;
-	private scrollThrottleMs: number = 150; // Increased throttle time for smoother experience
+	private scrollThrottleMs: number = 250; // Increased throttle time for better performance
 	private shouldAutoScroll: boolean = true; // Flag to control auto-scrolling
 	private i18n: I18nManager;
+	private guidedCardRenderer?: (message: ChatMessage, isReloaded: boolean) => void;
 
 	constructor(
 		plugin: LLMSiderPlugin,
@@ -35,6 +36,13 @@ export class MessageManager {
 		
 		// Set up user scroll detection
 		this.setupScrollDetection();
+	}
+
+	/**
+	 * Set guided card renderer callback (called from ChatView)
+	 */
+	setGuidedCardRenderer(renderer: (message: ChatMessage, isReloaded: boolean) => void) {
+		this.guidedCardRenderer = renderer;
 	}
 
 	/**
@@ -68,14 +76,35 @@ export class MessageManager {
 	 * Add message to UI with proper rendering and action buttons
 	 */
 	addMessageToUI(message: ChatMessage, currentSession?: ChatSession | null) {
+		Logger.debug('[TRACE] addMessageToUI called for message:', message.id);
+		
+		// Remove welcome message when adding first message
+		const existingWelcome = this.messageContainer.querySelector('.llmsider-welcome');
+		if (existingWelcome) {
+			existingWelcome.remove();
+		}
+		
 		const messageEl = this.messageRenderer.renderMessage(this.messageContainer, message);
-
-		// Handle guided mode messages - rebuild the guided card structure
+		
+		// Dispatch event for guided question card rendering
 		if (message.metadata?.isGuidedQuestion) {
-			// Trigger guided card rendering via custom event
+			Logger.debug('[MessageManager] 🎯 Dispatching guided card render event for message:', message.id);
+			Logger.debug('[MessageManager] Message metadata:', {
+				isGuidedQuestion: message.metadata.isGuidedQuestion,
+				requiresToolConfirmation: message.metadata.requiresToolConfirmation,
+				hasToolCalls: !!message.metadata.suggestedToolCalls,
+				hasOptions: !!message.metadata.guidedOptions,
+				isStreaming: message.metadata.isStreaming
+			});
+			Logger.debug('[MessageManager] 🔍 Message content check before dispatch:', {
+				contentLength: typeof message.content === 'string' ? message.content.length : 0,
+				hasContent: !!message.content
+			});
 			window.dispatchEvent(new CustomEvent('llmsider-render-guided-card', {
 				detail: { messageId: message.id, message }
 			}));
+		} else if (message.role === 'assistant') {
+			Logger.debug('[MessageManager] ℹ️ Assistant message without isGuidedQuestion flag:', message.id, 'metadata:', message.metadata);
 		}
 
 		// Auto-refresh message actions after rendering to ensure buttons are visible
@@ -91,12 +120,12 @@ export class MessageManager {
 		if (message.metadata?.hasJSDiff && message.metadata?.diffResult &&
 			message.metadata?.originalContent && message.metadata?.modifiedContent &&
 			!message.metadata?.isWorking &&
-			!(message.metadata as any)?.freshlyProcessed && // Don't re-render freshly processed messages
+			!(message.metadata as unknown)?.freshlyProcessed && // Don't re-render freshly processed messages
 			this.diffProcessor) { // Ensure diff processor is available
 
 			// Check if the message already has the correct diff rendering state applied
-			const shouldRenderDiff = (message.metadata as any)?.diffRenderingEnabled !== undefined
-				? (message.metadata as any)?.diffRenderingEnabled
+			const shouldRenderDiff = (message.metadata as unknown)?.diffRenderingEnabled !== undefined
+				? (message.metadata as unknown)?.diffRenderingEnabled
 				: false; // Diff rendering disabled by default (setting removed)
 
 			// Logger.debug('Re-rendering saved diff for message:', message.id);
@@ -123,12 +152,12 @@ export class MessageManager {
 					this.messageRenderer.addMessageActions(messageEl, message);
 				}
 			}, 10);
-		} else if ((message.metadata as any)?.freshlyProcessed) {
+		} else if ((message.metadata as unknown)?.freshlyProcessed) {
 			// Logger.debug('Skipping re-render for freshly processed message:', message.id);
 			// Clear the freshly processed flag after the first render
 			setTimeout(() => {
 				if (message.metadata) {
-					delete (message.metadata as any).freshlyProcessed;
+					delete (message.metadata as unknown).freshlyProcessed;
 				}
 			}, 1000);
 		}
@@ -155,68 +184,104 @@ export class MessageManager {
 	 * Render messages for current session
 	 */
 	renderMessages(currentSession: ChatSession | null) {
-		// Logger.debug('renderMessages called with session:', {
-		// 	sessionId: currentSession?.id,
-		// 	sessionExists: !!currentSession,
-		// 	messageCount: currentSession?.messages?.length || 0,
-		// 	containerExists: !!this.messageContainer
-		// });
+		// Set loading flag to prevent auto-search during initial session load
+		const wasLoading = this.plugin.state.isLoadingSession;
+		this.plugin.state.isLoadingSession = true;
 
 		// Early return optimization
 		if (!currentSession) {
-			// Logger.debug('No current session - clearing container and showing welcome');
 			this.messageContainer.empty();
 			this.showWelcomeMessage();
+			this.plugin.state.isLoadingSession = wasLoading;
 			return;
 		}
 
 		// If no messages, just show welcome without unnecessary clearing
 		if (currentSession.messages.length === 0) {
-			// Logger.debug('Session has no messages - showing welcome');
-			// Always clear and show welcome for new empty sessions to ensure clean state
-			// Logger.debug('Clearing container and showing fresh welcome message');
 			this.messageContainer.empty();
 			this.showWelcomeMessage();
+			this.plugin.state.isLoadingSession = wasLoading;
 			return;
 		}
 
 		// Clear only when we have messages to render
-		// Logger.debug('Session has messages - clearing container for re-render');
+		Logger.debug('[MessageManager] Clearing container and rendering', currentSession.messages.length, 'messages');
 		this.messageContainer.empty();
+		
+		// Explicitly remove any welcome message that might exist
+		const existingWelcome = this.messageContainer.querySelector('.llmsider-welcome');
+		if (existingWelcome) {
+			existingWelcome.remove();
+		}
 
-		// Use requestAnimationFrame for better performance
-		requestAnimationFrame(() => {
-			// Filter and render messages - exclude temporary tool execution messages
-			const messagesToRender = currentSession!.messages.filter(message => {
-				// Skip temporary tool execution indicator messages
-				if (message.metadata?.isToolDetection ||
-					message.metadata?.isToolExecution ||
-					message.metadata?.isToolExecutionResult) {
-					// Logger.debug('Skipping temporary tool message on reload:', message.id, message.metadata);
-					return false;
-				}
-				return true;
-			});
-
-			// Logger.debug('Rendering filtered messages:', {
-			// 	totalMessages: currentSession!.messages.length,
-			// 	filteredMessages: messagesToRender.length,
-			// 	skippedMessages: currentSession!.messages.length - messagesToRender.length
-			// });
-
-			// Render filtered messages
-			messagesToRender.forEach((message, index) => {
-				this.addMessageToUI(message, currentSession);
-			});
-
-			// Auto-refresh all message actions after rendering
-			setTimeout(() => {
-				this.refreshMessageActions(currentSession);
-			}, 250); // Increased delay for batch rendering
-
-			// Scroll to bottom
-			this.scrollToBottom();
+		// Filter messages first - exclude temporary tool execution messages
+		const messagesToRender = currentSession.messages.filter(message => {
+			// Skip temporary tool execution indicator messages
+			if (message.metadata?.isToolDetection ||
+				message.metadata?.isToolExecution ||
+				message.metadata?.isToolExecutionResult) {
+				// Logger.debug('Skipping temporary tool message on reload:', message.id, message.metadata);
+				return false;
+			}
+			// Skip tool result messages (role: 'tool') - they should be shown in tool cards, not as separate messages
+			if (message.role === 'tool') {
+				// Logger.debug('Skipping tool result message on reload:', message.id);
+				return false;
+			}
+			return true;
 		});
+
+		// Logger.debug('Rendering filtered messages:', {
+		// 	totalMessages: currentSession!.messages.length,
+		// 	filteredMessages: messagesToRender.length,
+		// 	skippedMessages: currentSession!.messages.length - messagesToRender.length
+		// });
+
+		// Batch render messages for better performance
+		messagesToRender.forEach((message, index) => {
+			this.addMessageToUI(message, currentSession);
+		});
+
+		// Double-check: if we filtered all messages but session has messages,
+		// don't show welcome message
+		if (messagesToRender.length === 0 && currentSession.messages.length > 0) {
+			// All messages were filtered out, but session has messages - don't show welcome
+			const existingWelcome = this.messageContainer.querySelector('.llmsider-welcome');
+			if (existingWelcome) {
+				existingWelcome.remove();
+			}
+		}
+
+		// Auto-refresh all message actions after rendering
+		setTimeout(() => {
+			this.refreshMessageActions(currentSession);
+		}, 250); // Increased delay for batch rendering
+
+		// Re-render guided cards immediately after messages are rendered (plugin reload fix)
+		// Use direct callback instead of events to ensure it works during initialization
+		if (currentSession && currentSession.messages && this.guidedCardRenderer) {
+			Logger.debug('[RenderMessages] Checking for guided messages to re-render...');
+			const guidedMessages = currentSession.messages.filter(m => m.metadata?.isGuidedQuestion);
+			Logger.debug('[RenderMessages] Found ' + guidedMessages.length + ' guided messages');
+			
+			if (guidedMessages.length > 0) {
+				// Use requestAnimationFrame to ensure DOM is ready
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						guidedMessages.forEach(message => {
+							Logger.debug('[RenderMessages] Directly rendering guided card for:', message.id);
+							this.guidedCardRenderer!(message, true); // isReloaded = true
+						});
+					});
+				});
+			}
+		}
+
+		// Scroll to bottom after rendering
+		this.scrollToBottom();
+
+		// Clear loading flag after rendering completes
+		this.plugin.state.isLoadingSession = wasLoading;
 	}
 
 	/**
@@ -255,32 +320,35 @@ export class MessageManager {
 	/**
 	 * Handle editing a message
 	 */
-	async handleEditMessage(messageId: string, message: ChatMessage, currentSession: ChatSession | null, inputElement: HTMLTextAreaElement): Promise<void> {
+	async handleEditMessage(messageId: string, message: ChatMessage | undefined, currentSession: ChatSession | null, inputElement: HTMLTextAreaElement): Promise<void> {
 		try {
-			Logger.debug('Handling edit message:', { messageId, role: message.role });
-
-			// Only allow editing user messages
-			if (message.role !== 'user') {
-				new Notice('Only user messages can be edited');
-				return;
-			}
-
-			// Extract text content from message
-			const textContent = this.extractTextFromMessage(message);
-			if (!textContent) {
-				new Notice('No text content to edit');
-				return;
-			}
-
-			// Find the message index in current session
+			// Find the message in current session first if not provided
 			if (!currentSession) {
-				new Notice('No active session');
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.noActiveSession') || 'No active session');
 				return;
 			}
 
 			const messageIndex = currentSession.messages.findIndex(msg => msg.id === messageId);
 			if (messageIndex === -1) {
-				new Notice('Message not found');
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.messageNotFound') || 'Message not found');
+				return;
+			}
+
+			// Get the message if not provided
+			const targetMessage = message || currentSession.messages[messageIndex];
+			
+			Logger.debug('Handling edit message:', { messageId, role: targetMessage.role });
+
+			// Only allow editing user messages
+			if (targetMessage.role !== 'user') {
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.onlyUserMessagesEditable') || 'Only user messages can be edited');
+				return;
+			}
+
+			// Extract text content from message
+			const textContent = this.extractTextFromMessage(targetMessage);
+			if (!textContent) {
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.noTextContentToEdit') || 'No text content to edit');
 				return;
 			}
 
@@ -293,6 +361,22 @@ export class MessageManager {
 				messagesToRemove,
 				remainingMessages: currentSession.messages.length
 			});
+
+			// Reset FreeDeepseek lastMessageId based on remaining messages
+			const provider = this.plugin.getActiveProvider();
+			if (provider && 'setLastMessageId' in provider && typeof provider.setLastMessageId === 'function') {
+				// Find the last assistant message's metadata to get response_message_id
+				let lastMessageId: number | null = null;
+				for (let i = currentSession.messages.length - 1; i >= 0; i--) {
+					const msg = currentSession.messages[i];
+					if (msg.role === 'assistant' && msg.metadata?.response_message_id) {
+						lastMessageId = msg.metadata.response_message_id;
+						break;
+					}
+				}
+				provider.setLastMessageId(lastMessageId);
+				Logger.debug('[MessageManager] Reset lastMessageId for edited message:', lastMessageId);
+			}
 
 			// Remove messages from UI
 			this.removeMessagesFromUI(messageIndex);
@@ -312,8 +396,8 @@ export class MessageManager {
 			Logger.debug('Message editing completed successfully');
 
 		} catch (error) {
-			Logger.error('Failed to handle edit message:', error);
-			new Notice('Failed to edit message');
+			Logger.error('Failed to edit message:', error);
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToEditMessage') || 'Failed to edit message');
 		}
 	}
 
@@ -329,7 +413,7 @@ export class MessageManager {
 		if (Array.isArray(message.content)) {
 			return message.content
 				.filter(item => item.type === 'text')
-				.map(item => (item as any).text)
+				.map(item => (item as unknown).text)
 				.join('\n');
 		}
 
@@ -342,22 +426,55 @@ export class MessageManager {
 	private removeMessagesFromUI(startIndex: number): void {
 		try {
 			const messageElements = this.messageContainer.querySelectorAll('.llmsider-message');
+			let totalElementsRemoved = 0;
 
 			// Remove messages from the UI starting from startIndex
 			for (let i = startIndex; i < messageElements.length; i++) {
 				const messageEl = messageElements[i] as HTMLElement;
 
 				// Clean up any working intervals
-				if ((messageEl as any).workingInterval) {
-					clearInterval((messageEl as any).workingInterval);
+				if ((messageEl as unknown).workingInterval) {
+					clearInterval((messageEl as unknown).workingInterval);
+				}
+
+				// Clean up markdown components to prevent memory leaks
+				const contentEl = messageEl.querySelector('.llmsider-message-content');
+				if (contentEl) {
+					const component = (contentEl as any)._llmsiderMarkdownComponent;
+					if (component) {
+						component.unload();
+						delete (contentEl as any)._llmsiderMarkdownComponent;
+					}
+				}
+
+				// Also remove any following sibling elements created by guided mode:
+				// - Tool card elements (llmsider-tool-card-message)
+				// - Guided options sections (llmsider-guided-card-container, llmsider-guided-options-section)
+				// - Tool indicators (llmsider-plan-execute-tool-indicator)
+				let nextEl = messageEl.nextElementSibling;
+				while (nextEl) {
+					if (nextEl.classList.contains('llmsider-tool-card-message') ||
+					    nextEl.classList.contains('llmsider-guided-card-container') ||
+					    nextEl.classList.contains('llmsider-guided-options-section') ||
+					    nextEl.classList.contains('llmsider-plan-execute-tool-indicator') ||
+					    nextEl.classList.contains('llmsider-vector-results-summary')) {
+						const elementToRemove = nextEl;
+						nextEl = nextEl.nextElementSibling;
+						elementToRemove.remove();
+						totalElementsRemoved++;
+					} else {
+						// Stop when we hit the next message or non-guided element
+						break;
+					}
 				}
 
 				messageEl.remove();
+				totalElementsRemoved++;
 			}
 
 			Logger.debug('Removed message elements from UI:', {
 				startIndex,
-				totalElementsRemoved: messageElements.length - startIndex
+				totalElementsRemoved: totalElementsRemoved
 			});
 
 		} catch (error) {
@@ -443,9 +560,12 @@ export class MessageManager {
 	 * This method ensures diff visualizations are properly restored after plugin reload
 	 */
 	refreshDiffRendering(currentSession: ChatSession | null): void {
+		Logger.debug('[LLMSider DEBUG] [TRACE] refreshDiffRendering called');
 		Logger.debug('Refreshing diff rendering for all messages');
+		Logger.debug('[RefreshDiff] Called with session:', currentSession?.id, 'Messages:', currentSession?.messages?.length);
 
 		if (!this.messageContainer || !currentSession) {
+			Logger.debug('[RefreshDiff] Skipped - messageContainer:', !!this.messageContainer, 'currentSession:', !!currentSession);
 			Logger.debug('Refresh skipped - missing container or session');
 			return;
 		}
@@ -464,8 +584,8 @@ export class MessageManager {
 					const contentEl = messageEl.querySelector('.llmsider-message-content');
 					if (contentEl) {
 						// Determine if diff should be rendered
-						const shouldRenderDiff = (message.metadata as any)?.diffRenderingEnabled !== undefined
-							? (message.metadata as any)?.diffRenderingEnabled
+						const shouldRenderDiff = (message.metadata as unknown)?.diffRenderingEnabled !== undefined
+							? (message.metadata as unknown)?.diffRenderingEnabled
 							: false; // Diff rendering disabled by default (setting removed)
 
 						// Clear and re-render content
@@ -492,12 +612,24 @@ export class MessageManager {
 		});
 
 		Logger.debug('Completed refreshing diff rendering');
+
+		// Re-render guided cards after plugin reload
+		Logger.debug('[RefreshRendering] Checking for guided messages after reload...');
+		const guidedMessages = currentSession.messages.filter(m => m.metadata?.isGuidedQuestion);
+		Logger.debug('[RefreshRendering] Found ' + guidedMessages.length + ' guided messages to re-render');
+
+		guidedMessages.forEach(message => {
+			Logger.debug('[RefreshRendering] Dispatching event for message: ' + message.id);
+			window.dispatchEvent(new CustomEvent('llmsider-render-guided-card', {
+				detail: { messageId: message.id, message }
+			}));
+		});
 	}
 
 	/**
 	 * Process Action mode response for diff rendering
 	 */
-	async processActionModeResponse(assistantMessage: ChatMessage, accumulatedContent: string, currentMode: string, contextManager: any): Promise<void> {
+	async processActionModeResponse(assistantMessage: ChatMessage, accumulatedContent: string, currentMode: string, contextManager: unknown): Promise<void> {
 		try {
 			if (currentMode === 'action') {
 				Logger.debug('Processing Action mode response for diff');
@@ -572,9 +704,9 @@ export class MessageManager {
 					};
 
 					// Store diff rendering state separately for type safety
-					(assistantMessage.metadata as any).diffRenderingEnabled = shouldRenderDiff;
+					(assistantMessage.metadata as unknown).diffRenderingEnabled = shouldRenderDiff;
 					// Mark as newly processed to avoid duplicate rendering
-					(assistantMessage.metadata as any).freshlyProcessed = true;
+					(assistantMessage.metadata as unknown).freshlyProcessed = true;
 
 					// Re-render based on the determined diff state
 					setTimeout(() => {
@@ -624,7 +756,7 @@ export class MessageManager {
 			for (let i = currentSession.messages.length - 1; i >= 0; i--) {
 				const msg = currentSession.messages[i];
 				if (msg.role === 'assistant' && msg.metadata?.hasJSDiff) {
-					const inheritedState = (msg.metadata as any)?.diffRenderingEnabled;
+					const inheritedState = (msg.metadata as unknown)?.diffRenderingEnabled;
 					if (inheritedState !== undefined) {
 						Logger.debug('Inheriting diff state from previous message:', inheritedState);
 						return inheritedState;
@@ -640,7 +772,7 @@ export class MessageManager {
 				for (let i = session.messages.length - 1; i >= 0; i--) {
 					const msg = session.messages[i];
 					if (msg.role === 'assistant' && msg.metadata?.hasJSDiff) {
-						const inheritedState = (msg.metadata as any)?.diffRenderingEnabled;
+						const inheritedState = (msg.metadata as unknown)?.diffRenderingEnabled;
 						if (inheritedState !== undefined) {
 							Logger.debug('Inheriting diff state from previous session:', inheritedState);
 							return inheritedState;
@@ -659,11 +791,6 @@ export class MessageManager {
 	 * Update or add streaming message (for Final Answer streaming)
 	 */
 	updateStreamingMessage(message: ChatMessage, currentSession?: ChatSession | null): void {
-		// Logger.debug('Updating streaming message:', {
-		// 	id: message.id,
-		// 	isStreaming: message.metadata?.isStreaming,
-		// 	contentLength: message.content.length
-		// });
 
 		// Check if message element already exists
 		const existingElement = this.messageRenderer.findMessageElement(message.id);
@@ -672,15 +799,12 @@ export class MessageManager {
 			// Update existing message content
 			// Pass isStreaming flag to disable mermaid placeholders during streaming
 			const isStreaming = message.metadata?.isStreaming ?? false;
-			// Logger.debug('Updating existing message element');
 			this.messageRenderer.updateMessageContent(message.id, message.content as string, isStreaming, message);
 		} else {
 			// Create new message element
-			// Logger.debug('Creating new message element');
 			this.addMessageToUI(message, currentSession);
 		}
 
-		// Scroll to bottom to show new content
 		this.scrollToBottom();
 	}
 }

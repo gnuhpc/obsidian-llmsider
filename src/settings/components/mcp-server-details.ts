@@ -1,7 +1,7 @@
 import { Notice } from 'obsidian';
 import { I18nManager } from '../../i18n/i18n-manager';
 import { getMCPServerIcon } from '../utils/mcp-utils';
-import { ToolButtonControls } from './tool-button-controls';
+import { ToolPermissionHandler } from '../handlers/tool-permission-handler';
 import LLMSiderPlugin from '../../main';
 
 /**
@@ -13,30 +13,36 @@ export class MCPServerDetails {
 	private toolButtonControls: ToolButtonControls;
 	private plugin: LLMSiderPlugin;
 	private onDisplay: () => void;
+	private toolPermissionHandler: ToolPermissionHandler;
 
 	constructor(
 		i18n: I18nManager,
 		toolButtonControls: ToolButtonControls,
 		plugin: LLMSiderPlugin,
-		onDisplay: () => void
+		onDisplay: () => void,
+		toolPermissionHandler: ToolPermissionHandler
 	) {
 		this.i18n = i18n;
 		this.toolButtonControls = toolButtonControls;
 		this.plugin = plugin;
 		this.onDisplay = onDisplay;
+		this.toolPermissionHandler = toolPermissionHandler;
 	}
 
 	/**
 	 * Render server card (compact version for tool management)
 	 */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	renderServerCard(
 		container: HTMLElement,
 		serverId: string,
-		tools: any[],
-		mcpManager: any,
+		tools: unknown[],
+		mcpManager: unknown,
 		isConnected: boolean,
 		onToggleExpand: (expanded: boolean, cardElement: HTMLElement) => void
 	): void {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const mcpMgr = mcpManager as any;
 		const serverCard = container.createDiv({ cls: 'llmsider-builtin-category-card' });
 		
 		// Server icon
@@ -58,7 +64,7 @@ export class MCPServerDetails {
 		});
 		
 		// Auto-connect indicator
-		const isAutoConnect = mcpManager.getServerAutoConnect(serverId);
+		const isAutoConnect = mcpMgr.getServerAutoConnect(serverId);
 		const autoConnectBadge = serverInfo.createEl('span', {
 			cls: `llmsider-mcp-autoconnect-badge ${isAutoConnect ? 'enabled' : 'disabled'}`,
 			text: isAutoConnect ? '⚡ Auto' : '○ Manual'
@@ -79,28 +85,30 @@ export class MCPServerDetails {
 		// Click handler for autoConnect badge
 		autoConnectBadge.addEventListener('click', async (e) => {
 			e.stopPropagation();
-			const currentState = mcpManager.getServerAutoConnect(serverId);
-			const newState = !currentState;
-			
-			try {
-				await mcpManager.setServerAutoConnect(serverId, newState);
-				
-				// Update badge appearance
+			const currentState = mcpMgr.getServerAutoConnect(serverId);
+		const newState = !currentState;
+		
+		try {
+			await mcpMgr.setServerAutoConnect(serverId, newState);				// Update badge appearance
 				autoConnectBadge.textContent = newState ? '⚡ Auto' : '○ Manual';
 				autoConnectBadge.style.background = newState ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
 				autoConnectBadge.style.color = newState ? 'var(--text-on-accent)' : 'var(--text-muted)';
 				
 				if (newState) {
 					autoConnectBadge.removeClass('disabled');
-					autoConnectBadge.addClass('enabled');
-				} else {
-					autoConnectBadge.removeClass('enabled');
-					autoConnectBadge.addClass('disabled');
-				}
+				autoConnectBadge.addClass('enabled');
+			} else {
+				autoConnectBadge.removeClass('enabled');
+				autoConnectBadge.addClass('disabled');
+			}
 				
-				new Notice(`Server "${serverId}" will ${newState ? 'auto-connect' : 'not auto-connect'} on startup`);
-			} catch (error) {
-				new Notice(`Failed to update auto-connect: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			if (newState) {
+				new Notice(this.i18n.t('notifications.settingsHandlers.autoConnectEnabled', { server: serverId }));
+			} else {
+				new Notice(this.i18n.t('notifications.settingsHandlers.autoConnectDisabled', { server: serverId }));
+				}
+		} catch (error) {
+			new Notice(this.i18n.t('notifications.settingsHandlers.testFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
 			}
 		});
 		
@@ -124,7 +132,7 @@ export class MCPServerDetails {
 		const toggleContainer = serverCard.createDiv({ cls: 'llmsider-category-toggle-container' });
 		
 		// Display state
-		const serverStatus = mcpManager.getServerStatus(serverId);
+		const serverStatus = mcpMgr.getServerStatus(serverId);
 		const isServerConnected = serverStatus === 'connected';
 		const switchState = isServerConnected || isAutoConnect;
 		
@@ -141,32 +149,34 @@ export class MCPServerDetails {
 			
 			try {
 				// Update autoConnect setting
-				await mcpManager.setServerAutoConnect(serverId, newState);
+				await mcpMgr.setServerAutoConnect(serverId, newState);
 				
 				// Also connect/disconnect immediately
 				if (newState) {
 					if (!isServerConnected) {
-						await mcpManager.connectServer(serverId);
+						await mcpMgr.connectServer(serverId);
 					}
 				} else {
 					if (isServerConnected) {
-						await mcpManager.disconnectServer(serverId);
+						await mcpMgr.disconnectServer(serverId);
 					}
 				}
 				
 				if (newState) {
 					toggleSwitch.addClass('active');
 				} else {
-					toggleSwitch.removeClass('active');
-				}
-				
-				new Notice(`Server "${serverId}" ${newState ? 'enabled and connected' : 'disabled and disconnected'}`);
-				
-				// Refresh the display
+				toggleSwitch.removeClass('active');
+			}
+			
+			if (newState) {
+				new Notice(this.i18n.t('notifications.settingsHandlers.serverEnabled', { server: serverId }));
+			} else {
+				new Notice(this.i18n.t('notifications.settingsHandlers.serverDisabled', { server: serverId }));
+			}				// Refresh the display
 				setTimeout(() => this.onDisplay(), 500);
-			} catch (error) {
-				new Notice(`Failed to ${newState ? 'enable' : 'disable'} server: ${error instanceof Error ? error.message : 'Unknown error'}`);
-			} finally {
+		} catch (error) {
+			new Notice(this.i18n.t('notifications.settingsHandlers.testFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
+		} finally {
 				// Restore switch state
 				toggleSwitch.style.opacity = '1';
 				toggleSwitch.style.cursor = 'pointer';
@@ -193,13 +203,16 @@ export class MCPServerDetails {
 	/**
 	 * Render server details (expanded view with tools)
 	 */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	renderServerDetails(
 		container: HTMLElement,
 		serverId: string,
-		tools: any[],
-		mcpManager: any,
+		tools: unknown[],
+		mcpManager: unknown,
 		serverEnabled: boolean
 	): void {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const mcpMgr = mcpManager as any;
 		// Auto-connect toggle at the top
 		const autoConnectContainer = container.createDiv({ cls: 'llmsider-server-autoconnect-container' });
 		autoConnectContainer.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: var(--background-secondary); border-radius: 4px;';
@@ -210,7 +223,7 @@ export class MCPServerDetails {
 		});
 		autoConnectLabel.style.cssText = 'font-size: 13px; font-weight: 500; color: var(--text-normal);';
 		
-		const isAutoConnect = mcpManager.getServerAutoConnect(serverId);
+		const isAutoConnect = mcpMgr.getServerAutoConnect(serverId);
 		const autoConnectToggleLabel = autoConnectContainer.createEl('label', { cls: 'llmsider-mcp-toggle-label-compact' });
 		autoConnectToggleLabel.style.cssText = 'display: inline-flex; align-items: center; cursor: pointer; gap: 8px;';
 		
@@ -247,16 +260,20 @@ export class MCPServerDetails {
 		autoConnectCheckbox.addEventListener('change', async () => {
 			const newState = autoConnectCheckbox.checked;
 			try {
-				await mcpManager.setServerAutoConnect(serverId, newState);
+				await mcpMgr.setServerAutoConnect(serverId, newState);
 				
 				// Update UI
 				autoConnectSlider.style.background = newState ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
 				autoConnectKnob.style.left = newState ? '20px' : '2px';
 				
-				new Notice(`Server "${serverId}" will ${newState ? 'auto-connect' : 'not auto-connect'} on startup`);
-			} catch (error) {
-				new Notice(`Failed to update auto-connect: ${error instanceof Error ? error.message : 'Unknown error'}`);
-				// Revert checkbox state
+			if (newState) {
+				new Notice(this.i18n.t('notifications.settingsHandlers.autoConnectEnabled', { server: serverId }));
+			} else {
+				new Notice(this.i18n.t('notifications.settingsHandlers.autoConnectDisabled', { server: serverId }));
+				}
+		} catch (error) {
+			new Notice(this.i18n.t('notifications.settingsHandlers.testFailed', { error: error instanceof Error ? error.message : 'Unknown error' }));
+			// Revert checkbox state
 				autoConnectCheckbox.checked = !newState;
 			}
 		});
@@ -269,9 +286,10 @@ export class MCPServerDetails {
 		});
 		
 		// Tools list
-		tools.forEach((tool) => {
-			const isToolEnabled = mcpManager.getToolEnabled(serverId, tool.name);
-			const requireConfirmation = mcpManager.getToolRequireConfirmation(serverId, tool.name);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		tools.forEach((tool: any) => {
+			const isToolEnabled = mcpMgr.getToolEnabled(serverId, tool.name);
+			const requireConfirmation = mcpMgr.getToolRequireConfirmation(serverId, tool.name);
 			
 			// Modern tool card
 			const toolItem = container.createDiv({ cls: 'llmsider-modern-tool-card' });
@@ -333,15 +351,27 @@ export class MCPServerDetails {
 				isToolEnabled && serverEnabled,
 				requireConfirmation,
 				async (enabled) => {
-					mcpManager.setToolEnabled(serverId, tool.name, enabled);
-					await this.plugin.saveSettings();
+					// Check limit when enabling
+					if (enabled) {
+						const currentCount = this.toolPermissionHandler.countEnabledMCPTools();
+						const maxLimit = this.plugin.settings.maxMCPToolsSelection;
+						if (currentCount >= maxLimit) {
+							new Notice(this.i18n.t('settingsPage.toolManagement.mcpToolsLimitReached', {
+								limit: maxLimit.toString()
+							}));
+							return;
+						}
+					}
+					
+				mcpMgr.setToolEnabled(serverId, tool.name, enabled);
+				await this.plugin.saveSettings();
 					new Notice(this.i18n.t('settingsPage.toolManagement.toolToggled', {
 						name: tool.name,
 						status: enabled ? this.i18n.t('settingsPage.toolManagement.enabled') : this.i18n.t('settingsPage.toolManagement.disabled')
 					}));
 				},
-				async (requireConfirm) => {
-					mcpManager.setToolRequireConfirmation(serverId, tool.name, requireConfirm);
+			async (requireConfirm) => {
+					mcpMgr.setToolRequireConfirmation(serverId, tool.name, requireConfirm);
 				}
 			);
 		});

@@ -751,3 +751,26 @@
     color: var(--text-muted);
     background: rgba(var(--background-modifier-border-rgb), 0.3);
 }
+
+/* Streaming Diff Styles */
+.llmsider-inline-diff-streaming {
+    background: rgba(251, 191, 36, 0.15) !important;
+    border-left: 3px solid rgb(251, 191, 36);
+    display: block;
+    padding: 4px 8px;
+    margin-top: 4px;
+}
+
+.llmsider-inline-diff-original-streaming {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+
+/* Fine-grained Diff Block */
+.llmsider-fine-grained-diff-block {
+    border: 2px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 4px;
+    background: var(--background-primary);
+}

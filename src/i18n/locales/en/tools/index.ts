@@ -2,7 +2,7 @@
  * Tools module - aggregates all tool categories
  */
 
-import { enCoreTools } from './core';
+import { enNoteManagementTools } from './note-management';
 import { enWebTools } from './web';
 import { enStockTools } from './stock';
 import { enFuturesTools } from './futures';
@@ -16,9 +16,15 @@ import { enDerivativesTools } from './derivatives';
 import { enRiskTools } from './risk';
 import { enNewsTools } from './news';
 import { enOthersTools } from './others';
+import { enMissingTools } from './missing';
+import { enBookTools } from './books';
+import { enWeatherTools } from './weather';
+import { enEntertainmentTools } from './entertainment';
+import { enImdbTools } from './imdb';
+import { enDevToTools } from './devto';
 
 export const enTools = {
-	...enCoreTools,
+	...enNoteManagementTools,
 	...enWebTools,
 	...enStockTools,
 	...enFuturesTools,
@@ -31,5 +37,11 @@ export const enTools = {
 	...enDerivativesTools,
 	...enRiskTools,
 	...enNewsTools,
-	...enOthersTools
+	...enOthersTools,
+	...enMissingTools,
+	...enBookTools,
+	...enWeatherTools,
+	...enEntertainmentTools,
+	...enImdbTools,
+	...enDevToTools
 };

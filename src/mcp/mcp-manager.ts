@@ -19,7 +19,7 @@ export interface MCPManagerEvents {
 export class MCPManager {
   private clients = new Map<string, MCPClient>();
   private state: MCPClientState;
-  private eventHandlers = new Map<keyof MCPManagerEvents, Function[]>();
+  private eventHandlers = new Map<keyof MCPManagerEvents, ((...args: unknown[]) => void)[]>();
 
   // Advanced features
   private healthCheckInterval: NodeJS.Timeout | null = null;
@@ -41,13 +41,13 @@ export class MCPManager {
   }
 
   // Debug logging helper
-  private debugLog(message: string, ...args: any[]): void {
+  private debugLog(message: string, ...args: unknown[]): void {
     if (this.debugMode) {
       Logger.debug(`${message}`, ...args);
     }
   }
 
-  private log(message: string, ...args: any[]): void {
+  private log(message: string, ...args: unknown[]): void {
     Logger.debug(`${message}`, ...args);
   }
 
@@ -177,16 +177,19 @@ export class MCPManager {
           toolPermissions: {},
           lastUpdated: Date.now()
         };
+      } else {
+        // Ensure server is marked as enabled since we are connecting
+        this.state.serverPermissions[serverId].serverEnabled = true;
+        this.state.serverPermissions[serverId].lastUpdated = Date.now();
       }
       
-      // Auto-enable all tools from this server if server is enabled
+      // Auto-enable all tools from this server when connecting (user requirement)
+      // Always force enable, don't check if already configured
       if (this.state.serverPermissions[serverId].serverEnabled) {
         const serverTools = this.state.availableTools.filter(tool => tool.server === serverId);
         serverTools.forEach(tool => {
-          // Only set if not explicitly configured
-          if (this.state.serverPermissions[serverId].toolPermissions[tool.name] === undefined) {
-            this.state.serverPermissions[serverId].toolPermissions[tool.name] = true;
-          }
+          // Force enable all tools when connecting (don't preserve previous disabled state)
+          this.state.serverPermissions[serverId].toolPermissions[tool.name] = true;
         });
         
         // Save to database
@@ -194,11 +197,14 @@ export class MCPManager {
       }
 
       // Initialize tool settings in database for all tools from this server
-      // Default: enabled=true, requireConfirmation=true (safer default)
+      // Always set to enabled=true when connecting to server (user requirement)
       const serverTools = this.state.availableTools.filter(tool => tool.server === serverId);
+      Logger.debug(`Auto-enabling ${serverTools.length} tools from server: ${serverId}`);
       serverTools.forEach(tool => {
         const toolId = `${serverId}:${tool.name}`;
-        this.configDb.initializeToolSettings(toolId, serverId);
+        // Force enable all tools when connecting (don't preserve previous disabled state)
+        this.configDb.setToolSettings(toolId, true, true, serverId);
+        Logger.debug(`  - Enabled tool: ${tool.name} (${toolId})`);
       });
 
       this.emit('server-connected', serverId);
@@ -366,7 +372,7 @@ export class MCPManager {
     return result;
   }
 
-  async callTool(toolName: string, args: any, preferredServerId?: string): Promise<CallToolResult> {
+  async callTool(toolName: string, args: unknown, preferredServerId?: string): Promise<CallToolResult> {
     // Find the tool
     const tool = this.state.availableTools.find(t => 
       t.name === toolName && 
@@ -618,6 +624,8 @@ export class MCPManager {
     const toolId = `${serverId}:${toolName}`;
     const settings = this.configDb.getToolSettings(toolId);
     
+    Logger.debug(`getToolEnabled(${serverId}, ${toolName}): settings from DB =`, settings);
+    
     if (settings) {
       return settings.enabled;
     }
@@ -625,10 +633,12 @@ export class MCPManager {
     // Fallback to old permissions system
     const permissions = this.state.serverPermissions[serverId];
     if (permissions && permissions.toolPermissions[toolName] !== undefined) {
+      Logger.debug(`  Fallback to serverPermissions: ${permissions.toolPermissions[toolName]}`);
       return permissions.toolPermissions[toolName];
     }
     
     // Default to enabled
+    Logger.debug(`  Default to: true`);
     return true;
   }
 
@@ -820,13 +830,12 @@ export class MCPManager {
     this.state.availableTools = allTools;
     this.state.lastUpdate = Date.now();
     
-    // Sync database: cleanup removed tools
-    const validToolIds = allTools.map(tool => `${tool.server}:${tool.name}`);
+    // Sync database: cleanup removed MCP tools (keep built-in tools intact)
+    const validMCPToolIds = allTools.map(tool => `${tool.server}:${tool.name}`);
     try {
-      this.configDb.cleanupToolSettings(validToolIds);
-      Logger.debug(`Cleaned up tool settings, ${validToolIds.length} valid tools`);
+      this.configDb.cleanupMCPToolSettings(validMCPToolIds);
     } catch (error) {
-      Logger.error('Failed to cleanup tool settings:', error);
+      Logger.error('Failed to cleanup MCP tool settings:', error);
     }
     
     this.emit('tools-updated', allTools);

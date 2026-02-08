@@ -7,13 +7,17 @@ export const zhWebTools = {
 			name: '获取网页内容',
 			description: '获取并提取网页可读内容，包括标题、元数据和可见文本内容。无内容长度限制。'
 		},
-fetchYouTubeTranscript: {
+	getYouTubeTranscript: {
 			name: '获取YouTube字幕',
-			description: '使用Supadata API获取YouTube视频完整字幕/转录。字幕长度无限制。'
+			description: '直接从YouTube InnerTube API获取视频字幕/转录。支持多语言、自动生成和手动字幕。无需第三方API依赖，返回完整字幕内容。'
 		},
 webSearch: {
 			name: '网络搜索',
-			description: '使用多种搜索后端搜索网络内容。支持：Google自定义搜索API、SerpAPI、Tavily AI搜索（专为AI优化，含免费额度），或DuckDuckGo（完全免费，无需API密钥）。返回包含标题、链接和摘要的搜索结果。'
+			description: '最强大的网络搜索工具，聚合来自多个搜索引擎（DuckDuckGo、Google、Tavily、SerpAPI、百度、必应）的结果。支持文本、图片、新闻和视频搜索，具有智能排序和去重功能。'
+		},
+googleSearch: {
+			name: 'Google 搜索',
+			description: '使用 Google 进行网络搜索（通过 Custom Search API 或 SerpAPI）。也支持 Tavily 和 DuckDuckGo 作为后端。适用于需要特定 Google 搜索结果的场景。'
 		},
 enhancedSearch: {
 			name: '增强搜索',
@@ -83,6 +87,10 @@ duckduckgoTextSearch: {
 			name: '获取龙虎榜',
 			description: '获取龙虎榜（日常公告板）数据，显示交易异常活跃的股票和机构席位交易情况。展示净买入、上榜原因和资金流向。收盘后更新。'
 		},
+	getDragonTigerListAdvanced: {
+		name: '获取龙虎榜高级数据',
+		description: '获取中国股市的高级龙虎榜数据。'
+	},
 		getNewStockInfo: {
 			name: '获取新股信息',
 			description: '获取IPO（新股）信息，包括申购日历和新上市股票表现。显示发行价、市盈率、申购日期、上市日期和首日表现。'
@@ -541,7 +549,7 @@ duckduckgoTextSearch: {
 			name: '获取美股历史数据',
 			description: '获取美股日线历史数据，包括前复权因子。支持代码如"AAPL"(苹果)、"TSLA"(特斯拉)、"MSFT"(微软)。'
 		},
-		getUsStockName: {
+		getUSStockName: {
 			name: '获取美股代码列表',
 			description: '获取纽交所和纳斯达克所有上市公司的完整股票代码和名称列表。'
 		},
@@ -841,15 +849,15 @@ duckduckgoTextSearch: {
 			name: '获取业绩说明会记录索引',
 			description: '获取业绩说明会记录索引，包含关键议题、管理层语调分析和问答要点。'
 		},
-		getUsExtendedHoursQuotes: {
+		getUSExtendedHoursQuotes: {
 			name: '获取美股盘前盘后行情',
 			description: '获取美股盘前和盘后交易行情，显示盘外交易的价格、成交量和变化。'
 		},
-		getUsStockSplitsCalendar: {
+		getUSStockSplitsCalendar: {
 			name: '获取美股拆股日历',
 			description: '获取美股拆股日历，显示拆股比例、公告日期和生效日期。'
 		},
-		getHkBuybackAnnouncements: {
+		getHKBuybackAnnouncements: {
 			name: '获取港股回购公告',
 			description: '获取港股回购公告，显示回购金额、进度和日期。'
 		},
@@ -1949,7 +1957,6 @@ duckduckgoTextSearch: {
 			name: '获取外汇储备',
 			description: '获取中国外汇储备数据'
 		},
-		// 另类数据工具
 		getAnalystConsensus: {
 			name: '分析师共识',
 			description: '获取分析师共识评级，显示买入/持有/卖出分布、平均目标价、价格区间'
@@ -1997,9 +2004,73 @@ duckduckgoTextSearch: {
 getShortInterestTrends: {
 name: '融券趋势',
 description: '获取融券余额变化趋势，显示卖空比例变化'
-},
-webFetch: {
-name: '网页获取',
-description: '使用Jina AI Reader将任意URL转换为LLM友好的文本内容，自动提取可读文本、处理PDF和DOCX文件'
-},
+	},
+	webFetch: {
+		name: '网页获取',
+		description: '使用Jina AI Reader将任意URL转换为LLM友好的文本内容，自动提取可读文本、处理PDF和DOCX文件'
+	},
+	// GitHub Trending 工具
+	get_github_trending_repos: {
+		name: '获取GitHub热门仓库',
+		description: '获取GitHub上的热门仓库，展示开发者正在关注的流行项目。可按编程语言和时间范围（每日/每周/每月）筛选。'
+	},
+	get_github_trending_developers: {
+		name: '获取GitHub热门开发者',
+		description: '获取GitHub上的热门开发者，展示社区正在关注的开发者。可按编程语言和时间范围筛选。'
+	},
+	search_github_topics: {
+		name: '搜索GitHub主题',
+		description: '搜索GitHub主题并获取该主题下的热门仓库。发现按技术或主题组织的项目。'
+	},
+	// Product Hunt 工具
+	get_product_hunt_today: {
+		name: '获取Product Hunt今日产品',
+		description: '获取Product Hunt今日精选产品，展示最热门的新产品发布及其点赞和评论数。'
+	},
+	search_product_hunt: {
+		name: '搜索Product Hunt',
+		description: '按关键词或主题搜索Product Hunt产品。查找各类产品、工具和应用。'
+	},
+	get_product_hunt_collections: {
+		name: '获取Product Hunt合集',
+		description: '浏览按主题组织的Product Hunt合集（AI、生产力、设计、开发工具等）。'
+	},
+	// Dev.to 工具
+	get_devto_latest_articles: {
+		name: '获取Dev.to最新文章',
+		description: '获取Dev.to社区的最新文章，展示最近发布的技术文章和博客文章。'
+	},
+	get_devto_top_articles: {
+		name: '获取Dev.to热门文章',
+		description: '根据反应和参与度获取Dev.to热门文章。可按时间段（今天/本周/本月/本年）筛选。'
+	},
+	search_devto_by_tag: {
+		name: '按标签搜索Dev.to',
+		description: '按标签搜索Dev.to文章（javascript、python、webdev、tutorial等）。查找特定技术或主题的文章。'
+	},
+	get_devto_article_details: {
+		name: '获取Dev.to文章详情',
+		description: '获取特定Dev.to文章的详细信息，包括内容、反应和评论。'
+	},
+	get_devto_user_articles: {
+		name: '获取Dev.to用户文章',
+		description: '获取特定Dev.to用户发布的所有文章。浏览作者的内容和贡献。'
+	},
+	// SerpAPI搜索工具
+	baidu_search: {
+		name: '百度搜索（SerpAPI）',
+		description: '使用百度搜索引擎（通过SerpAPI）。返回高质量搜索结果，包含标题、链接和摘要。需要配置SerpAPI密钥。'
+	},
+	bing_search: {
+		name: '必应搜索（SerpAPI）',
+		description: '使用必应搜索引擎（通过SerpAPI）。返回高质量搜索结果，包含标题、链接和摘要。需要配置SerpAPI密钥。'
+	},
+	baiduSearch: {
+		name: '百度搜索',
+		description: '使用百度搜索引擎搜索内容'
+	},
+	bingSearch: {
+		name: '必应搜索',
+		description: '使用必应搜索引擎搜索内容'
+	}
 };

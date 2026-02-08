@@ -5,24 +5,19 @@ import { Logger } from './../utils/logger';
 
 /**
  * Categories that should be enabled by default on first launch
- * Based on user requirement, only these categories will be enabled initially
+ * Only note-management and search-web categories are enabled by default
+ * All other categories are disabled by default
  */
 export const DEFAULT_ENABLED_CATEGORIES = [
-	'utility',           // 实用工具
-	'web-content',       // 网页内容
-	'file-system',       // 文件系统
-	'note-management',   // 笔记管理
-	'file-management',   // 文件管理
-	'search-engines',    // 搜索引擎
-	'editor',            // 编辑器
-	'search',            // 搜索
+	'note-management',   // 笔记管理（统一分类）
+	'search-web',        // 搜索与网络
 ] as const;
 
 /**
  * Check if a category should be enabled by default
  */
 export function isCategoryEnabledByDefault(category: string): boolean {
-	return DEFAULT_ENABLED_CATEGORIES.includes(category as any);
+	return DEFAULT_ENABLED_CATEGORIES.includes(category as unknown);
 }
 
 /**
@@ -30,7 +25,7 @@ export function isCategoryEnabledByDefault(category: string): boolean {
  * @param allTools - All available built-in tools
  * @returns Record of tool permissions (tool name -> enabled)
  */
-export function getDefaultBuiltInToolsPermissions(allTools: any[]): Record<string, boolean> {
+export function getDefaultBuiltInToolsPermissions(allTools: unknown[]): Record<string, boolean> {
 	const permissions: Record<string, boolean> = {};
 	
 	Logger.debug('Generating default permissions for', allTools.length, 'tools');
@@ -38,7 +33,7 @@ export function getDefaultBuiltInToolsPermissions(allTools: any[]): Record<strin
 	// Count by category
 	const categoryCounts: Record<string, { total: number; enabled: number }> = {};
 	
-	allTools.forEach((tool: any) => {
+	allTools.forEach((tool: unknown) => {
 		const category = tool.category || 'other';
 		const isEnabled = isCategoryEnabledByDefault(category);
 		permissions[tool.name] = isEnabled;

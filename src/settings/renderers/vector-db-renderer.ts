@@ -37,18 +37,10 @@ export class VectorDBRenderer {
 		let vectorDBManager = this.plugin.getVectorDBManager();
 		
 		// Vector Database Settings Header with Action Buttons
-		const headerContainer = containerEl.createDiv();
-		headerContainer.style.display = 'flex';
-		headerContainer.style.justifyContent = 'space-between';
-		headerContainer.style.alignItems = 'center';
-		headerContainer.style.marginTop = '20px';
-		headerContainer.style.marginBottom = '12px';
+		const headerContainer = containerEl.createDiv({ cls: 'llmsider-header-container' });
 
 		// Left side: Title and Stats
-		const titleStatsContainer = headerContainer.createDiv();
-		titleStatsContainer.style.display = 'flex';
-		titleStatsContainer.style.flexDirection = 'column';
-		titleStatsContainer.style.gap = '4px';
+		const titleStatsContainer = headerContainer.createDiv({ cls: 'llmsider-title-stats-container' });
 
 		// Title
 		const vectorHeader = titleStatsContainer.createEl('h2', { 
@@ -59,23 +51,23 @@ export class VectorDBRenderer {
 		vectorHeader.style.margin = '0';
 		
 		// Stats display (initially hidden, shown after index is ready)
-		const statsDisplay = titleStatsContainer.createDiv({ cls: 'llmsider-vector-stats' });
-		statsDisplay.style.fontSize = '12px';
-		statsDisplay.style.color = 'var(--text-muted)';
-		statsDisplay.style.display = 'none';
-		statsDisplay.style.lineHeight = '1.4';
+		const statsDisplay = titleStatsContainer.createDiv({ cls: 'llmsider-vector-stats llmsider-stats-display llmsider-stats-display-hidden' });
+		
+		// Error status display (shown when there's an error)
+		const errorDisplay = titleStatsContainer.createDiv({ cls: 'llmsider-vector-error llmsider-error-display llmsider-error-display-hidden' });
 		
 		// Check if vector DB is initialized
 		if (vectorDBManager && vectorDBManager.isSystemInitialized()) {
 			// Already initialized, can show stats (will be updated by updateHeaderStats below)
-			statsDisplay.style.display = 'none';
+			// Keep hidden class
 		} else if (vectorDBManager) {
 			// Manager exists but not initialized yet (loading in background)
 			statsDisplay.textContent = this.i18n.t('settingsPage.vectorDatabase.statsLoading');
-			statsDisplay.style.display = 'block';
+			statsDisplay.classList.remove('llmsider-stats-display-hidden');
+			statsDisplay.classList.add('llmsider-stats-display-visible');
 		} else {
 			// No manager at all (disabled)
-			statsDisplay.style.display = 'none';
+			// Keep hidden class
 		}
 		
 		// Create progress elements
@@ -112,15 +104,18 @@ export class VectorDBRenderer {
 						chunksLabel: this.i18n.t('settingsPage.vectorDatabase.statsChunks'),
 						size: sizeStr
 					});
-					statsDisplay.style.display = 'block';
+					statsDisplay.classList.remove('llmsider-stats-display-hidden');
+					statsDisplay.classList.add('llmsider-stats-display-visible');
 					Logger.debug('Stats updated:', stats);
 				} catch (error) {
 					Logger.warn('Failed to update stats:', error);
-					statsDisplay.style.display = 'none';
+					statsDisplay.classList.remove('llmsider-stats-display-visible');
+					statsDisplay.classList.add('llmsider-stats-display-hidden');
 				}
 			} else {
 				Logger.debug('VectorDB not initialized, hiding stats');
-				statsDisplay.style.display = 'none';
+				statsDisplay.classList.remove('llmsider-stats-display-visible');
+				statsDisplay.classList.add('llmsider-stats-display-hidden');
 			}
 		};
 
@@ -151,7 +146,7 @@ export class VectorDBRenderer {
 		}
 
 		// Action Buttons Container (right side of header)
-		this.renderActionButtons(headerContainer, progressElements, hideProgress, updateHeaderStats);
+		this.renderActionButtons(headerContainer, progressElements, hideProgress, updateHeaderStats, statsDisplay);
 
 		// Container with border
 		const vectorContainer = containerEl.createDiv({ cls: 'llmsider-settings-section-container' });
@@ -167,15 +162,21 @@ export class VectorDBRenderer {
 		// Create inline progress container in header (initially hidden)
 		const progressContainer = headerContainer.createDiv({ cls: 'llmsider-vector-progress-container' });
 		progressContainer.style.display = 'none';
-		progressContainer.style.alignItems = 'center';
-		progressContainer.style.gap = '12px';
+		progressContainer.style.flexDirection = 'column';
+		progressContainer.style.gap = '8px';
 		progressContainer.style.marginLeft = '16px';
 		progressContainer.style.marginRight = '16px';
 		progressContainer.style.minWidth = '300px';
 		progressContainer.style.maxWidth = '400px';
 
+		// Top row: progress bar and pause button
+		const progressBarRow = progressContainer.createDiv();
+		progressBarRow.style.display = 'flex';
+		progressBarRow.style.alignItems = 'center';
+		progressBarRow.style.gap = '12px';
+
 		// Progress bar
-		const progressBar = progressContainer.createDiv({ cls: 'llmsider-vector-progress-bar' });
+		const progressBar = progressBarRow.createDiv({ cls: 'llmsider-vector-progress-bar' });
 		progressBar.style.height = '6px';
 		progressBar.style.backgroundColor = 'var(--background-modifier-border)';
 		progressBar.style.borderRadius = '3px';
@@ -189,16 +190,15 @@ export class VectorDBRenderer {
 		progressFill.style.width = '0%';
 		progressFill.style.transition = 'width 0.3s ease';
 
-		// Progress text (percentage and count)
+		// Pause/Resume button
+		const pauseButton = this.createPauseButton(progressBarRow);
+
+		// Progress text (percentage and count) - below the bar
 		const progressText = progressContainer.createDiv({ cls: 'llmsider-vector-progress-text' });
 		progressText.style.fontSize = '12px';
 		progressText.style.color = 'var(--text-muted)';
 		progressText.style.whiteSpace = 'nowrap';
-		progressText.style.minWidth = '80px';
 		progressText.textContent = '0%';
-
-		// Pause/Resume button
-		const pauseButton = this.createPauseButton(progressContainer);
 
 		return {
 			container: progressContainer,
@@ -291,12 +291,12 @@ export class VectorDBRenderer {
 	 * Setup progress callback for real-time updates
 	 */
 	private setupProgressCallback(
-		vectorDBManager: any,
+		vectorDBManager: unknown,
 		progressElements: ProgressElements,
 		hideProgress: () => void,
 		updateHeaderStats: () => Promise<void>
 	): void {
-		vectorDBManager.setProgressCallback((progress: any) => {
+		vectorDBManager.setProgressCallback((progress: unknown) => {
 			let percentage = 0;
 			let displayText = '';
 			
@@ -344,7 +344,8 @@ export class VectorDBRenderer {
 		headerContainer: HTMLElement,
 		progressElements: ProgressElements,
 		hideProgress: () => void,
-		updateHeaderStats: () => Promise<void>
+		updateHeaderStats: () => Promise<void>,
+		statsDisplay: HTMLElement
 	): void {
 		const headerActionsContainer = headerContainer.createDiv();
 		headerActionsContainer.style.display = 'flex';
@@ -363,7 +364,7 @@ export class VectorDBRenderer {
 		rebuildButton.style.padding = '4px';
 		
 		rebuildButton.addEventListener('click', async () => {
-			await this.handleRebuildIndex(rebuildButton, progressElements, hideProgress, updateHeaderStats);
+			await this.handleRebuildIndex(rebuildButton, progressElements, hideProgress, updateHeaderStats, statsDisplay);
 		});
 	}
 
@@ -374,13 +375,26 @@ export class VectorDBRenderer {
 		rebuildButton: HTMLElement,
 		progressElements: ProgressElements,
 		hideProgress: () => void,
-		updateHeaderStats: () => Promise<void>
+		updateHeaderStats: () => Promise<void>,
+		statsDisplay: HTMLElement
 	): Promise<void> {
 		Logger.debug('Full rebuild index button clicked');
+		
+		// Check if rebuild is already in progress
+		const vectorDBManager = this.plugin.getVectorDBManager();
+		if (vectorDBManager?.isIndexing?.()) {
+			Logger.debug('Rebuild already in progress, stopping current rebuild...');
+			// Stop current indexing
+			if (vectorDBManager.stopIndexing) {
+				vectorDBManager.stopIndexing();
+			}
+			// Wait a bit for cleanup
+			await new Promise(resolve => setTimeout(resolve, 500));
+			// Reset progress UI
+			hideProgress();
+		}
+		
 		try {
-			rebuildButton.setAttribute('disabled', 'true');
-			(rebuildButton as HTMLButtonElement).disabled = true;
-			rebuildButton.style.opacity = '0.5';
 			
 			// Check if vector DB is enabled in settings
 			if (!this.plugin.settings.vectorSettings.enabled) {
@@ -397,7 +411,7 @@ export class VectorDBRenderer {
 				new Notice(this.i18n.t('settingsPage.vectorDatabase.initializing') || 'Initializing vector database...', 3000);
 				
 				try {
-					await (this.plugin as any).initializeVectorDB();
+					await (this.plugin as unknown).initializeVectorDB();
 					vectorDBManager = this.plugin.getVectorDBManager();
 					
 					if (!vectorDBManager) {
@@ -420,14 +434,26 @@ export class VectorDBRenderer {
 			Logger.debug('Starting full index rebuild (from scratch)...');
 			const startTime = Date.now();
 			
+			// Clear any previous error messages at the start of rebuild
+			const errorDisplayElement = document.querySelector('.llmsider-vector-error') as HTMLElement;
+			if (errorDisplayElement) {
+				errorDisplayElement.classList.remove('llmsider-error-display-visible');
+				errorDisplayElement.classList.add('llmsider-error-display-hidden');
+				errorDisplayElement.textContent = '';
+			}
+			
+			// Hide stats display during rebuild
+			statsDisplay.classList.remove('llmsider-stats-display-visible');
+			statsDisplay.classList.add('llmsider-stats-display-hidden');
+			
 			// Show initial progress
 			progressElements.container.style.display = 'flex';
 			progressElements.container.style.visibility = 'visible';
 			progressElements.container.style.opacity = '1';
 			progressElements.fill.style.width = '0%';
-			progressElements.text.textContent = '0% (准备中...)';
+			progressElements.text.textContent = `0% (${this.i18n.t('settingsPage.vectorDatabase.preparing')})`;
 			
-			const result = await vectorDBManager.rebuildIndex((progress: any) => {
+			const result = await vectorDBManager.rebuildIndex((progress: unknown) => {
 				this.handleRebuildProgress(progress, progressElements);
 			});
 			
@@ -443,23 +469,69 @@ export class VectorDBRenderer {
 				Logger.warn('Rebuild completed with errors:', result.errors);
 			}
 			
-			const message = this.i18n.t('notifications.vectorDatabase.rebuildComplete', {
+			// Get detailed statistics after rebuild
+			const stats = await vectorDBManager.getStats();
+			const sizeStr = stats.diskSizeKB < 1024 
+				? `${stats.diskSizeKB}KB` 
+				: `${(stats.diskSizeKB / 1024).toFixed(1)}MB`;
+			
+			// Show detailed completion message with stats
+			const message = this.i18n.t('notifications.vectorDatabase.rebuildCompleteWithStats', {
 				chunks: result.added.toString(),
+				files: stats.totalFiles.toString(),
+				size: sizeStr,
 				duration: (result.duration / 1000).toFixed(1)
 			});
-			new Notice(message, 5000);
+			new Notice(message, 8000);
 			
-			// Hide progress and update stats after a brief delay
+			// Hide progress, clear error display, and update stats display
 			setTimeout(async () => {
 				hideProgress();
+				// Clear error message on success
+				const errorDisplayElement = document.querySelector('.llmsider-vector-error') as HTMLElement;
+				if (errorDisplayElement) {
+					errorDisplayElement.classList.remove('llmsider-error-display-visible');
+					errorDisplayElement.classList.add('llmsider-error-display-hidden');
+					errorDisplayElement.textContent = '';
+				}
+				// Update and show stats display
 				await updateHeaderStats();
+				statsDisplay.classList.remove('llmsider-stats-display-hidden');
+				statsDisplay.classList.add('llmsider-stats-display-visible');
 			}, 2000);
 		} catch (error) {
 			Logger.error('Failed to rebuild index:', error);
-			const message = error instanceof Error ? error.message : String(error);
-			new Notice(`${this.i18n.t('settingsPage.vectorDatabase.rebuildFailed')}: ${message}`, 5000);
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			
+			// Show error in settings UI (find error display element)
+			const errorDisplayElement = document.querySelector('.llmsider-vector-error') as HTMLElement;
+			if (errorDisplayElement) {
+				errorDisplayElement.classList.remove('llmsider-error-display-hidden');
+				errorDisplayElement.classList.add('llmsider-error-display-visible');
+				if (errorMessage.includes('Failed to generate embeddings') || errorMessage.includes('status 400')) {
+					errorDisplayElement.textContent = `⚠️ ${this.i18n.t('settingsPage.vectorDatabase.embeddingGenerationFailed')}`;
+				} else {
+					errorDisplayElement.textContent = `⚠️ ${this.i18n.t('settingsPage.vectorDatabase.rebuildFailed')}: ${errorMessage}`;
+				}
+			}
+			
+			// Check if it's an embedding generation error
+			if (errorMessage.includes('Failed to generate embeddings') || errorMessage.includes('status 400')) {
+				const message = this.i18n.t('settingsPage.vectorDatabase.rebuildFailedWithError', { error: errorMessage });
+				new Notice(message, 10000);
+				
+				// Also show embedding-specific error
+				setTimeout(() => {
+					new Notice(this.i18n.t('settingsPage.vectorDatabase.embeddingGenerationFailed'), 8000);
+				}, 1000);
+			} else {
+				const message = this.i18n.t('settingsPage.vectorDatabase.rebuildFailedWithError', { error: errorMessage });
+				new Notice(message, 8000);
+			}
+			
 			hideProgress();
 		} finally {
+			// Keep button enabled so it can be clicked again
 			rebuildButton.removeAttribute('disabled');
 			(rebuildButton as HTMLButtonElement).disabled = false;
 			rebuildButton.style.opacity = '1';
@@ -469,7 +541,7 @@ export class VectorDBRenderer {
 	/**
 	 * Handle rebuild progress updates
 	 */
-	private handleRebuildProgress(progress: any, progressElements: ProgressElements): void {
+	private handleRebuildProgress(progress: unknown, progressElements: ProgressElements): void {
 		let percentage = 0;
 		let displayText = '';
 		
@@ -531,7 +603,10 @@ export class VectorDBRenderer {
 					.onChange(async (value) => {
 						this.plugin.settings.vectorSettings.enabled = value;
 						await this.plugin.saveSettings();
-						// Note: Parent will handle re-render
+						
+						// Clear and re-render the settings container to show/hide additional options
+						vectorContainer.empty();
+						await this.renderSettings(vectorContainer, statsDisplay);
 					});
 			});
 
@@ -564,6 +639,27 @@ export class VectorDBRenderer {
 					});
 			});
 		
+		// Hide Similar Notes by Default Toggle (only show when similar notes are enabled)
+		if (this.plugin.settings.vectorSettings.showSimilarNotes) {
+			new Setting(vectorContainer)
+				.setName(this.i18n.t('settingsPage.vectorDatabase.similarNotesHideByDefault') || 'Hide Similar Notes by Default')
+				.setDesc(this.i18n.t('settingsPage.vectorDatabase.similarNotesHideByDefaultDesc') || 'Hide similar notes by default, only show on hover. This keeps your notes clean while maintaining quick access.')
+				.addToggle(toggle => {
+					toggle
+						.setValue(this.plugin.settings.vectorSettings.similarNotesHideByDefault)
+						.onChange(async (value) => {
+							this.plugin.settings.vectorSettings.similarNotesHideByDefault = value;
+							await this.plugin.saveSettings();
+							
+							// Trigger update if a note is currently open
+							const activeFile = this.app.workspace.getActiveFile();
+							if (activeFile && this.plugin.similarNotesManager) {
+								await this.plugin.similarNotesManager.onFileOpen(activeFile);
+							}
+						});
+				});
+		}
+		
 		// Embedding Model Selection
 		await this.renderEmbeddingModelSetting(vectorContainer, statsDisplay);
 		
@@ -577,9 +673,6 @@ export class VectorDBRenderer {
 		
 		// Search Results Count
 		this.renderSearchResultsSetting(vectorContainer);
-		
-		// Suggest Related Files
-		this.renderSuggestRelatedFilesSetting(vectorContainer);
 	}
 
 	/**
@@ -600,7 +693,7 @@ export class VectorDBRenderer {
 			for (const model of models) {
 				if (model.isEmbedding) {
 					const modelId = `${conn.id}::${model.id}`;
-					const typeLabel = conn.type === 'huggingface' ? '🤗 Local' : '☁️ API';
+					const typeLabel = conn.type === 'local' ? '💻 Local' : '☁️ API';
 					modelOptions[modelId] = `${typeLabel} | ${conn.name} - ${model.name}`;
 					connectionTypeMap[modelId] = conn.type;
 				}
@@ -624,7 +717,7 @@ export class VectorDBRenderer {
 	 */
 	private async handleEmbeddingModelChange(
 		value: string,
-		dropdown: any,
+		dropdown: unknown,
 		statsDisplay: HTMLElement
 	): Promise<void> {
 		const oldValue = this.plugin.settings.vectorSettings.embeddingModelId;
@@ -653,7 +746,7 @@ export class VectorDBRenderer {
 	private async showEmbeddingModelChangeModal(
 		newValue: string,
 		oldValue: string,
-		dropdown: any,
+		dropdown: unknown,
 		statsDisplay: HTMLElement
 	): Promise<void> {
 		const modal = new Modal(this.app);
@@ -735,7 +828,7 @@ export class VectorDBRenderer {
 			}
 			
 			Logger.debug('Initializing with new embedding model...');
-			await (this.plugin as any).initializeVectorDB();
+			await (this.plugin as unknown).initializeVectorDB();
 			
 			if (triggerRebuild) {
 				// Find and click rebuild button
@@ -839,11 +932,11 @@ export class VectorDBRenderer {
 						const num = parseInt(value);
 						if (!isNaN(num)) {
 							if (num < CHUNK_SIZE_MIN) {
-								new Notice(`Chunk size must be at least ${CHUNK_SIZE_MIN}`, 3000);
+								new Notice(this.plugin.getI18nManager()?.t('notifications.vectorDatabase.chunkSizeMin', {min: CHUNK_SIZE_MIN}) || `Chunk size must be at least ${CHUNK_SIZE_MIN}`, 3000);
 								text.setValue(String(CHUNK_SIZE_MIN));
 								this.plugin.settings.vectorSettings.chunkSize = CHUNK_SIZE_MIN;
 							} else if (num > CHUNK_SIZE_MAX) {
-								new Notice(`Chunk size cannot exceed ${CHUNK_SIZE_MAX}`, 3000);
+								new Notice(this.plugin.getI18nManager()?.t('notifications.vectorDatabase.chunkSizeMax', {max: CHUNK_SIZE_MAX}) || `Chunk size cannot exceed ${CHUNK_SIZE_MAX}`, 3000);
 								text.setValue(String(CHUNK_SIZE_MAX));
 								this.plugin.settings.vectorSettings.chunkSize = CHUNK_SIZE_MAX;
 							} else {
@@ -854,7 +947,7 @@ export class VectorDBRenderer {
 							if (this.plugin.settings.vectorSettings.chunkOverlap >= num) {
 								const newOverlap = Math.floor(num * 0.1);
 								this.plugin.settings.vectorSettings.chunkOverlap = newOverlap;
-								new Notice(`Chunk overlap adjusted to ${newOverlap} (must be less than chunk size)`, 3000);
+								new Notice(this.plugin.getI18nManager()?.t('notifications.vectorDatabase.chunkOverlapAdjusted', {overlap: newOverlap}) || `Chunk overlap adjusted to ${newOverlap} (must be less than chunk size)`, 3000);
 								// Note: Parent will handle re-render
 							}
 							
@@ -881,15 +974,15 @@ export class VectorDBRenderer {
 							const chunkSize = this.plugin.settings.vectorSettings.chunkSize;
 							
 							if (num < CHUNK_OVERLAP_MIN) {
-								new Notice(`Chunk overlap must be at least ${CHUNK_OVERLAP_MIN}`, 3000);
+								new Notice(this.plugin.getI18nManager()?.t('notifications.vectorDatabase.chunkOverlapMin', {min: CHUNK_OVERLAP_MIN}) || `Chunk overlap must be at least ${CHUNK_OVERLAP_MIN}`, 3000);
 								text.setValue(String(CHUNK_OVERLAP_MIN));
 								this.plugin.settings.vectorSettings.chunkOverlap = CHUNK_OVERLAP_MIN;
 							} else if (num > CHUNK_OVERLAP_MAX) {
-								new Notice(`Chunk overlap cannot exceed ${CHUNK_OVERLAP_MAX}`, 3000);
+								new Notice(this.plugin.getI18nManager()?.t('notifications.vectorDatabase.chunkOverlapMax', {max: CHUNK_OVERLAP_MAX}) || `Chunk overlap cannot exceed ${CHUNK_OVERLAP_MAX}`, 3000);
 								text.setValue(String(CHUNK_OVERLAP_MAX));
 								this.plugin.settings.vectorSettings.chunkOverlap = CHUNK_OVERLAP_MAX;
 							} else if (num >= chunkSize) {
-								new Notice(`Chunk overlap must be less than chunk size (${chunkSize})`, 3000);
+								new Notice(this.plugin.getI18nManager()?.t('notifications.vectorDatabase.chunkOverlapLimit', {chunkSize}) || `Chunk overlap must be less than chunk size (${chunkSize})`, 3000);
 								const maxOverlap = Math.floor(chunkSize * 0.5);
 								text.setValue(String(maxOverlap));
 								this.plugin.settings.vectorSettings.chunkOverlap = maxOverlap;
@@ -927,42 +1020,51 @@ export class VectorDBRenderer {
 					});
 				text.inputEl.type = 'number';
 			});
+		
+		// Context Excerpt Length Setting
+		new Setting(vectorContainer)
+			.setName(this.i18n.t('settingsPage.vectorDatabase.contextExcerptLength'))
+			.setDesc(this.i18n.t('settingsPage.vectorDatabase.contextExcerptLengthDesc'))
+			.addText(text => {
+				text.setPlaceholder('500')
+					.setValue(String(this.plugin.settings.vectorSettings.contextExcerptLength || 500))
+					.onChange(async (value) => {
+						const num = parseInt(value);
+						if (!isNaN(num) && num >= 0) {
+							this.plugin.settings.vectorSettings.contextExcerptLength = num;
+							await this.plugin.saveSettings();
+							
+							// Update semantic search manager if it exists
+							const vectorDBManager = this.plugin.getVectorDBManager();
+							if (vectorDBManager && (vectorDBManager as any).semanticSearch) {
+								(vectorDBManager as any).semanticSearch.setExcerptLength(num);
+							}
+						}
+					});
+				text.inputEl.type = 'number';
+			});
 	}
 
-	/**
-	 * Render suggest related files setting
-	 */
-	private renderSuggestRelatedFilesSetting(vectorContainer: HTMLElement): void {
-		new Setting(vectorContainer)
-			.setName(this.i18n.t('settingsPage.vectorDatabase.suggestRelatedFiles'))
-			.setDesc(this.i18n.t('settingsPage.vectorDatabase.suggestRelatedFilesDesc'))
-			.addToggle(toggle => {
-				toggle
-					.setValue(this.plugin.settings.vectorSettings.suggestRelatedFiles)
-					.onChange(async (value) => {
-						this.plugin.settings.vectorSettings.suggestRelatedFiles = value;
-						await this.plugin.saveSettings();
-						// Note: Parent will handle re-render
-					});
-			});
 
-		// Suggestion Timeout (conditional)
-		if (this.plugin.settings.vectorSettings.suggestRelatedFiles) {
-			new Setting(vectorContainer)
-				.setName(this.i18n.t('settingsPage.vectorDatabase.suggestionTimeout'))
-				.setDesc(this.i18n.t('settingsPage.vectorDatabase.suggestionTimeoutDesc'))
-				.addText(text => {
-					text.setPlaceholder('5000')
-						.setValue(String(this.plugin.settings.vectorSettings.suggestionTimeout))
-						.onChange(async (value) => {
-							const num = parseInt(value);
-							if (!isNaN(num) && num > 0) {
-								this.plugin.settings.vectorSettings.suggestionTimeout = num;
-								await this.plugin.saveSettings();
-							}
-						});
-					text.inputEl.type = 'number';
-				});
+
+	/**
+	 * Reinitialize Memory Manager with new settings
+	 * This ensures changes take effect immediately
+	 */
+	private async reinitializeMemoryManager(): Promise<void> {
+		try {
+			const memoryManager = this.plugin.getMemoryManager();
+			if (memoryManager) {
+				Logger.debug('[VectorDBSettings] Reinitializing Memory Manager with new settings...');
+				
+				// Memory Manager will be reinitialized on next agent creation
+				// No need to reset any cache - vectorDBManager is fetched fresh each time
+				
+				new Notice(this.i18n.t('settingsPage.memory.settingsSaved'));
+			}
+		} catch (error) {
+			Logger.error('[VectorDBSettings] Failed to reinitialize Memory Manager:', error);
+			new Notice(this.i18n.t('settingsPage.memory.settingsSaveFailed', { error: String(error) }));
 		}
 	}
 }

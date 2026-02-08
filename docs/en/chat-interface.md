@@ -10,10 +10,8 @@ The LLMSider chat interface is your command center for AI interactions. It provi
 
 ```
 ┌─────────────────────────────────────────────┐
-│  [Provider Tabs] GPT-4 | Claude | Gemini   │ ← Quick model switching
-├─────────────────────────────────────────────┤
-│  📝 Session: "Project Planning"            │ ← Session name
-│  [🔄 New] [📁 History] [⚙️ Settings]      │ ← Actions
+│  📝 Session Name (click to edit)           │ ← Editable session name
+│  [🗑️ Clear] [➕ New] [📜 History] [⚙️]   │ ← Header actions
 ├─────────────────────────────────────────────┤
 │                                             │
 │  💬 Message Area                            │ ← Conversation
@@ -25,9 +23,22 @@ The LLMSider chat interface is your command center for AI interactions. It provi
 │                                             │
 ├─────────────────────────────────────────────┤
 │  ✍️ Type your message...                   │ ← Input area
-│  [📎] [🎙️] [⚙️]                    [Send]  │ ← Tools & send
+│  [📎] [Mode] [🛠️] [🔌] [🔍] [📖] [Model▼] [Send] │ ← Toolbar buttons
 └─────────────────────────────────────────────┘
 ```
+
+### Header Buttons
+
+![Main Interface Toolbar Buttons](../assets/screenshots/toolbar-buttons.png)
+*Toolbar buttons at the top of the chat interface*
+
+| Button | Icon | Description |
+|--------|------|-------------|
+| **Session Name** | 📝 | Click to edit current session name |
+| **Clear Chat** | 🗑️ | Clear all messages in current session |
+| **New Chat** | ➕ | Start a new conversation session |
+| **History** | 📜 | View and load past conversations |
+| **Settings** | ⚙️ | Open plugin settings |
 
 ---
 
@@ -49,6 +60,32 @@ The LLMSider chat interface is your command center for AI interactions. It provi
    - AI response appears in real-time (streaming)
    - Tool executions show progress indicators
    - Results are saved automatically
+
+### Input Toolbar Buttons
+
+The input area features a comprehensive toolbar with multiple functions:
+
+![Input Area Toolbar Buttons](../assets/screenshots/input-toolbar.png)
+*Input area toolbar buttons: add context, conversation mode, search, list, and model selector*
+
+#### Left Side Buttons
+
+| Button | Icon | Description | Availability |
+|--------|------|-------------|-------------|
+| **Attach Context** | 📎 | Add files, folders, or selections to context | Always |
+| **Conversation Mode** | 🗣️/🎯/🤖 | Switch between Normal/Guided/Agent modes | Always |
+| **Built-in Tools Management** | 🛠️ | Enable/disable built-in tools by category | Guided/Agent modes only |
+| **MCP Servers** | 🔌 | Manage external MCP tool servers | Guided/Agent modes only |
+| **Context Search** | 🔍 | Toggle automatic vector database search | When Vector DB enabled |
+| **Speed Reading** | 📖 | Analyze current note with AI | Always |
+
+#### Right Side Buttons
+
+| Button | Icon | Description |
+|--------|------|-------------|
+| **Model Selector** | Model▼ | Switch between configured AI models |
+| **Send** | ▶️ | Send message (or press Enter) |
+| **Stop** | ⏹️ | Stop generation (appears during streaming) |
 
 ### Message Formatting
 
@@ -72,11 +109,24 @@ LLMSider supports rich markdown formatting:
 [Links](https://example.com)
 ```
 
+### Context & Memory
+
+LLMSider manages conversation context automatically:
+
+- **Working Memory**: Keeps track of your current task across messages.
+- **Conversation History**: Remembers past messages (configurable limit).
+- **Compaction**: Automatically summarizes long conversations to save tokens.
+
+> **Note**: You can configure memory settings in **Settings → LLMSider → Memory Settings**.
+
 ---
 
 ## 🎯 Conversation Modes
 
 Switch between three powerful modes:
+
+![Conversation Mode Selection](../assets/screenshots/conversation-modes.png)
+*Conversation mode selection menu (highlighted area): Normal Mode (currently selected), Guided Mode, Agent Mode*
 
 ### 🗣️ Normal Mode
 **Direct conversation with AI**
@@ -132,6 +182,11 @@ AI: [Tool: Web Search] Searching for AI startups...
 ## 📋 Context Management
 
 ### Adding Context
+
+Click the 📎 icon in the input area to add context in multiple ways:
+
+![Add Context Menu](../assets/screenshots/context-menu.png)
+*Add context menu options: Current Note Content, Include Selection, Include Files and Directories, Fetch Current Webpage Content, Current Epub Page, Smart Note Search*
 
 #### Method 1: File Picker
 1. Click 📎 icon in input area
@@ -230,16 +285,63 @@ Quick-switch between models:
 
 ### Message Actions
 
-Hover over any message to reveal actions:
+Hover over any message to reveal quick action buttons:
 
+![Message Action Buttons](../assets/screenshots/message-actions.png)
+*Quick action buttons on AI messages (highlighted area): copy as Markdown, generate new note, insert at cursor, regenerate*
+
+#### User Message Actions
 | Action | Icon | Description |
 |--------|------|-------------|
 | **Copy** | 📋 | Copy message to clipboard |
-| **Edit** | ✏️ | Edit and resend (you only) |
-| **Regenerate** | 🔄 | Get new AI response |
-| **Delete** | 🗑️ | Remove message |
-| **Apply Changes** | ✅ | Apply diff to file |
-| **Reject Changes** | ❌ | Discard diff |
+| **Edit Message** | ✏️ | Edit this message (removes this and all subsequent messages, puts content back in input box) |
+
+#### Assistant Message Actions
+| Action | Icon | Description |
+|--------|------|-------------|
+| **Copy as Markdown** | 📋 | Copy response in markdown format |
+| **Generate New Note** | 📄 | Create a new note from this response |
+| **Insert at Cursor** | ↙️ | Insert response at current cursor position in active editor |
+| **Regenerate** | 🔄 | Delete this response and regenerate with previous user message |
+| **Apply Changes** | ✅ | Apply diff to file (when diff is present) |
+| **Toggle Diff** | 👁️ | Switch between rendered and diff view (when diff is present) |
+
+**New in this version:**
+- **Insert at Cursor**: Smart editor detection with automatic focus
+- **Edit Message**: Clean way to revise your questions
+- **Regenerate**: Quick response regeneration without manual resending
+
+#### 💡 Special Features in Selected Text Mode
+
+When you use the "Include selected text" feature and ask AI to modify, polish, or rewrite the selected text, two special buttons appear:
+
+**👁️ Toggle Diff View**
+- Visually compare original text with AI-generated content
+- Red shows deleted content, green shows added content
+- Helps you quickly understand exactly what changes AI made
+- Click to toggle between diff view and rendered view
+
+**✅ Apply Changes**
+- One-click to apply AI's modifications to the original note
+- Automatically locates and replaces the selected text portion
+- Preserves the rest of the note unchanged
+- Supports undo operation (Ctrl/Cmd + Z)
+
+**Workflow Example**:
+```
+1. Select a paragraph that needs improvement in your note
+2. Click 📎 → "Include Selection"
+3. Enter prompt: "Please rewrite this paragraph more concisely"
+4. After AI responds, click 👁️ to view diff comparison
+5. Confirm changes are reasonable, then click ✅ to apply
+6. The selected portion in the original note is automatically replaced
+```
+
+**Important Tips**:
+- These buttons only appear when using "selected text" as context
+- If multiple files or entire note are included, buttons will be hidden
+- Recommended to review diff before applying to avoid unintended overwrites
+- You can disable diff rendering in Settings → Action Mode
 
 ### Diff Rendering
 
@@ -456,4 +558,4 @@ Enable for detailed logging:
 
 ---
 
-**Questions?** [Open an issue](https://github.com/llmsider/obsidian-llmsider/issues) or [join Discord](https://discord.gg/llmsider)
+**Questions?** [Open an issue](https://github.com/gnuhpc/obsidian-llmsider/issues)

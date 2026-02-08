@@ -48,41 +48,26 @@ export class MCPSettingsRenderer {
 	 */
 	renderMCPSettings(containerEl: HTMLElement): void {
 		// MCP Settings Section header (outside border)
-		const mcpHeader = containerEl.createEl('h2', { text: this.i18n.t('settingsPage.mcpSettings') });
-		mcpHeader.style.marginTop = '20px';
-		mcpHeader.style.marginBottom = '12px';
-		mcpHeader.style.fontSize = '16px';
-		mcpHeader.style.fontWeight = '600';
+		const mcpHeader = containerEl.createEl('h2', { 
+			text: this.i18n.t('settingsPage.mcpSettings'),
+			cls: 'llmsider-section-header'
+		});
 		
 		// 使用统一的 settings-section-container 样式 - 包含筛选器和按钮
 		const mcpContainer = containerEl.createDiv({ cls: 'llmsider-settings-section-container llmsider-mcp-container' });
 
 		// Top controls row (inside border): search input and action buttons
-		const topControlsRow = mcpContainer.createDiv({ cls: 'llmsider-builtin-tools-header-container' });
-		topControlsRow.style.display = 'flex';
-		topControlsRow.style.alignItems = 'center';
-		topControlsRow.style.justifyContent = 'space-between';
-		topControlsRow.style.marginBottom = '16px';
-		topControlsRow.style.marginTop = '0';
-		topControlsRow.style.gap = '12px';
+		const topControlsRow = mcpContainer.createDiv({ cls: 'llmsider-builtin-tools-header-container llmsider-top-controls-row' });
 		
 		// Search input (left side)
 		const searchInput = topControlsRow.createEl('input', {
 			type: 'text',
 			placeholder: this.i18n.t('ui.searchMCPServers') || 'Filter MCP servers...',
-			cls: 'llmsider-builtin-tools-search-input'
+			cls: 'llmsider-builtin-tools-search-input llmsider-search-input'
 		});
-		searchInput.style.flex = '1';
-		searchInput.style.padding = '8px 12px';
-		searchInput.style.borderRadius = '4px';
-		searchInput.style.border = '1px solid var(--background-modifier-border)';
-		searchInput.style.background = 'var(--background-primary)';
 		
 		// Action buttons container (right side)
-		const actionsContainer = topControlsRow.createDiv({ cls: 'llmsider-builtin-tools-actions' });
-		actionsContainer.style.display = 'flex';
-		actionsContainer.style.gap = '8px';
-		actionsContainer.style.alignItems = 'center';
+		const actionsContainer = topControlsRow.createDiv({ cls: 'llmsider-builtin-tools-actions llmsider-actions-container' });
 		this.renderMCPActions(actionsContainer);
 		
 		// Server list container
@@ -134,15 +119,11 @@ export class MCPSettingsRenderer {
 
 		// Show no results message if nothing matches
 		if (filterText && serverIds.length === 0) {
-			const noResultsState = container.createDiv({ cls: 'llmsider-mcp-empty-state' });
-			noResultsState.style.padding = '20px';
-			noResultsState.style.textAlign = 'center';
-			noResultsState.style.background = 'var(--background-secondary)';
-			noResultsState.style.borderRadius = '4px';
+			const noResultsState = container.createDiv({ cls: 'llmsider-mcp-empty-state llmsider-no-results' });
 			noResultsState.createEl('p', {
 				text: this.i18n.t('ui.noMatchingServers') || 'No matching MCP servers found',
 				cls: 'llmsider-empty-text'
-			}).style.color = 'var(--text-muted)';
+			});
 			return;
 		}
 
@@ -152,9 +133,6 @@ export class MCPSettingsRenderer {
 			
 			// Tool details row - full width, shown below the clicked card's row, part of grid
 			const toolDetailsRow = serversGrid.createDiv({ cls: 'llmsider-mcp-tool-details-row' });
-			toolDetailsRow.style.display = 'none';
-			toolDetailsRow.style.gridColumn = '1 / -1'; // Span all columns
-			toolDetailsRow.style.order = '9999'; // Initially at the end
 			
 			serverIds.forEach((serverId, index) => {
 				const serverConfig = serverConfigs[serverId];
@@ -162,7 +140,7 @@ export class MCPSettingsRenderer {
 				const health = mcpManager.getServerHealth(serverId);
 				// Get all tools and filter by server
 				const allTools = mcpManager.getAllAvailableTools();
-				const tools = allTools.filter((tool: any) => tool.server === serverId);
+				const tools = allTools.filter((tool: unknown) => tool.server === serverId);
 				
 				this.mcpServerCard.render(serversGrid, serverId, serverConfig, isConnected, health, tools, mcpManager, toolDetailsRow, index);
 			});
@@ -185,14 +163,12 @@ export class MCPSettingsRenderer {
 		}
 
 		// "Enable/Disable All" toggle switch
-		const actionRow = container.createDiv({ cls: 'llmsider-mcp-action-row' });
-		actionRow.style.display = 'flex';
-		actionRow.style.alignItems = 'center';
-		actionRow.style.gap = '8px';
+		const actionRow = container.createDiv({ cls: 'llmsider-mcp-action-row llmsider-flex-row' });
 
-		const label = actionRow.createEl('span', { text: this.i18n.t('ui.toggleAllServers') || 'All Servers' });
-		label.style.fontSize = '14px';
-		label.style.color = 'var(--text-normal)';
+		const label = actionRow.createEl('span', { 
+			text: this.i18n.t('ui.toggleAllServers') || 'All Servers',
+			cls: 'llmsider-label-text'
+		});
 
 		const state = mcpManager.getState();
 		const serverIds = Object.keys(state.serversConfig.mcpServers);
@@ -205,6 +181,34 @@ export class MCPSettingsRenderer {
 
 		checkbox.addEventListener('change', async () => {
 			const enable = checkbox.checked;
+
+			if (enable) {
+				// Check limit
+				const allTools = mcpManager.getAllAvailableTools();
+				const maxLimit = this.plugin.settings.maxMCPToolsSelection;
+				
+				let count = 0;
+				for (const tool of allTools) {
+					// Check tool override
+					const serverPerms = this.plugin.settings.mcpSettings.serverPermissions[tool.server];
+					let toolEnabled = true; // Default
+					if (serverPerms && serverPerms.tools && serverPerms.tools[tool.name] === false) {
+						toolEnabled = false;
+					}
+					
+					if (toolEnabled) count++;
+				}
+				
+				if (count > maxLimit) {
+					new Notice(this.i18n.t('settingsPage.toolManagement.mcpToolsLimitExceeded', {
+						limit: maxLimit.toString(),
+						total: count.toString()
+					}));
+					checkbox.checked = false; // Revert toggle
+					return;
+				}
+			}
+
 			for (const serverId of serverIds) {
 				await mcpManager.setServerEnabled(serverId, enable);
 			}
@@ -287,10 +291,7 @@ export class MCPSettingsRenderer {
 		const toolManagementSection = container.createDiv({ cls: 'llmsider-mcp-tool-management-section' });
 
 		// Section header with inline layout - title and buttons on same line
-		const toolManagementHeader = toolManagementSection.createDiv({ cls: 'llmsider-mcp-tool-management-header llmsider-inline-header' });
-		toolManagementHeader.style.display = 'flex';
-		toolManagementHeader.style.alignItems = 'center';
-		toolManagementHeader.style.justifyContent = 'space-between';
+		const toolManagementHeader = toolManagementSection.createDiv({ cls: 'llmsider-mcp-tool-management-header llmsider-inline-header llmsider-header-row' });
 
 		// Title section
 		const titleSection = toolManagementHeader.createDiv({ cls: 'llmsider-tool-title-section' });
@@ -298,7 +299,6 @@ export class MCPSettingsRenderer {
 
 		// Inline batch actions (only enable, disable, reset - no import/export) - aligned to the right
 		const inlineBatchActions = toolManagementHeader.createDiv({ cls: 'llmsider-tool-inline-batch-actions' });
-		inlineBatchActions.style.marginLeft = 'auto';
 		this.renderInlineGlobalBatchActions(inlineBatchActions);
 
 		// Description moved below the header
@@ -442,10 +442,7 @@ export class MCPSettingsRenderer {
 	 * Used in the Tool Management header
 	 */
 	renderInlineGlobalBatchActions(container: HTMLElement): void {
-		const actionsContainer = container.createDiv({ cls: 'llmsider-inline-batch-actions' });
-		actionsContainer.style.display = 'flex';
-		actionsContainer.style.gap = '8px';
-		actionsContainer.style.alignItems = 'center';
+		const actionsContainer = container.createDiv({ cls: 'llmsider-inline-batch-actions llmsider-actions-container' });
 
 		// Enable all tools
 		const enableAllBtn = actionsContainer.createEl('button', {

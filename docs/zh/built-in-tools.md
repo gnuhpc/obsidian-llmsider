@@ -2,7 +2,7 @@
 
 ## 概述
 
-LLMSider 包含 **600+ 个内置工具**,涵盖 20 多个类别,为 AI 提供强大的功能来与您的笔记库交互、搜索网络、访问金融数据等。
+LLMSider 包含 **100+ 个内置工具**,涵盖多个类别,为 AI 提供强大的功能来与您的笔记库交互、搜索网络、访问金融数据等。
 
 ---
 
@@ -39,20 +39,10 @@ LLMSider 包含 **600+ 个内置工具**,涵盖 20 多个类别,为 AI 提供强
 | **搜索** | 15+ | 内容发现 | ✅ 已启用 |
 | **网页内容** | 10+ | 网页抓取 | ✅ 已启用 |
 | **搜索引擎** | 20+ | DuckDuckGo、Google | ✅ 已启用 |
-| **股票** | 150+ | 股票市场数据 | ❌ 已禁用 |
-| **期货** | 80+ | 期货与商品 | ❌ 已禁用 |
-| **期权** | 60+ | 期权分析 | ❌ 已禁用 |
-| **债券** | 50+ | 债券市场数据 | ❌ 已禁用 |
-| **基金** | 70+ | 共同基金、ETF | ❌ 已禁用 |
-| **外汇** | 30+ | 货币兑换 | ❌ 已禁用 |
-| **加密货币** | 15+ | 加密货币 | ❌ 已禁用 |
-| **金融** | 40+ | 财务报表 | ❌ 已禁用 |
-| **宏观** | 20+ | 经济指标 | ❌ 已禁用 |
-| **风险** | 15+ | 风险管理 | ❌ 已禁用 |
-| **ESG** | 18+ | ESG 与可持续性 | ❌ 已禁用 |
-| **行业** | 25+ | 行业数据 | ❌ 已禁用 |
+| **外汇** | 10+ | 货币兑换 | ❌ 已禁用 |
+| **股票分析** | 5+ | Yahoo Finance 等 | ❌ 已禁用 |
 
-**总计: 20+ 个类别中的 624 个工具**
+**总计: 10+ 个类别中的 100+ 个工具**
 
 ### 默认配置
 
@@ -66,9 +56,9 @@ LLMSider 包含 **600+ 个内置工具**,涵盖 20 多个类别,为 AI 提供强
 - ✅ 网页内容
 - ✅ 搜索引擎
 
-**默认禁用(15+ 个类别):**
-- ❌ 所有金融/市场数据类别
-- ❌ 专业数据类别
+**默认禁用(2 个类别):**
+- ❌ 外汇工具
+- ❌ 股票分析工具（Yahoo Finance）
 
 ---
 
@@ -231,129 +221,56 @@ fetch_youtube_transcript(video_url: string, lang?: string)
 
 ---
 
-## 💰 数据工具
+## 💰 金融数据工具
 
-### 金融市场数据
+### Yahoo Finance 工具
 
-**股票市场(150+ 个工具)**
-
-**实时行情:**
+**股票数据查询:**
 ```typescript
-// 获取当前报价
-get_market_quote(symbol: string)
-// 返回: 价格、成交量、涨跌等
+// 获取股票行情
+get_yahoo_finance_quote(symbol: string)
+// 返回:价格、成交量、涨跌幅等
 
-// A股实时数据
-get_stock_a_share_spot(symbol?: string)
-// 实时市场数据
-
-// 分钟级数据
-get_stock_minute_data(symbol: string, period: string)
-// 盘中价格走势
+// 获取股票新闻
+get_yahoo_finance_news(symbol: string)
+// 返回股票相关新闻
 ```
 
-**市场分析:**
+**港美股全景工具:**
 ```typescript
-// 热门股票排名
-get_stock_hot_rank()
-get_hot_up_rank()
-
-// 行业/板块
-get_industry_board()
-get_concept_board()
-get_board_stocks(board: string)
-
-// 市场概览
-get_market_overview()
-get_market_money_flow()
+// 股票全景 (港美股)
+get_stock_panorama(symbol: string)
+// 获取公司详细资料、行业分类、概念板块等
 ```
 
-**交易活动:**
-```typescript
-// 涨停/跌停池
-get_limit_board()
-get_limit_up_pool()
-get_limit_down_pool()
-
-// 龙虎榜
-get_dragon_tiger_list(date: string)
-get_dragon_tiger_list_detail(symbol: string, date: string)
-
-// 大宗交易
-get_block_trade(date: string)
-get_block_trade_details(symbol: string)
+**使用示例:**
+```markdown
+用户: "AAPL 的当前价格是多少?"
+AI: [使用 get_yahoo_finance_quote("AAPL") 工具]
+📊 Apple Inc. (AAPL)
+价格: $185.23 (+2.34%)
+成交量: 45.2M
+市值: $2.91T
 ```
 
 ---
 
-### 加密货币与数字资产(15+ 个工具)
+### 外汇工具
 
-**加密货币:**
+**货币兑换:**
 ```typescript
-// 现货价格
-get_crypto_spot(symbol: string)
-get_crypto_bitcoin_price_trend()
+// 实时汇率
+get_forex_rate(from: string, to: string)
+// 返回当前汇率
 
-// 市场数据
-get_crypto_market_cap_ranking()
-get_crypto_exchange_ranking()
-
-// DeFi 和 NFT
-get_crypto_defi_tvl()
-get_crypto_nft_market_data()
-
-// 比特币衍生品
-get_crypto_bitcoin_cme()
-get_crypto_bitcoin_hold_report()
+// 历史汇率
+get_forex_history(pair: string, start_date: string, end_date: string)
+// 返回历史汇率数据
 ```
 
 ---
 
-### 宏观经济学(20+ 个工具)
-
-**经济指标:**
-```typescript
-// 中国指标
-get_cpi()         // 消费者价格指数
-get_ppi()         // 生产者价格指数
-get_gdp()         // 国内生产总值
-get_pmi()         // 采购经理人指数
-get_money_supply()
-get_unemployment_rate()
-
-// 美国指标
-get_us_cpi()
-get_us_ppi()
-get_us_pmi()
-get_us_non_farm_payroll()
-get_us_retail_sales()
-```
-
----
-
-### 替代数据(100+ 个工具)
-
-**ESG 数据(18 个工具):**
-```typescript
-// ESG 评级和指标
-get_esg_ratings(symbol: string)
-get_carbon_emissions_data(symbol: string)
-get_esg_controversy_scores(symbol: string)
-get_climate_risk_assessment(symbol: string)
-
-// 可持续性
-get_sustainability_reports(symbol: string)
-get_water_usage_data(symbol: string)
-get_renewable_energy_usage(symbol: string)
-
-// 治理
-get_board_diversity_metrics(symbol: string)
-get_governance_quality_metrics(symbol: string)
-```
-
----
-
-## ⚙️ 配置
+## ⚙️ 配置## ⚙️ 配置
 
 ### 启用/禁用工具
 
@@ -431,7 +348,7 @@ get_governance_quality_metrics(symbol: string)
 
 ---
 
-**有疑问?** [GitHub Issues](https://github.com/llmsider/obsidian-llmsider/issues) | [Discord](https://discord.gg/llmsider)
+**有疑问?** [GitHub Issues](https://github.com/gnuhpc/obsidian-llmsider/issues)
 
 ---
 
