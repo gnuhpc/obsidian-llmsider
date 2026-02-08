@@ -34,7 +34,7 @@ LLMSider supports connections to **over 10 AI providers**, including OpenAI GPT-
 
 Supports instant model switching or simultaneous use of multiple AI services, accommodating both cloud computing power and local privacy requirements. Notably, you can **access models from multiple providers for free**: GitHub Copilot (for subscribers), Google Gemini (free tier), DeepSeek (free tier), Qwen (free tier), and Ollama local models (completely free), allowing you to experience different model capabilities at zero or low cost.
 
-![Multi-Model Support Demo](docs/assets/screenrecords/models-connetions.gif)
+![Multi-Model Support Demo](https://github.com/gnuhpc/obsidian-llmsider/releases/download/v1.1.0/models-connetions.gif)
 
 ### 💬 Flexible Conversation Modes
 
@@ -42,7 +42,7 @@ LLMSider offers **three conversation modes** for different work scenarios:
 
 **Normal Mode** for quick Q&A and brainstorming with direct AI interaction. **Guided Mode** breaks complex tasks into manageable steps, displaying specific actions before execution—suitable for multi-step workflows requiring review. **Agent Mode** allows AI to autonomously use tools, search the web, analyze data, and complete complex tasks.
 
-![Normal Mode Demo](docs/assets/screenrecords/normal-mode.gif)
+![Normal Mode Demo](https://github.com/gnuhpc/obsidian-llmsider/releases/download/v1.1.0/normal-mode.gif)
 
 Conversations support context awareness, including file references, selected text, or entire folder contents. Visual diff rendering displays specific changes before applying modifications.
 
@@ -50,7 +50,7 @@ Conversations support context awareness, including file references, selected tex
 
 **Quick Chat**: Press **Cmd+/** to activate an inline AI assistant within the editor, similar to Notion AI's instant interaction experience. Get help without leaving the current editing position, supporting operations like continue writing, rewriting, and summarizing, with visual diff preview for precise control over every modification.
 
-![Quick Chat Demo](docs/assets/screenrecords/quickchat.gif)
+![Quick Chat Demo](https://github.com/gnuhpc/obsidian-llmsider/releases/download/v1.1.0/quickchat.gif)
 
 **Selection Actions**: Right-click selected text to access AI quick actions: improve expression, fix grammar, translate languages, expand content, summarize key points, or continue writing. Right-click selected text can also choose "Add to LLMSider Context" to add text snippets to conversation context.
 
@@ -75,7 +75,7 @@ AI conversations reference these context materials for more accurate responses. 
 
 **Multi-Model Comparison**: Configure multiple AI models simultaneously and switch between them to get different responses to the same question, enabling comparison of response quality across different large language models.
 
-![Multi-Model Comparison Demo](docs/assets/screenrecords/vision-understanding.gif)
+![Multi-Model Comparison Demo](https://github.com/gnuhpc/obsidian-llmsider/releases/download/v1.1.0/vision-understanding.gif)
 
 **Result Handling**: For AI model responses, apply changes with one click to directly modify the current file, or generate a separate note file to save the AI's response content for future reference and organization.
 
@@ -121,7 +121,7 @@ QMD runs **100% locally** using GGUF models, ensuring complete privacy with no d
 
 **Speed Reading** quickly generates in-depth summaries, core insights, knowledge structure diagrams, and extended reading suggestions for your notes. It uses AI to comprehensively analyze the current note and displays the results in a real-time sidebar drawer.
 
-![Speed Reading Demo](docs/assets/screenrecords/speed-reading.gif)
+![Speed Reading Demo](https://github.com/gnuhpc/obsidian-llmsider/releases/download/v1.1.0/speed-reading.gif)
 ### 🛠️ A Toolkit That Means Business
 
 LLMSider includes **over 100 specialized tools** that transform your AI from conversationalist to power user:
