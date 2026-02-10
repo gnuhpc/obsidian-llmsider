@@ -1,0 +1,76 @@
+/* ============================================================================
+   Context Menu Dropdown Styles (Add Context menu)
+   ============================================================================ */
+
+/* Context menu dropdown - matches mode dropdown style */
+.llmsider-context-menu {
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+    padding: 6px;
+    min-width: 220px;
+    animation: slideInUp 0.15s ease;
+    z-index: 99999 !important;
+    position: fixed !important;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Context option */
+.llmsider-context-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-context-option:hover {
+    background: var(--background-modifier-hover);
+}
+
+.context-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    color: var(--text-muted);
+}
+
+.context-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.context-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.context-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+.context-description {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.3;
+}

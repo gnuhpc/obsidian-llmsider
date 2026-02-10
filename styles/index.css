@@ -1,0 +1,29 @@
+/* LLMSider Plugin Styles - Main Entry Point
+   This file imports all modular CSS files for the LLMSider plugin.
+   Used during development for organization and maintenance.
+   Will be compiled into a single styles.css for production.
+*/
+
+@import './base.css';
+@import './layout.css';
+@import './input.css';
+@import './messages.css';
+@import './settings.css';
+@import './diff.css';
+@import './context-menu.css';
+@import './selection-toolbar.css';
+@import './plan-execute.css';
+@import './chat-history.css';
+@import './builtin-tools.css';
+@import './thinking.css';
+@import './error-action-panel.css';
+@import './dynamic-step-modal.css';
+@import './jsmind.css';
+@import './web-fetch-progress.css';
+@import './prompt-selector.css';
+@import './components/speed-reading.css';
+@import './components/update-modal.css';
+@import './responsive.css';
+@import './accessibility.css';
+@import './responsive.css';
+@import './components/speed-reading.css';

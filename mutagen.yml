@@ -1,0 +1,11 @@
+sync:
+  llmsider:
+    alpha: "."
+    beta: "clawuser@100.118.60.93:/home/clawuser/obsidian-llmsider"
+    mode: "two-way-safe"
+    ignore:
+      vcs: true
+      paths:
+        - "node_modules"
+        - ".DS_Store"
+        - "tmp"

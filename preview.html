@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Preview - LLMSider</title>
+    <link rel="stylesheet" href="assets/css/main.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* Preview specific styles */
+        .preview-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1e212b;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #2d313f;
+            z-index: 2000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        select {
+            background: #0f1117;
+            color: #e6e6e6;
+            border: 1px solid #2d313f;
+            padding: 5px;
+            border-radius: 4px;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header Placeholder -->
+    <div id="header-placeholder"></div>
+
+    <!-- Hero Placeholder (only for home) -->
+    <div id="hero-placeholder"></div>
+
+    <main class="main-content">
+        <div id="content" class="markdown-body">Loading...</div>
+    </main>
+
+    <!-- Footer Placeholder -->
+    <div id="footer-placeholder"></div>
+
+    <div class="preview-controls">
+        <select id="file-selector" onchange="loadFile(this.value)">
+            <option value="index.md">Home (index.md)</option>
+            <option value="docs/INDEX.md">Docs Index</option>
+            <option value="README.md">README</option>
+        </select>
+    </div>
+
+    <script>
+        // Load Header
+        fetch('_includes/header.html')
+            .then(response => response.text())
+            .then(html => {
+                // Fix relative URLs for preview
+                html = html.replace(/\{\{ '\/' \| relative_url \}\}/g, 'preview.html');
+                html = html.replace(/\{\{ '\/docs\/INDEX.html' \| relative_url \}\}/g, 'preview.html?file=docs/INDEX.md');
+                document.getElementById('header-placeholder').innerHTML = html;
+            });
+
+        // Load Footer
+        fetch('_includes/footer.html')
+            .then(response => response.text())
+            .then(html => {
+                html = html.replace(/\{\{ site.time \| date: '%Y' \}\}/g, new Date().getFullYear());
+                document.getElementById('footer-placeholder').innerHTML = html;
+            });
+
+        // Load Content
+        const urlParams = new URLSearchParams(window.location.search);
+        const file = urlParams.get('file') || 'index.md';
+        document.getElementById('file-selector').value = file;
+
+        loadFile(file);
+
+        function loadFile(filePath) {
+            // Update URL without reload
+            const newUrl = window.location.pathname + '?file=' + filePath;
+            window.history.pushState({path: newUrl}, '', newUrl);
+
+            if (filePath === 'index.md') {
+                // Render Hero & Bento Grid (Apple Style)
+                document.getElementById('hero-placeholder').innerHTML = `
+                  <!-- Hero Section -->
+                  <section class="hero-section">
+                    <div class="hero-content reveal active">
+                      <span class="hero-eyebrow">New in LLMSider</span>
+                      <h1 class="hero-title">Supercharge your<br>second brain.</h1>
+                      <p class="hero-subtitle">
+                        Experience the power of AI directly inside Obsidian. <br>
+                        Seamless autocomplete, intelligent chat, and powerful automation.
+                      </p>
+                      <div class="cta-buttons">
+                        <a href="https://obsidian.md/plugins?id=llmsider" class="btn btn-primary">Install Plugin</a>
+                        <a href="preview.html?file=docs/INDEX.md" class="btn btn-secondary">
+                          Learn more <span style="font-size: 1.2em">›</span>
+                        </a>
+                      </div>
+                      <div class="reveal" style="transition-delay: 0.2s;">
+                        <img src="https://img.shields.io/github/v/release/gnuhpc/obsidian-llmsider?style=flat-square&color=black&labelColor=gray" alt="Release">
+                      </div>
+                    </div>
+                  </section>
+
+                  <!-- Bento Grid Section -->
+                  <section class="bento-section">
+                    <div class="section-header reveal">
+                      <h2 class="section-title">Pro-level intelligence.</h2>
+                      <p class="section-desc">Built for power users who demand more from their notes.</p>
+                    </div>
+
+                    <div class="bento-grid">
+                      <div class="bento-item bento-large reveal">
+                        <div class="bento-content">
+                          <h3 class="bento-title">Any Model. Any Time.</h3>
+                          <p class="bento-text">
+                            Connect to OpenAI, Anthropic, Gemini, or run local models with Ollama. 
+                            Switch instantly to find the perfect balance of speed, cost, and privacy.
+                          </p>
+                        </div>
+                        <div class="bento-bg-icon">🤖</div>
+                        <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 300px; background: linear-gradient(to top, rgba(41, 151, 255, 0.1), transparent);"></div>
+                      </div>
+
+                      <div class="bento-item bento-medium reveal">
+                        <div class="bento-content">
+                          <h3 class="bento-title">Context Aware.</h3>
+                          <p class="bento-text">
+                            It knows your vault. Reference files, folders, or your current selection to get answers that actually make sense.
+                          </p>
+                        </div>
+                        <div class="bento-bg-icon">🧠</div>
+                      </div>
+
+                      <div class="bento-item bento-medium reveal">
+                        <div class="bento-content">
+                          <h3 class="bento-title">Privacy First.</h3>
+                          <p class="bento-text">
+                            Your data stays yours. Use local models for 100% offline privacy, or choose exactly what to send to the cloud.
+                          </p>
+                        </div>
+                        <div class="bento-bg-icon">🔒</div>
+                      </div>
+
+                      <div class="bento-item bento-small reveal">
+                        <div class="bento-content">
+                          <h3 class="bento-title">Autocomplete</h3>
+                          <p class="bento-text">Ghost text that predicts your next thought.</p>
+                        </div>
+                      </div>
+
+                      <div class="bento-item bento-small reveal">
+                        <div class="bento-content">
+                          <h3 class="bento-title">Agents</h3>
+                          <p class="bento-text">Autonomous web search and file operations.</p>
+                        </div>
+                      </div>
+
+                      <div class="bento-item bento-small reveal">
+                        <div class="bento-content">
+                          <h3 class="bento-title">MCP</h3>
+                          <p class="bento-text">Extend capabilities with Model Context Protocol.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <!-- Feature Strip: Agent Mode -->
+                  <section class="feature-strip">
+                    <div class="strip-container">
+                      <div class="strip-text reveal">
+                        <h2 class="strip-title">Meet your new<br>research assistant.</h2>
+                        <p class="strip-desc">
+                          Agent Mode allows LLMSider to browse the web, read documentation, and synthesize information into your notes automatically. It's not just a chat; it's a worker.
+                        </p>
+                      </div>
+                      <div class="strip-visual reveal">
+                        🕵️‍♂️
+                      </div>
+                    </div>
+                  </section>
+
+                  <!-- Feature Strip: Autocomplete -->
+                  <section class="feature-strip" style="background: #050505;">
+                    <div class="strip-container" style="flex-direction: row-reverse;">
+                      <div class="strip-text reveal" style="padding-right: 0; padding-left: 60px;">
+                        <h2 class="strip-title">Writes like you.<br>Only faster.</h2>
+                        <p class="strip-desc">
+                          Experience the flow of GitHub Copilot, but for your prose. It learns from your writing style and vault structure to offer suggestions that fit perfectly.
+                        </p>
+                      </div>
+                      <div class="strip-visual reveal">
+                        ⚡
+                      </div>
+                    </div>
+                  </section>
+                `;
+                
+                // Re-init scroll reveal
+                setTimeout(initScrollReveal, 100);
+            } else {
+                document.getElementById('hero-placeholder').innerHTML = '';
+            }
+
+            fetch(filePath)
+                .then(response => response.text())
+                .then(text => {
+                    // Remove Front Matter
+                    const content = text.replace(/^---[\s\S]*?---/, '');
+                    document.getElementById('content').innerHTML = marked.parse(content);
+                })
+                .catch(err => {
+                    document.getElementById('content').innerHTML = 'Error loading file: ' + err;
+                });
+        }
+
+        function initScrollReveal() {
+            const reveals = document.querySelectorAll('.reveal');
+            const revealOnScroll = () => {
+                const windowHeight = window.innerHeight;
+                const elementVisible = 100;
+                reveals.forEach((reveal) => {
+                    const elementTop = reveal.getBoundingClientRect().top;
+                    if (elementTop < windowHeight - elementVisible) {
+                        reveal.classList.add('active');
+                    }
+                });
+            };
+            window.removeEventListener('scroll', window.revealHandler);
+            window.revealHandler = revealOnScroll;
+            window.addEventListener('scroll', window.revealHandler);
+            revealOnScroll();
+        }
+    </script>
+</body>
+</html>

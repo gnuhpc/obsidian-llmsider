@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang | default: site.lang | default: 'en' }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ site.title }} - {{ site.description }}</title>
+  <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}?v=10">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+<body>
+  {% include header.html %}
+  
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-content reveal active">
+      <span class="hero-eyebrow">New in LLMSider</span>
+      <h1 class="hero-title">Supercharge your<br>second brain.</h1>
+      <p class="hero-subtitle">
+        Experience the power of AI directly inside Obsidian. <br>
+        Seamless autocomplete, intelligent chat, and powerful automation.
+      </p>
+      <div class="cta-buttons">
+        <a href="{{ '/docs/INDEX.html' | relative_url }}" class="btn btn-primary">
+          Explore Features <span style="font-size: 1.2em">›</span>
+        </a>
+      </div>
+      <div class="reveal" style="transition-delay: 0.2s;">
+        <img src="https://img.shields.io/github/v/release/gnuhpc/obsidian-llmsider?style=flat-square&color=black&labelColor=gray" alt="Release">
+      </div>
+    </div>
+  </section>
+
+  <!-- Bento Grid Section -->
+  <section class="bento-section">
+    <div class="bento-grid">
+      <!-- Large Item: 3 Modes (7 cols, 2 rows) -->
+      <a href="{{ '/docs/en/conversation-modes.html' | relative_url }}" class="bento-item bento-large reveal" data-color="green">
+        <div class="bento-content">
+          <h3 class="bento-title">3 Conversation Modes</h3>
+          <p class="bento-text">Normal • Guided • Agent</p>
+        </div>
+        <div class="bento-bg-icon">🎯</div>
+      </a>
+
+      <!-- Tall: 100+ Tools (5 cols, 2 rows) -->
+      <a href="{{ '/docs/en/built-in-tools.html' | relative_url }}" class="bento-item bento-wide bento-tall reveal" data-color="cyan">
+        <div class="bento-content">
+          <h3 class="bento-title">100+ Built-in Tools</h3>
+          <p class="bento-text">Research • Analysis • Automation</p>
+        </div>
+        <div class="bento-bg-icon">🛠️</div>
+      </a>
+
+      <!-- Row 2: Medium and small cards -->
+      <a href="{{ '/docs/en/mcp-integration.html' | relative_url }}" class="bento-item bento-medium reveal" data-color="purple">
+        <div class="bento-content">
+          <h3 class="bento-title">MCP Protocol</h3>
+          <p class="bento-text">External tool integration</p>
+        </div>
+        <div class="bento-bg-icon">🔌</div>
+      </a>
+
+      <a href="{{ '/docs/en/connections-and-models.html' | relative_url }}" class="bento-item bento-medium reveal" data-color="blue">
+        <div class="bento-content">
+          <h3 class="bento-title">Multi-Model</h3>
+          <p class="bento-text">10+ AI providers</p>
+        </div>
+        <div class="bento-bg-icon">🤖</div>
+      </a>
+
+      <a href="{{ '/docs/en/quick-chat.html' | relative_url }}" class="bento-item bento-small reveal" data-color="pink">
+        <div class="bento-content">
+          <h3 class="bento-title">Quick Chat</h3>
+          <p class="bento-text">Cmd+/</p>
+        </div>
+      </a>
+
+      <!-- Row 3 -->
+      <a href="{{ '/docs/en/autocomplete.html' | relative_url }}" class="bento-item bento-small reveal" data-color="indigo">
+        <div class="bento-content">
+          <h3 class="bento-title">Autocomplete</h3>
+          <p class="bento-text">Smart writing</p>
+        </div>
+      </a>
+
+      <a href="{{ '/docs/en/speed-reading.html' | relative_url }}" class="bento-item bento-small reveal" data-color="orange">
+        <div class="bento-content">
+          <h3 class="bento-title">Speed Read</h3>
+          <p class="bento-text">Summaries</p>
+        </div>
+      </a>
+
+      <a href="{{ '/docs/en/search-enhancement.html' | relative_url }}" class="bento-item bento-medium reveal" data-color="yellow">
+        <div class="bento-content">
+          <h3 class="bento-title">Semantic Search</h3>
+          <p class="bento-text">Find anything instantly</p>
+        </div>
+      </a>
+      
+      <a href="{{ '/docs/en/context-reference.html' | relative_url }}" class="bento-item bento-medium reveal" data-color="red">
+        <div class="bento-content">
+          <h3 class="bento-title">Context Aware</h3>
+          <p class="bento-text">Files & folders</p>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Content from Markdown (Release notes etc) -->
+  <section class="main-content reveal">
+    <div class="markdown-body">
+      {{ content }}
+    </div>
+  </section>
+
+  {% include footer.html %}
+
+  <script>
+    // Scroll Reveal Animation
+    document.addEventListener('DOMContentLoaded', () => {
+      const reveals = document.querySelectorAll('.reveal');
+
+      const revealOnScroll = () => {
+        const windowHeight = window.innerHeight;
+        const elementVisible = 100;
+
+        reveals.forEach((reveal) => {
+          const elementTop = reveal.getBoundingClientRect().top;
+          if (elementTop < windowHeight - elementVisible) {
+            reveal.classList.add('active');
+          }
+        });
+      };
+
+      window.addEventListener('scroll', revealOnScroll);
+      // Trigger once on load
+      revealOnScroll();
+    });
+  </script>
+</body>
+</html>

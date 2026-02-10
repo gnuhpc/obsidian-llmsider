@@ -1,0 +1,417 @@
+/* DAG Plan Visualization Styles */
+
+.llmsider-plan-dag-container {
+    margin: 12px 0;
+    padding: 16px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+    position: relative; /* Ensure absolute positioning of children works */
+}
+
+/* Sequential Mode Layout */
+.llmsider-plan-dag-container.sequential-mode .llmsider-dag-layers {
+    width: 55%; /* Leave space for execution indicator on the right */
+    transition: width 0.3s ease;
+}
+
+.llmsider-plan-dag-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-plan-dag-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-plan-dag-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 4px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.llmsider-plan-dag-graph {
+    position: relative;
+    min-height: 200px;
+    padding: 20px;
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+/* Graph Execution Mode Specific Styles */
+.llmsider-graph-execution {
+    margin: 12px 0;
+    padding: 16px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-graph-execution-container {
+    margin: 12px 0;
+}
+
+.llmsider-guided-explanation {
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: var(--background-primary-alt);
+    border-radius: 6px;
+    border-left: 3px solid var(--interactive-accent);
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-normal);
+}
+
+.llmsider-graph-execution .llmsider-dag-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-graph-execution .llmsider-dag-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.llmsider-graph-step-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-graph-step-number {
+    display: inline-block;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 12px;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    animation: pulse-badge 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+}
+
+/* Node highlight animation for current step */
+.llmsider-dag-node-highlight {
+    animation: highlight-node 2s ease-in-out;
+}
+
+@keyframes highlight-node {
+    0% {
+        box-shadow: 0 0 0 0 var(--interactive-accent);
+    }
+    50% {
+        box-shadow: 0 0 0 4px var(--interactive-accent);
+    }
+    100% {
+        box-shadow: 0 0 0 0 var(--interactive-accent);
+    }
+}
+
+.llmsider-dag-notice {
+    margin: 16px 0;
+    padding: 12px;
+    background: var(--background-primary-alt);
+    border-radius: 6px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* DAG Layers Container */
+.llmsider-dag-layers {
+    position: relative;
+    min-height: 200px;
+}
+
+/* DAG Layers (vertical organization) */
+.llmsider-dag-layer {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 24px;
+    margin-bottom: 40px;
+    position: relative;
+    z-index: 1;
+    padding: 12px;
+}
+
+.llmsider-dag-layer:first-child {
+    padding-top: 0;
+}
+
+/* DAG Node Styles */
+.llmsider-dag-node {
+    position: relative;
+    min-width: 200px;
+    max-width: 280px;
+    padding: 14px 18px;
+    background: var(--background-primary);
+    border: 2px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    transition: all 0.2s ease;
+    z-index: 2;
+}
+
+.llmsider-dag-node:hover {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.llmsider-dag-node.pending {
+    border-color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.llmsider-dag-node.executing {
+    border-color: var(--interactive-accent);
+    background: var(--background-primary-alt);
+    animation: dag-pulse 1.5s ease-in-out infinite;
+}
+
+.llmsider-dag-node.completed {
+    border-color: var(--text-success);
+    background: color-mix(in srgb, var(--text-success) 10%, var(--background-primary));
+}
+
+.llmsider-dag-node.failed {
+    border-color: var(--text-error);
+    background: color-mix(in srgb, var(--text-error) 10%, var(--background-primary));
+}
+
+@keyframes dag-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.llmsider-dag-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.llmsider-dag-node-id {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.llmsider-dag-node-status {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.llmsider-dag-node-status.executing {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.llmsider-dag-node-status.completed {
+    background: var(--text-success);
+    color: white;
+}
+
+.llmsider-dag-node-status.failed {
+    background: var(--text-error);
+    color: white;
+}
+
+.llmsider-dag-node-tool {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-normal);
+    margin-bottom: 4px;
+}
+
+.llmsider-dag-node-reason {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.llmsider-dag-node-deps {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--background-modifier-border);
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.llmsider-dag-node-duration {
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-faint);
+}
+
+/* SVG Connection Lines */
+.llmsider-dag-connections {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.llmsider-dag-connection-line {
+    stroke: var(--background-modifier-border);
+    stroke-width: 2;
+    fill: none;
+    marker-end: url(#dag-arrow);
+}
+
+.llmsider-dag-connection-line.active {
+    stroke: var(--interactive-accent);
+    stroke-width: 3;
+}
+
+/* Arrow marker for SVG */
+#dag-arrow {
+    fill: var(--background-modifier-border);
+}
+
+#dag-arrow-active {
+    fill: var(--interactive-accent);
+}
+
+/* SVG Connection Lines */
+.llmsider-dag-connections {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.llmsider-dag-connection-line {
+    stroke: var(--text-muted);
+    stroke-width: 2;
+    fill: none;
+    opacity: 0.4;
+    transition: all 0.2s ease;
+}
+
+.llmsider-dag-connection-line.active {
+    stroke: var(--interactive-accent);
+    opacity: 0.8;
+    stroke-width: 3;
+}
+
+/* Notice for independent steps */
+.llmsider-dag-notice {
+    padding: 12px 16px;
+    margin-top: 16px;
+    background: var(--background-primary-alt);
+    border-left: 3px solid var(--interactive-accent);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Legend */
+.llmsider-dag-legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--background-modifier-border);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.llmsider-dag-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.llmsider-dag-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid;
+}
+
+.llmsider-dag-legend-dot.pending {
+    border-color: var(--text-muted);
+}
+
+.llmsider-dag-legend-dot.executing {
+    border-color: var(--interactive-accent);
+    background: var(--interactive-accent);
+}
+
+.llmsider-dag-legend-dot.completed {
+    border-color: var(--text-success);
+    background: var(--text-success);
+}
+
+.llmsider-dag-legend-dot.failed {
+    border-color: var(--text-error);
+    background: var(--text-error);
+}
+
+/* Expand/Collapse */
+.llmsider-dag-expand-button {
+    padding: 4px 8px;
+    font-size: 11px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.llmsider-dag-expand-button:hover {
+    background: var(--background-primary-alt);
+    border-color: var(--interactive-accent);
+    color: var(--text-normal);
+}
+
+.llmsider-dag-graph.collapsed {
+    max-height: 0;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+}

@@ -1,0 +1,776 @@
+/* diff.css - Part of LLMSider Plugin Styles
+   This file is auto-generated from styles.css
+   Do not edit directly - edit the source modules instead
+*/
+
+/* ============================================================================
+   Diff Visualization Styles
+   ============================================================================ */
+
+/* Inline Diff Styles - Enhanced for fine-grained inline changes */
+.llmsider-inline-diff-content {
+    line-height: 1.8;
+    font-size: 14px;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+    padding: 16px 20px;
+    background: var(--background-primary) !important;
+    border-radius: 8px;
+    margin: 12px 0;
+    overflow: visible;
+    max-height: none;
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.llmsider-inline-diff-container {
+    background: var(--background-primary) !important;
+    border-radius: 8px;
+    margin: 12px 0;
+    border: 1px solid var(--background-modifier-border);
+    overflow: visible;
+    max-height: none;
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Added text styling - inline additions with subtle highlighting */
+.llmsider-diff-added-inline {
+    color: var(--text-success) !important;
+    background: rgba(46, 213, 115, 0.18) !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+    font-weight: 500 !important;
+    border-bottom: 2px solid rgba(46, 213, 115, 0.5) !important;
+    box-shadow: 0 1px 2px rgba(46, 213, 115, 0.1) !important;
+    margin: 0 1px;
+    display: inline;
+    position: relative;
+}
+
+.llmsider-diff-added-inline::before {
+    content: '+';
+    position: absolute;
+    left: -12px;
+    font-size: 10px;
+    color: var(--text-success);
+    font-weight: bold;
+    opacity: 0.6;
+}
+
+/* Removed text styling - inline deletions with strikethrough */
+.llmsider-diff-removed-inline {
+    color: var(--text-error) !important;
+    background: rgba(255, 71, 87, 0.15) !important;
+    text-decoration: line-through !important;
+    text-decoration-color: var(--text-error) !important;
+    text-decoration-thickness: 2px !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+    font-weight: 500 !important;
+    border-bottom: 2px solid rgba(255, 71, 87, 0.4) !important;
+    box-shadow: 0 1px 2px rgba(255, 71, 87, 0.1) !important;
+    opacity: 0.85;
+    margin: 0 1px;
+    display: inline;
+    position: relative;
+}
+
+.llmsider-diff-removed-inline::before {
+    content: '−';
+    position: absolute;
+    left: -12px;
+    font-size: 10px;
+    color: var(--text-error);
+    font-weight: bold;
+    opacity: 0.6;
+}
+
+/* Context text styling - unchanged text */
+.llmsider-diff-context-inline {
+    color: var(--text-normal) !important;
+    background: transparent !important;
+    display: inline;
+}
+
+/* Optional separator for replacements */
+.llmsider-diff-separator {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin: 0 4px;
+    opacity: 0.7;
+    font-weight: 600;
+}
+
+.llmsider-diff-block {
+    margin: 12px 0;
+    border: 1px solid #333333;
+    border-radius: 8px;
+    background: #1a1a1a;
+    padding: 12px;
+    overflow: visible;
+    word-wrap: break-word;
+}
+
+.llmsider-inline-diff {
+    line-height: 1.6;
+    font-size: 14px;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.llmsider-char-context {
+    color: #ffffff;
+    background: transparent;
+}
+
+.llmsider-char-removed {
+    color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.1);
+    text-decoration: line-through;
+    text-decoration-color: #ff6b6b;
+    text-decoration-thickness: 2px;
+}
+
+.llmsider-char-added {
+    color: #51cf66;
+    background: rgba(81, 207, 102, 0.1);
+    font-weight: 500;
+}
+
+.llmsider-hunk-separator {
+    display: block;
+    height: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 8px 0;
+    opacity: 0.6;
+}
+
+/* Legacy Diff Styles */
+.llmsider-diff-changes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 100%;
+}
+
+.llmsider-diff-hunk {
+    padding: 6px 10px;
+    background: #2c4b84;
+    color: #cce0ff;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+}
+
+.llmsider-diff-removed {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(255, 100, 100, 0.1);
+    border-left: 3px solid #ff6464;
+    border-radius: 4px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+.llmsider-diff-deleted-text {
+    text-decoration: line-through;
+    color: #ff9999;
+    font-style: italic;
+    flex: 1;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    line-height: 1.3;
+}
+
+.llmsider-diff-added {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(100, 255, 100, 0.1);
+    border-left: 3px solid #64ff64;
+    border-radius: 4px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+.llmsider-diff-added-text {
+    color: #99ff99;
+    background: rgba(100, 255, 100, 0.2);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: 500;
+    flex: 1;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    line-height: 1.3;
+}
+
+.llmsider-diff-context {
+    padding: 2px 8px;
+    color: #cccccc;
+    font-size: 13px;
+    opacity: 0.8;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    line-height: 1.3;
+}
+
+.llmsider-diff-symbol {
+    flex-shrink: 0;
+    font-size: 12px;
+    margin-left: 4px;
+    opacity: 0.8;
+}
+
+.llmsider-diff-summary {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: rgba(0, 122, 255, 0.1);
+    border: 1px solid rgba(0, 122, 255, 0.3);
+    border-radius: 6px;
+    color: #88ccff;
+    font-size: 13px;
+    line-height: 1.4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Unified Diff Visualization */
+.llmsider-unified-diff-container {
+    margin: 12px 0;
+    border: 1px solid #333333;
+    border-radius: 8px;
+    background: #1a1a1a;
+    overflow: hidden;
+}
+
+.llmsider-diff-header {
+    padding: 12px 16px;
+    background: #2c2c2e;
+    border-bottom: 1px solid #333333;
+}
+
+.llmsider-diff-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.llmsider-diff-content {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    background: #1a1a1a;
+    overflow-x: auto;
+}
+
+.llmsider-diff-line {
+    padding: 2px 16px;
+    white-space: pre;
+    border-left: 4px solid transparent;
+    margin: 0;
+}
+
+.llmsider-diff-hunk-header {
+    background: #2c4b84;
+    color: #cce0ff;
+    font-weight: 600;
+    border-left-color: #007AFF;
+}
+
+.llmsider-diff-deleted {
+    background: rgba(255, 107, 107, 0.1);
+    color: #ff6b6b;
+    border-left-color: #ff6b6b;
+}
+
+.llmsider-diff-added {
+    background: rgba(81, 207, 102, 0.1);
+    color: #51cf66;
+    border-left-color: #51cf66;
+}
+
+.llmsider-diff-context {
+    color: #cccccc;
+    background: transparent;
+}
+
+.llmsider-diff-actions {
+    padding: 12px 16px;
+    background: #2c2c2e;
+    border-top: 1px solid #333333;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.llmsider-preview-toggle {
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #333333;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-preview-toggle:hover {
+    background: #333333;
+    border-color: #555555;
+}
+
+.llmsider-apply-diff-btn {
+    background: #007AFF;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-apply-diff-btn:hover {
+    background: #0056CC;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.llmsider-diff-preview {
+    margin-top: 16px;
+    padding: 16px;
+    background: #000000;
+    border-radius: 8px;
+    border: 1px solid #333333;
+}
+
+.llmsider-preview-original,
+.llmsider-preview-modified {
+    margin-bottom: 16px;
+}
+
+.llmsider-preview-original:last-child,
+.llmsider-preview-modified:last-child {
+    margin-bottom: 0;
+}
+
+.llmsider-preview-original h5,
+.llmsider-preview-modified h5 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.llmsider-preview-original h5 {
+    color: #ff6b6b;
+}
+
+.llmsider-preview-modified h5 {
+    color: #51cf66;
+}
+
+.llmsider-preview-content {
+    margin: 0;
+    padding: 12px;
+    background: #2c2c2e;
+    border: 1px solid #333333;
+    border-radius: 6px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #ffffff;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* JSDiff Modern Tabbed Interface - Updated for better theme integration */
+.llmsider-jsdiff-container {
+    margin: 12px 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background: var(--background-secondary);
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    max-height: 40vh !important;
+    overflow-y: auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.llmsider-diff-header {
+    padding: 12px 16px;
+    background: var(--background-primary-alt);
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-diff-title {
+    margin: 0 0 6px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-normal);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-diff-summary {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin: 0;
+}
+
+.llmsider-diff-tabs {
+    display: flex;
+    background: var(--background-primary);
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding: 0 12px;
+}
+
+.llmsider-diff-tab {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.llmsider-diff-tab:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.llmsider-diff-tab-active {
+    color: var(--interactive-accent) !important;
+    border-bottom-color: var(--interactive-accent);
+    background: var(--background-modifier-active-hover);
+}
+
+.llmsider-diff-tab-content {
+    min-height: 200px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.llmsider-diff-view {
+    display: none;
+    padding: 20px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.llmsider-diff-view-active {
+    display: flex;
+    flex-direction: column;
+}
+
+.llmsider-word-diff {
+    line-height: 1.8;
+    font-size: 14px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.llmsider-diff-added {
+    color: var(--text-success);
+    background: rgba(46, 213, 115, 0.15);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(46, 213, 115, 0.4);
+    margin: 0 1px;
+}
+
+.llmsider-diff-removed {
+    color: var(--text-error);
+    background: rgba(255, 71, 87, 0.12);
+    text-decoration: line-through;
+    text-decoration-color: var(--text-error);
+    text-decoration-thickness: 1.5px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(255, 71, 87, 0.3);
+    margin: 0 1px;
+    opacity: 0.8;
+}
+
+.llmsider-diff-context {
+    color: var(--text-normal);
+    background: transparent;
+}
+
+.llmsider-line-diff {
+    font-family: var(--font-monospace);
+    font-size: 13px;
+    line-height: 1.6;
+    background: var(--background-primary);
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+}
+
+.llmsider-diff-line {
+    padding: 3px 0;
+    white-space: pre;
+    margin: 0;
+    min-height: 1.6em;
+}
+
+.llmsider-diff-line-added {
+    background: rgba(46, 213, 115, 0.12);
+    color: var(--text-success);
+    border-left: 3px solid var(--text-success);
+    padding-left: 10px;
+    margin-left: -12px;
+    padding-right: 12px;
+    margin-right: -12px;
+}
+
+.llmsider-diff-line-removed {
+    background: rgba(255, 71, 87, 0.12);
+    color: var(--text-error);
+    border-left: 3px solid var(--text-error);
+    padding-left: 10px;
+    margin-left: -12px;
+    padding-right: 12px;
+    margin-right: -12px;
+    opacity: 0.8;
+}
+
+.llmsider-diff-line-context {
+    color: var(--text-muted);
+    background: transparent;
+    padding-left: 10px;
+}
+
+.llmsider-preview-comparison {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    height: 400px;
+}
+
+.llmsider-preview-section {
+    background: #000000;
+    border-radius: 8px;
+    border: 1px solid #333333;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.llmsider-preview-section h5 {
+    margin: 0;
+    padding: 12px 16px;
+    background: #2c2c2e;
+    border-bottom: 1px solid #333333;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.llmsider-preview-content {
+    flex: 1;
+    margin: 0;
+    padding: 16px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #ffffff;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-y: auto;
+    background: #000000;
+}
+
+.llmsider-diff-actions {
+    padding: 16px 20px;
+    background: #2c2c2e;
+    border-top: 1px solid #333333;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    min-height: 60px;
+    position: relative;
+    z-index: 1;
+}
+
+.llmsider-apply-changes-btn {
+    background: linear-gradient(135deg, #007AFF, #0056CC);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.llmsider-apply-changes-btn:hover {
+    background: linear-gradient(135deg, #0056CC, #003d99);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.4);
+}
+
+.llmsider-apply-changes-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.3);
+}
+
+.llmsider-no-changes {
+    padding: 40px 20px;
+    text-align: center;
+    color: #888888;
+    font-style: italic;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    margin: 16px;
+}
+
+/* Text wrapping for long content */
+.llmsider-diff-deleted-text,
+.llmsider-diff-added-text,
+.llmsider-diff-context,
+.llmsider-char-context,
+.llmsider-char-removed,
+.llmsider-char-added {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+/* Dark mode adjustments */
+.theme-dark .llmsider-diff-block {
+    background: var(--background-secondary);
+    border-color: var(--background-modifier-border);
+}
+
+.theme-dark .llmsider-char-context {
+    color: var(--text-normal);
+}
+
+.theme-dark .llmsider-char-removed {
+    color: var(--color-red-lighter);
+    background: rgba(var(--color-red-rgb), 0.1);
+    text-decoration-color: var(--color-red-lighter);
+}
+
+.theme-dark .llmsider-char-added {
+    color: var(--color-green-lighter);
+    background: rgba(var(--color-green-rgb), 0.1);
+}
+
+.theme-dark .llmsider-unified-diff-container {
+    background: var(--background-secondary);
+    border-color: var(--background-modifier-border);
+}
+
+.theme-dark .llmsider-jsdiff-container {
+    background: var(--background-secondary);
+    border-color: var(--background-modifier-border);
+}
+
+.theme-dark .llmsider-diff-header {
+    background: linear-gradient(135deg, var(--background-modifier-border), var(--background-secondary));
+    border-bottom-color: var(--background-modifier-border);
+}
+
+.theme-dark .llmsider-diff-title {
+    color: var(--text-normal);
+}
+
+.theme-dark .llmsider-diff-summary {
+    color: var(--text-muted);
+}
+
+.theme-dark .llmsider-diff-tabs {
+    background: var(--background-primary);
+    border-bottom-color: var(--background-modifier-border);
+}
+
+.theme-dark .llmsider-diff-tab {
+    color: var(--text-muted);
+}
+
+.theme-dark .llmsider-diff-tab:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.theme-dark .llmsider-diff-tab-active {
+    color: var(--interactive-accent) !important;
+    border-bottom-color: var(--interactive-accent);
+    background: rgba(var(--interactive-accent-rgb), 0.1);
+}
+
+.theme-dark .llmsider-no-changes {
+    color: var(--text-muted);
+    background: rgba(var(--background-modifier-border-rgb), 0.3);
+}
+
+/* Streaming Diff Styles */
+.llmsider-inline-diff-streaming {
+    background: rgba(251, 191, 36, 0.15) !important;
+    border-left: 3px solid rgb(251, 191, 36);
+    display: block;
+    padding: 4px 8px;
+    margin-top: 4px;
+}
+
+.llmsider-inline-diff-original-streaming {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+
+/* Fine-grained Diff Block */
+.llmsider-fine-grained-diff-block {
+    border: 2px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 4px;
+    background: var(--background-primary);
+}

@@ -1,0 +1,121 @@
+/* Selection Toolbar - Floating toolbar for selected text */
+
+.llmsider-selection-toolbar {
+    position: fixed;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10000;
+    pointer-events: auto;
+    align-items: center;
+    background: var(--background-primary);
+    padding: 2px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    box-shadow: none !important;
+    transform: translateY(-2px) scale(0.98);
+    backdrop-filter: none;
+    filter: none;
+}
+
+.llmsider-selection-btn {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-normal);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: none !important;
+    position: relative;
+}
+
+.llmsider-selection-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.llmsider-selection-btn:active {
+    transform: translateY(0) scale(0.95);
+    box-shadow: none;
+}
+
+.llmsider-selection-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2;
+}
+
+/* Subtle animation on toolbar appearance */
+@keyframes selectionToolbarFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Hover effects */
+.llmsider-selection-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 3px;
+    background: transparent;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: -1;
+}
+
+.llmsider-selection-btn:hover::before {
+    opacity: 0;
+}
+
+/* Theme-specific adjustments */
+.theme-dark .llmsider-selection-toolbar {
+    background: var(--background-primary);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: none;
+}
+
+.theme-light .llmsider-selection-toolbar {
+    background: var(--background-primary);
+    border-color: rgba(0, 0, 0, 0.12);
+    box-shadow: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .llmsider-selection-toolbar {
+        gap: 2px;
+        padding: 2px;
+    }
+
+    .llmsider-selection-btn {
+        width: 24px;
+        height: 24px;
+    }
+
+    .llmsider-selection-btn svg {
+        width: 12px;
+        height: 12px;
+    }
+}
+
+/* Accessibility: Focus styles */
+.llmsider-selection-btn:focus-visible {
+    outline: 2px solid var(--text-accent);
+    outline-offset: 2px;
+}

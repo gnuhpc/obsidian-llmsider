@@ -1,0 +1,80 @@
+# GitHub Pages Configuration for LLMSider
+
+# Site settings
+title: LLMSider
+description: Your Obsidian AI Copilot - Bringing the magic of GitHub Copilot directly into your knowledge workspace
+baseurl: "/obsidian-llmsider"
+url: "https://llmsider.github.io"
+
+# Build settings
+# theme: jekyll-theme-cayman
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+# Navigation
+header_pages:
+  - README.md
+  - docs/INDEX.md
+
+# Exclude from processing
+exclude:
+  - node_modules
+  - src
+  - scripts
+  - patches
+  - reference
+  - logs
+  - memory-data
+  - vector-data
+  - obsidian-llmsider
+  - .vscode
+  - .venv
+  - .claude
+  - .VSCodeCounter
+  - package.json
+  - package-lock.json
+  - tsconfig.json
+  - esbuild.config.mjs
+  - postcss.config.js
+  - manifest.json
+  - versions.json
+  - mcp-config.json
+  - config.db
+  - "*.wasm"
+  - "*.js"
+  - "*.css"
+  - .gitignore
+  - .gitattributes
+  - .npmrc
+  - CHANGELOG-EASTMONEY-REMOVAL.md
+  - I18N_FIXES.md
+  - INITIAL.md
+  - 东方财富工具移除总结.md
+  - 速读功能改进总结.md
+
+# Include documentation
+include:
+  - docs
+  - README.md
+  - README.zh-CN.md
+  - LICENSE
+
+# Plugins
+plugins:
+  - jekyll-relative-links
+  - jekyll-sitemap
+  - jekyll-seo-tag
+
+# Relative links settings
+relative_links:
+  enabled: true
+  collections: true
+
+# Default front matter
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
