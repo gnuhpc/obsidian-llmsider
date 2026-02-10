@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-llmsider",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "AI Copilot for Obsidian - Brings VS Code Copilot-like capabilities with multi-LLM support, Action/Ask modes, and MCP integration.",
 	"main": "main.js",
 	"scripts": {

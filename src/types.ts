@@ -407,7 +407,9 @@ export interface PromptTemplate {
   lastUsed?: number; // Optional timestamp of last usage
   searchKeywords?: string[]; // For cross-language search (optional)
   usageCount?: number; // Number of times the prompt has been used
-  pinned?: boolean; // Whether the prompt is pinned
+  pinned?: boolean;
+  isUserModified?: boolean;
+  isDeleted?: boolean;
 }
 
 // ============================================================================

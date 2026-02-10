@@ -284,7 +284,11 @@ export class ConfigDatabase {
                 order_index INTEGER NOT NULL DEFAULT 999,
                 last_used INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
-                updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
+                updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+                usage_count INTEGER NOT NULL DEFAULT 0,
+                pinned INTEGER NOT NULL DEFAULT 0,
+                is_user_modified INTEGER NOT NULL DEFAULT 0,
+                is_deleted INTEGER NOT NULL DEFAULT 0
             )
         `);
 
@@ -306,6 +310,14 @@ export class ConfigDatabase {
                 if (!columns.includes('pinned')) {
                     this.db.run("ALTER TABLE prompt_templates ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
                     Logger.info("Added pinned column to prompt_templates table");
+                }
+                if (!columns.includes('is_user_modified')) {
+                    this.db.run("ALTER TABLE prompt_templates ADD COLUMN is_user_modified INTEGER NOT NULL DEFAULT 0");
+                    Logger.info("Added is_user_modified column to prompt_templates table");
+                }
+                if (!columns.includes('is_deleted')) {
+                    this.db.run("ALTER TABLE prompt_templates ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0");
+                    Logger.info("Added is_deleted column to prompt_templates table");
                 }
             }
         } catch (e) {
@@ -383,94 +395,66 @@ export class ConfigDatabase {
             // Get built-in prompts with i18n support
             const builtInPrompts = getBuiltInPrompts();
             
-            // Check current count of built-in prompts in database
-            const countResult = this.db.exec('SELECT COUNT(*) as count FROM prompt_templates WHERE is_built_in = 1');
+            const countResult = this.db.exec('SELECT COUNT(*) as count FROM prompt_templates WHERE is_built_in = 1 AND is_deleted = 0');
             const dbCount = countResult.length > 0 && countResult[0].values.length > 0 
                 ? Number(countResult[0].values[0][0]) 
                 : 0;
             
             const codeCount = builtInPrompts.length;
             
-            Logger.debug(`Built-in prompts - Database: ${dbCount}, Code: ${codeCount}`);
+            Logger.debug(`Built-in prompts - Database (active): ${dbCount}, Code: ${codeCount}`);
             
-            // Check if counts match
-            if (dbCount === codeCount) {
-                Logger.debug('Built-in prompts count matches, updating translations only...');
-                // Only update translations, not full upsert
-                const updateStmt = this.db.prepare(`
-                    UPDATE prompt_templates 
-                    SET title = ?, content = ?, description = ?, updated_at = ?
-                    WHERE id = ? AND is_built_in = 1
-                `);
-                
-                const now = Date.now();
-                for (const prompt of builtInPrompts) {
-                    updateStmt.bind([
-                        prompt.title,
-                        prompt.content,
-                        prompt.description || '',
-                        now,
-                        prompt.id
-                    ]);
-                    updateStmt.step();
-                    updateStmt.reset();
+            const updateStmt = this.db.prepare(`
+                UPDATE prompt_templates 
+                SET title = ?, content = ?, description = ?, updated_at = ?
+                WHERE id = ? AND is_built_in = 1 AND is_user_modified = 0 AND is_deleted = 0
+            `);
+            
+            const now = Date.now();
+            let translationUpdateCount = 0;
+            for (const prompt of builtInPrompts) {
+                updateStmt.bind([
+                    prompt.title,
+                    prompt.content,
+                    prompt.description || '',
+                    now,
+                    prompt.id
+                ]);
+                const result = updateStmt.step();
+                if (result) translationUpdateCount++;
+                updateStmt.reset();
+            }
+            updateStmt.free();
+            Logger.debug(`Updated translations for ${translationUpdateCount} built-in prompts`);
+
+            const upsertStmt = this.db.prepare(`
+                INSERT INTO prompt_templates (id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted, created_at, updated_at)
+                SELECT ?, ?, ?, ?, 1, ?, 0, 0, 0, 0, 0, ?, ?
+                WHERE NOT EXISTS (SELECT 1 FROM prompt_templates WHERE id = ?)
+            `);
+            
+            let newCount = 0;
+            for (const prompt of builtInPrompts) {
+                upsertStmt.bind([
+                    prompt.id,
+                    prompt.title,
+                    prompt.content,
+                    prompt.description || '',
+                    prompt.order,
+                    now,
+                    now,
+                    prompt.id
+                ]);
+                upsertStmt.step();
+                upsertStmt.reset();
+                if (this.db.exec('SELECT changes()')[0].values[0][0] as number > 0) {
+                    newCount++;
                 }
-                updateStmt.free();
-                Logger.debug(`Updated translations for ${codeCount} built-in prompts`);
-            } else {
-                // Counts don't match - perform incremental import
-                Logger.debug('Built-in prompts count mismatch - performing incremental import...');
-                
-                // Use INSERT OR REPLACE to handle both new prompts and updates
-                // This ensures new prompts are added while existing ones are updated with current translations
-                const upsertStmt = this.db.prepare(`
-                    INSERT OR REPLACE INTO prompt_templates (id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, created_at, updated_at)
-                    VALUES (
-                        ?,
-                        ?,
-                        ?,
-                        ?,
-                        1,
-                        ?,
-                        COALESCE((SELECT last_used FROM prompt_templates WHERE id = ?), 0),
-                        COALESCE((SELECT usage_count FROM prompt_templates WHERE id = ?), 0),
-                        COALESCE((SELECT pinned FROM prompt_templates WHERE id = ?), 0),
-                        COALESCE((SELECT created_at FROM prompt_templates WHERE id = ?), strftime('%s', 'now') * 1000),
-                        strftime('%s', 'now') * 1000
-                    )
-                `);
-                
-                let newCount = 0;
-                let updatedCount = 0;
-                
-                for (const prompt of builtInPrompts) {
-                    // Check if prompt exists
-                    const existsResult = this.db.exec(`SELECT id FROM prompt_templates WHERE id = '${prompt.id}'`);
-                    const exists = existsResult.length > 0 && existsResult[0].values.length > 0;
-                    
-                    upsertStmt.bind([
-                        prompt.id,
-                        prompt.title,
-                        prompt.content,
-                        prompt.description || '',
-                        prompt.order,
-                        prompt.id,  // For COALESCE last_used check
-                        prompt.id,  // For COALESCE usage_count check
-                        prompt.id,  // For COALESCE pinned check
-                        prompt.id   // For COALESCE created_at check
-                    ]);
-                    upsertStmt.step();
-                    upsertStmt.reset();
-                    
-                    if (exists) {
-                        updatedCount++;
-                    } else {
-                        newCount++;
-                    }
-                }
-                
-                upsertStmt.free();
-                Logger.debug(`Incremental import complete - New: ${newCount}, Updated: ${updatedCount}, Total: ${codeCount}`);
+            }
+            upsertStmt.free();
+            
+            if (newCount > 0) {
+                Logger.debug(`Imported ${newCount} new built-in prompts`);
             }
             
             // Save changes to file
@@ -498,7 +482,7 @@ export class ConfigDatabase {
             const updateStmt = this.db.prepare(`
                 UPDATE prompt_templates 
                 SET title = ?, content = ?, description = ?, updated_at = ?
-                WHERE id = ? AND is_built_in = 1
+                WHERE id = ? AND is_built_in = 1 AND is_user_modified = 0 AND is_deleted = 0
             `);
             
             const now = Date.now();
@@ -726,8 +710,9 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted
             FROM prompt_templates
+            WHERE is_deleted = 0
             ORDER BY pinned DESC, usage_count DESC, order_index ASC, title ASC
         `);
 
@@ -751,6 +736,8 @@ export class ConfigDatabase {
             lastUsed: row.last_used as number,
             usageCount: Number(row.usage_count || 0),
             pinned: Boolean(row.pinned),
+            isUserModified: Boolean(row.is_user_modified),
+            isDeleted: Boolean(row.is_deleted),
             searchKeywords: keywordsMap.get(row.id as string) || []
         }));
     }
@@ -760,9 +747,9 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted
             FROM prompt_templates
-            WHERE id = ?
+            WHERE id = ? AND is_deleted = 0
         `);
         stmt.bind([id]);
 
@@ -784,6 +771,8 @@ export class ConfigDatabase {
                 lastUsed: row.last_used as number,
                 usageCount: Number(row.usage_count || 0),
                 pinned: Boolean(row.pinned),
+                isUserModified: Boolean(row.is_user_modified),
+                isDeleted: Boolean(row.is_deleted),
                 searchKeywords: foundPrompt?.searchKeywords || []
             };
         }
@@ -826,6 +815,18 @@ export class ConfigDatabase {
         if (updates.pinned !== undefined) {
             setClause.push('pinned = ?');
             values.push(updates.pinned ? 1 : 0);
+        }
+
+        if (updates.title !== undefined || updates.content !== undefined || updates.description !== undefined) {
+            const checkStmt = this.db.prepare('SELECT is_built_in FROM prompt_templates WHERE id = ?');
+            checkStmt.bind([id]);
+            if (checkStmt.step()) {
+                const row = checkStmt.getAsObject();
+                if (row.is_built_in === 1) {
+                    setClause.push('is_user_modified = 1');
+                }
+            }
+            checkStmt.free();
         }
 
         if (setClause.length === 0) {
@@ -891,8 +892,22 @@ export class ConfigDatabase {
         await this.ensureInitialized();
         if (!this.db) throw new Error('Database not initialized');
 
-        const stmt = this.db.prepare('DELETE FROM prompt_templates WHERE id = ?');
-        stmt.run([id]);
+        const checkStmt = this.db.prepare('SELECT is_built_in FROM prompt_templates WHERE id = ?');
+        checkStmt.bind([id]);
+        let isBuiltIn = false;
+        if (checkStmt.step()) {
+            const row = checkStmt.getAsObject();
+            isBuiltIn = row.is_built_in === 1;
+        }
+        checkStmt.free();
+
+        if (isBuiltIn) {
+            const stmt = this.db.prepare('UPDATE prompt_templates SET is_deleted = 1 WHERE id = ?');
+            stmt.run([id]);
+        } else {
+            const stmt = this.db.prepare('DELETE FROM prompt_templates WHERE id = ?');
+            stmt.run([id]);
+        }
         await this.saveToFile();
     }
 
@@ -960,9 +975,9 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted
             FROM prompt_templates
-            WHERE is_built_in = 1
+            WHERE is_built_in = 1 AND is_deleted = 0
             ORDER BY pinned DESC, usage_count DESC, order_index ASC, title ASC
         `);
 
@@ -986,6 +1001,8 @@ export class ConfigDatabase {
             lastUsed: row.last_used as number,
             usageCount: Number(row.usage_count || 0),
             pinned: Boolean(row.pinned),
+            isUserModified: Boolean(row.is_user_modified),
+            isDeleted: Boolean(row.is_deleted),
             searchKeywords: keywordsMap.get(row.id as string) || []
         }));
     }
@@ -995,9 +1012,9 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted
             FROM prompt_templates
-            WHERE is_built_in = 0
+            WHERE is_built_in = 0 AND is_deleted = 0
             ORDER BY order_index ASC, title ASC
         `);
 
@@ -1014,7 +1031,11 @@ export class ConfigDatabase {
             description: row.description as string || undefined,
             isBuiltIn: false,
             order: row.order_index as number,
-            lastUsed: row.last_used as number
+            lastUsed: row.last_used as number,
+            usageCount: Number(row.usage_count || 0),
+            pinned: Boolean(row.pinned),
+            isUserModified: Boolean(row.is_user_modified),
+            isDeleted: Boolean(row.is_deleted)
         }));
     }
 
@@ -1352,7 +1373,7 @@ export class ConfigDatabase {
                 );
             }
             
-            this.scheduleSave();
+            await this.saveToFile();
         } catch (error) {
             Logger.error('Failed to add prompt history:', error);
         }
@@ -1403,7 +1424,7 @@ export class ConfigDatabase {
                 )`,
                 [keepCount]
             );
-            this.scheduleSave();
+            await this.saveToFile();
         } catch (error) {
             Logger.error('Failed to clean prompt history:', error);
         }
