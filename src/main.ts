@@ -37,6 +37,16 @@ import { SimilarNotesViewManager } from './ui/similar-notes-manager';
 import { memoryMonitor } from './utils/memory-monitor';
 import { OpenCodeServerManager } from './utils/opencode-server-manager';
 
+type UpdateCheckResult = {
+	hasUpdate: boolean;
+	latestVersion: string;
+	currentVersion: string;
+	releaseTag?: string;
+	releaseUrl?: string;
+	changelog?: string;
+	error?: string;
+};
+
 export default class LLMSiderPlugin extends Plugin {
 	settings!: LLMSiderSettings;
 	providers: Map<string, BaseLLMProvider> = new Map();
@@ -159,6 +169,34 @@ export default class LLMSiderPlugin extends Plugin {
 
 			// Initialize GitHub Token Refresh Service
 			await this.initializeGitHubTokenRefreshService();
+
+			// Register file-open event listener
+			this.registerEvent(
+				this.app.workspace.on('file-open', async (file) => {
+					if (this.similarNotesManager && file) {
+						this.similarNotesManager.onFileOpen(file);
+					}
+					
+					if (this.settings.contextSettings?.autoAddActiveNote && file && file.extension === 'md') {
+						const chatView = this.getChatView();
+						if (chatView && (chatView as any).contextManager) {
+							const contextManager = (chatView as any).contextManager;
+							
+							const existingNotes = contextManager.getCurrentNoteContext();
+							for (const note of existingNotes) {
+								contextManager.removeNoteContext(note.name);
+							}
+							
+							await contextManager.addFileToContext(file);
+							this.lastAutoAddedNotePath = file.path;
+							
+							if ((chatView as any).updateContextDisplay) {
+								(chatView as any).updateContextDisplay();
+							}
+						}
+					}
+				})
+			);
 
 			// Only initialize Vector Database if explicitly enabled OR if memory features need it
 			// This reduces startup memory usage
@@ -498,17 +536,13 @@ export default class LLMSiderPlugin extends Plugin {
 
 	private async checkForUpdates(): Promise<void> {
 		const result = await this.checkForUpdatesWithResult();
-		if (result.hasUpdate) {
-			const message = this.i18n.t('notifications.plugin.updateAvailable', { version: result.latestVersion })
-				|| `Update available: v${result.latestVersion}. Open BRAT and click Upgrade.`;
-			new Notice(message, 8000);
-		}
+		await this.promptForUpdateIfAvailable(result, false);
 	}
 
 	/**
 	 * Check for updates and return the result (for settings UI)
 	 */
-	async checkForUpdatesWithResult(): Promise<{ hasUpdate: boolean; latestVersion: string; currentVersion: string; error?: string }> {
+	async checkForUpdatesWithResult(): Promise<UpdateCheckResult> {
 		const currentVersion = this.normalizeVersion(this.manifest?.version || '0.0.0');
 		try {
 			const response = await requestUrl({
@@ -525,17 +559,49 @@ export default class LLMSiderPlugin extends Plugin {
 
 			const latestVersion = this.normalizeVersion(latestTag);
 			const hasUpdate = this.isNewerVersion(latestVersion, currentVersion);
-			
-			if (hasUpdate && this.settings.updateSettings.lastNotifiedVersion !== latestVersion) {
-				this.settings.updateSettings.lastNotifiedVersion = latestVersion;
-				await this.saveSettings();
-			}
-			
-			return { hasUpdate, latestVersion, currentVersion };
+			const releaseUrl = response?.json?.html_url || `https://github.com/gnuhpc/obsidian-llmsider/releases/tag/${latestTag}`;
+			const changelog = typeof response?.json?.body === 'string' ? response.json.body : undefined;
+			return {
+				hasUpdate,
+				latestVersion,
+				currentVersion,
+				releaseTag: latestTag,
+				releaseUrl,
+				changelog
+			};
 		} catch (error) {
 			Logger.debug('[UpdateCheck] Failed to check releases:', error);
 			return { hasUpdate: false, latestVersion: currentVersion, currentVersion, error: String(error) };
 		}
+	}
+
+	async promptForUpdateIfAvailable(result: UpdateCheckResult, forcePrompt: boolean): Promise<boolean> {
+		if (!result.hasUpdate) {
+			return false;
+		}
+
+		const shouldPrompt = forcePrompt
+			|| this.settings.updateSettings.lastNotifiedVersion !== result.latestVersion;
+
+		if (!shouldPrompt) {
+			return false;
+		}
+
+		this.settings.updateSettings.lastNotifiedVersion = result.latestVersion;
+		await this.saveSettings();
+
+		const updateInfo: UpdateInfo = {
+			currentVersion: result.currentVersion,
+			latestVersion: result.latestVersion,
+			releaseUrl: result.releaseUrl || 'https://github.com/gnuhpc/obsidian-llmsider/releases',
+			changelog: result.changelog
+		};
+
+		const modal = new UpdateConfirmModal(this.app, this.i18n, updateInfo, async () => {
+			await this.performUpdate(result.latestVersion, result.releaseTag);
+		});
+		modal.open();
+		return true;
 	}
 
 	private normalizeVersion(version: string): string {
@@ -555,14 +621,25 @@ export default class LLMSiderPlugin extends Plugin {
 		return false;
 	}
 
-	async downloadAndInstallUpdate(version: string): Promise<void> {
+	async downloadAndInstallUpdate(version: string, releaseTag?: string): Promise<void> {
 		const pluginId = this.manifest?.id || 'llmsider';
-		const pluginDir = this.app.vault.configDir + '/plugins/' + pluginId;
+		const pluginDir = this.manifest?.dir || (this.app.vault.configDir + '/plugins/' + pluginId);
+		const downloadTag = releaseTag || version;
 		
-		const downloadUrl = `https://github.com/gnuhpc/obsidian-llmsider/releases/download/${version}`;
+		const downloadUrl = `https://github.com/gnuhpc/obsidian-llmsider/releases/download/${downloadTag}`;
 		const filesToDownload = ['main.js', 'manifest.json', 'styles.css'];
 		
-		Logger.info(`[Update] Downloading version ${version}`);
+		Logger.info(`[Update] Downloading version ${downloadTag}`);
+
+		try {
+			if (!await this.app.vault.adapter.exists(pluginDir)) {
+				await this.app.vault.adapter.mkdir(pluginDir);
+				Logger.debug(`[Update] Created plugin directory: ${pluginDir}`);
+			}
+		} catch (error) {
+			Logger.error('[Update] Failed to create plugin directory:', error);
+			throw new Error(`Failed to create plugin directory: ${error}`);
+		}
 		
 		for (const filename of filesToDownload) {
 			try {
@@ -592,7 +669,7 @@ export default class LLMSiderPlugin extends Plugin {
 			}
 		}
 		
-		Logger.info(`[Update] Successfully downloaded all files for version ${version}`);
+		Logger.info(`[Update] Successfully downloaded all files for version ${downloadTag}`);
 		new Notice(this.i18n.t('ui.updateDownloaded'));
 	}
 
@@ -615,9 +692,9 @@ export default class LLMSiderPlugin extends Plugin {
 		}
 	}
 
-	async performUpdate(version: string): Promise<void> {
+	async performUpdate(version: string, releaseTag?: string): Promise<void> {
 		try {
-			await this.downloadAndInstallUpdate(version);
+			await this.downloadAndInstallUpdate(version, releaseTag);
 			
 			await new Promise(resolve => setTimeout(resolve, 1000));
 			
@@ -1436,34 +1513,6 @@ export default class LLMSiderPlugin extends Plugin {
 						this.app.workspace
 					);
 
-			// Register file-open event listener
-			this.registerEvent(
-				this.app.workspace.on('file-open', async (file) => {
-					if (this.similarNotesManager && file) {
-						this.similarNotesManager.onFileOpen(file);
-					}
-					
-					if (this.settings.contextSettings?.autoAddActiveNote && file && file.extension === 'md') {
-						const chatView = this.getChatView();
-						if (chatView && (chatView as any).contextManager) {
-							const contextManager = (chatView as any).contextManager;
-							
-							const existingNotes = contextManager.getCurrentNoteContext();
-							for (const note of existingNotes) {
-								contextManager.removeNoteContext(note.name);
-							}
-							
-							await contextManager.addFileToContext(file);
-							this.lastAutoAddedNotePath = file.path;
-							
-							if ((chatView as any).updateContextDisplay) {
-								(chatView as any).updateContextDisplay();
-							}
-						}
-					}
-				})
-			);
-
 				// Removed: Auto-trigger for currently open file to prevent startup vector generation
 				// const activeFile = this.app.workspace.getActiveFile();
 				// if (activeFile) {
@@ -1912,6 +1961,34 @@ export default class LLMSiderPlugin extends Plugin {
 		}
 
 		return providers;
+	}
+
+	/**
+	 * Get configured providers (connection + model) regardless of initialization
+	 */
+	getConfiguredProvidersWithNames(): Array<{ id: string; name: string; connectionId?: string; modelId?: string }> {
+		const { ProviderFactory } = require('./utils/provider-factory');
+		const providers: Array<{ id: string; name: string; connectionId?: string; modelId?: string }> = [];
+
+		const combinations = ProviderFactory.getValidProviderCombinations(
+			this.settings.connections,
+			this.settings.models
+		);
+
+		for (const { connection, model } of combinations) {
+			providers.push({
+				id: ProviderFactory.generateProviderId(connection.id, model.id),
+				name: ProviderFactory.getProviderDisplayName(connection, model),
+				connectionId: connection.id,
+				modelId: model.id
+			});
+		}
+
+		return providers;
+	}
+
+	hasConfiguredProviders(): boolean {
+		return this.getConfiguredProvidersWithNames().length > 0;
 	}
 
 	/**

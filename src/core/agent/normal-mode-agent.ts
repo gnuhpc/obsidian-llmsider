@@ -24,7 +24,6 @@ import { MastraAgent, MastraAgentConfig } from './mastra-agent';
 import { MemoryManager } from './memory-manager';
 import type { ContextManager } from '../context-manager';
 import { TokenManager } from '../../utils/token-manager';
-import type { CoreMessage } from '@mastra/core';
 
 /**
  * Configuration for Normal Mode Agent
@@ -49,9 +48,9 @@ export interface NormalModeExecuteOptions {
 	/** Abort controller for cancellation */
 	abortController?: AbortController;
 	/** Callback for streaming updates */
-	onStream?: (chunk: string) => void;
+	onStream?: (chunk: unknown) => void;
 	/** Callback for complete response */
-	onComplete?: (response: string) => void;
+	onComplete?: (response: string, responseData?: unknown) => void;
 	/** Callback for errors */
 	onError?: (error: Error) => void;
 	/** Callback when compaction starts */
@@ -354,11 +353,11 @@ export class NormalModeAgent extends MastraAgent {
 			}
 		}
 		
-	// Phase 3: Call LLM with streaming
-		let fullResponse = '';
-		let responseStarted = false;
-		const accumulatedImages: any[] = [];
-		Logger.info('[NormalModeAgent] 🎯 Calling LLM with streaming...');
+		// Phase 3: Call LLM with streaming
+			let fullResponse = '';
+			let responseStarted = false;
+			const accumulatedImages: any[] = [];
+			Logger.info('[NormalModeAgent] 🎯 Calling LLM with streaming...');
 		
 		// Set thread ID on provider for session management (e.g. Free Qwen)
 
@@ -366,15 +365,16 @@ export class NormalModeAgent extends MastraAgent {
 			provider.setThreadId(threadId);
 		}
 
-		await provider.sendStreamingMessage(
-				conversationMessages,
-				(chunk: any) => {
-					// Handle streaming chunks - support both new (content) and old (delta) formats
-					const textContent = chunk.content || chunk.delta;
-					if (textContent) {
-						if (!responseStarted) {
-							responseStarted = true;
-						}
+			try {
+				await provider.sendStreamingMessage(
+					conversationMessages,
+					(chunk: any) => {
+						// Handle streaming chunks - support both new (content) and old (delta) formats
+						const textContent = chunk.content || chunk.delta;
+						if (textContent) {
+							if (!responseStarted) {
+								responseStarted = true;
+							}
 						
 						fullResponse += textContent;
 					}
@@ -395,10 +395,45 @@ export class NormalModeAgent extends MastraAgent {
 						options.onStream(streamChunk);
 					}
 				},
-				options.abortController?.signal,
-				undefined, // tools
-				combinedSystemMessage // systemMessage parameter
-			);
+					options.abortController?.signal,
+					undefined, // tools
+					combinedSystemMessage // systemMessage parameter
+				);
+			} catch (error) {
+				Logger.error('[NormalModeAgent] Streaming failed, attempting non-streaming fallback:', error);
+				
+				const message = error instanceof Error ? error.message : String(error);
+				const llmError = (error as any).llmError as { code?: string; message?: string } | undefined;
+				const shouldFallback = message.includes('AI_APICallError') ||
+					message.includes('Bad Request') ||
+					llmError?.code === 'HTTP_400' ||
+					llmError?.code === 'UNKNOWN_ERROR';
+				
+				if (!shouldFallback) {
+					throw error;
+				}
+				
+				const response = await provider.sendMessage(
+					conversationMessages,
+					undefined,
+					combinedSystemMessage
+				);
+				
+				fullResponse = response.content || '';
+				if (options.onStream && fullResponse) {
+					options.onStream({
+						delta: fullResponse,
+						content: fullResponse,
+						images: response.images
+					});
+				}
+				
+				if (options.onComplete) {
+					options.onComplete(fullResponse, response);
+				}
+				
+				return;
+			}
 			
 		// Phase 4: Memory is handled automatically by Mastra Agent
 		// The underlying Mastra agent saves messages automatically during execution

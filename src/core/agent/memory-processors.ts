@@ -6,8 +6,8 @@
  * optimize token usage during long conversations.
  */
 
-import { CoreMessage, MemoryProcessorOpts } from '@mastra/core';
-import { MemoryProcessor } from '@mastra/core/memory';
+import { CoreMessage } from '@mastra/core/llm';
+import { MemoryProcessor, MemoryProcessorOpts } from '@mastra/core/memory';
 import { generateText } from 'ai';
 import { Logger } from '../../utils/logger';
 import { TokenManager } from '../../utils/token-manager';
@@ -61,13 +61,13 @@ export interface CompactorConfig {
  * 3. Replaces the summarized messages with a compact system message
  * 4. Maintains conversation continuity and important context
  * 
- * Example usage:
+ * Example usage (agent input processors):
  * ```typescript
  * import { ConversationCompactor } from './memory-processors';
  * import { openai } from '@ai-sdk/openai';
  * 
- * const memory = new Memory({
- *   processors: [
+ * const agent = new Agent({
+ *   inputProcessors: [
  *     new ConversationCompactor({
  *       tokenThreshold: 8000,
  *       targetTokens: 4000,

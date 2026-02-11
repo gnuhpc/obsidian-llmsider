@@ -388,16 +388,16 @@ WHY BATCH MODE > for_each:
 ℹ️ NOTE: Content generation is AUTOMATICALLY handled by the system
 
 ✓ SIMPLIFIED WORKFLOW:
-  step1: create → System auto-generates content internally
+  step1: create_file → System auto-generates content internally
 
 ✗ DON'T EXPLICITLY PLAN:
   step1: generate_content → Not needed in plan
-  step2: create → Redundant step
+  step2: create_file → Redundant step
 
-WHY: The create tool automatically invokes content generation when needed.
+WHY: The create_file tool automatically invokes content generation when needed.
      Explicit generate_content steps add unnecessary complexity to plans.
 
-RULE: Just use create directly. System handles content generation automatically.
+RULE: Just use create_file directly. System handles content generation automatically.
 
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -467,7 +467,7 @@ OUTPUT:
     },
     {
       "step_id": "step6",
-      "tool": "create",
+      "tool": "create_file",
       "input": {"path": "Financial_Comparison.md", "file_text": "{{step5.content}}"},
       "outputSchema": {"type": "object", "properties": {"path": {"type": "string"}}},
       "reason": "Save comparison to file",
@@ -952,7 +952,7 @@ ${this.i18n.t('planExecute.finalAnswerPrompt.answerBasedOnResults')}`;
 		let taskDescription: string;
 		let instructions: string;
 		
-		if (toolName === 'create') {
+		if (toolName === 'create_file') {
 			taskDescription = this.i18n.t('planExecute.contentGeneration.contentGenerationTask');
 			instructions = this.i18n.t('planExecute.contentGeneration.contentGenerationInstructions');
 		} else if (toolName === 'insert') {
@@ -968,7 +968,7 @@ ${this.i18n.t('planExecute.finalAnswerPrompt.answerBasedOnResults')}`;
 
 		// Check if this is the final create step
 		const currentStepIndex = planSteps.findIndex((s: any) => s.step_id === (step as any).step_id);
-		const isFinalCreateStep = currentStepIndex === planSteps.length - 1 && toolName === 'create';
+		const isFinalCreateStep = currentStepIndex === planSteps.length - 1 && toolName === 'create_file';
 
 		if (isFinalCreateStep) {
 			// For final create step: focus on original user task with collected info as supporting context
@@ -1029,7 +1029,7 @@ ${instructions}
 6. ${this.i18n.t('planExecute.contentGeneration.requirement6')}
 7. ${this.i18n.t('planExecute.contentGeneration.requirement7')}
 
-			${toolName === 'create'
+			${toolName === 'create_file'
 				? this.i18n.t('planExecute.contentGeneration.generateCompleteContent')
 				: toolName === 'insert'
 				? this.i18n.t('planExecute.contentGeneration.generateInsertContent')

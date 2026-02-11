@@ -229,17 +229,17 @@ export const enUI = {
   
   // Free Qwen
   freeQwenTitle: 'Free Qwen Provider',
-  freeQwenDesc: 'This provider allows you to use Qwen models for free by using your browser authentication ticket.',
-  freeQwenHowToGetToken: 'How to get authentication ticket:',
-  freeQwenStep1: '1. Visit https://www.qianwen.com and login',
-  freeQwenStep2: '2. Open browser DevTools (F12)',
-  freeQwenStep3: '3. Go to Application or Storage tab',
-  freeQwenStep4: '4. In left menu, find Cookies > https://www.qianwen.com',
-  freeQwenStep5: '5. Find tongyi_sso_ticket or login_aliyunid_ticket',
-  freeQwenStep6: '6. Copy the cookie Value',
-  freeQwenNote: 'Note: Ticket expires. If you get authentication errors, obtain a new ticket.',
-  freeQwenApiKeyLabel: 'Authentication Ticket (tongyi_sso_ticket or login_aliyunid_ticket)',
-  freeQwenApiKeyPlaceholder: 'Paste your tongyi_sso_ticket or login_aliyunid_ticket',
+	freeQwenDesc: 'This provider allows you to use Qwen models for free by using your browser Cookie header.',
+	freeQwenHowToGetToken: 'How to get Cookie header:',
+	freeQwenStep1: '1. Visit https://www.qianwen.com and login',
+	freeQwenStep2: '2. Open browser DevTools (F12)',
+	freeQwenStep3: '3. Go to Network tab and pick a chat request',
+	freeQwenStep4: '4. In Headers, find Request Headers > Cookie',
+	freeQwenStep5: '5. Copy the entire Cookie header value',
+	freeQwenStep6: '6. Paste it here (Cookie: prefix is OK)',
+	freeQwenNote: 'Note: Cookies expire. If you get authentication errors, obtain a new Cookie header.',
+	freeQwenApiKeyLabel: 'Cookie (Request Header)',
+	freeQwenApiKeyPlaceholder: 'Paste your Cookie header value',
   
   // Free Gemini
   freeGeminiTitle: 'Free Gemini Provider',

@@ -229,17 +229,17 @@ export const zhUI = {
   
   // Free Qwen
   freeQwenTitle: 'Free Qwen Provider - 免费通义千问',
-  freeQwenDesc: '此提供商允许你通过浏览器认证票据免费使用通义千问模型。',
-  freeQwenHowToGetToken: '如何获取认证票据：',
-  freeQwenStep1: '1. 访问 https://www.qianwen.com 并登录',
-  freeQwenStep2: '2. 打开浏览器开发者工具（F12）',
-  freeQwenStep3: '3. 切换到 Application（应用）或 Storage（存储）选项卡',
-  freeQwenStep4: '4. 在左侧菜单找到 Cookies > https://www.qianwen.com',
-  freeQwenStep5: '5. 找到 tongyi_sso_ticket 或 login_aliyunid_ticket',
-  freeQwenStep6: '6. 复制该 cookie 的 Value 值',
-  freeQwenNote: '提示：票据会过期，如果遇到认证错误，请重新获取。',
-  freeQwenApiKeyLabel: '认证票据 (tongyi_sso_ticket 或 login_aliyunid_ticket)',
-  freeQwenApiKeyPlaceholder: '粘贴你的 tongyi_sso_ticket 或 login_aliyunid_ticket',
+	freeQwenDesc: '此提供商允许你通过浏览器 Cookie 头免费使用通义千问模型。',
+	freeQwenHowToGetToken: '如何获取 Cookie 头：',
+	freeQwenStep1: '1. 访问 https://www.qianwen.com 并登录',
+	freeQwenStep2: '2. 打开浏览器开发者工具（F12）',
+	freeQwenStep3: '3. 切换到 Network（网络）并选择任一对话请求',
+	freeQwenStep4: '4. 在 Headers 中找到 Request Headers > Cookie',
+	freeQwenStep5: '5. 复制完整的 Cookie 头内容',
+	freeQwenStep6: '6. 粘贴到这里（包含 Cookie: 前缀也可）',
+	freeQwenNote: '提示：Cookie 会过期，如果遇到认证错误，请重新获取。',
+	freeQwenApiKeyLabel: 'Cookie（请求头）',
+	freeQwenApiKeyPlaceholder: '粘贴你的 Cookie 头内容',
   
   // Free Gemini
   freeGeminiTitle: 'Free Gemini Provider - 免费 Gemini',

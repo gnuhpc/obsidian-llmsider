@@ -134,12 +134,13 @@ export class MemoryCoordinator {
 				
 				// Only query conversation history if it's enabled
 				if (this.plugin.settings.memorySettings.enableConversationHistory) {
-					Logger.debug('[Memory] 🔍 Calling memory.query() with:', { threadId, resourceId });
+					Logger.debug('[Memory] 🔍 Calling memory.recall() with:', { threadId, resourceId });
 					
 					try {
-						const result = await memory.query({
+						const result = await memory.recall({
 							threadId,
 							resourceId,
+							perPage: false,
 							threadConfig: {
 								workingMemory: { 
 									enabled: this.plugin.settings.memorySettings.enableWorkingMemory, 

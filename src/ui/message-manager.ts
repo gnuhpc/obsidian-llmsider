@@ -308,7 +308,7 @@ export class MessageManager {
 		// Logger.debug('showWelcomeMessage - welcome content added');
 
 		// Show error if no providers configured
-		if (this.plugin.getAvailableProviders().length === 0) {
+		if (!this.plugin.hasConfiguredProviders()) {
 			// Logger.debug('showWelcomeMessage - no providers available, showing warning');
 			const warning = welcome.createDiv({ cls: 'llmsider-warning' });
 			warning.createEl('p', {

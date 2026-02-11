@@ -8,31 +8,8 @@
  * issues with native storage modules in Electron/Obsidian environment.
  * Memory will be preserved during the Obsidian session but lost on restart.
  * 
- * ## Memory Processors
- * 
- * You can use custom processors to filter, transform, and compact messages before
- * they're sent to the LLM. See memory-processors.ts for available processors:
- * 
- * - ConversationCompactor: Intelligently summarizes old messages when token threshold exceeded
- * - ConversationOnlyFilter: Keeps only user/assistant messages
- * - RecentMessagesFilter: Truncates to N most recent messages
- * 
- * Example usage:
- * ```typescript
- * import { ConversationCompactor } from './memory-processors';
- * import { openai } from '@ai-sdk/openai';
- * 
- * const memory = new Memory({
- *   processors: [
- *     new ConversationCompactor({
- *       tokenThreshold: 8000,
- *       targetTokens: 4000,
- *       preserveRecentCount: 4,
- *       modelProvider: () => openai('gpt-4o-mini'),
- *     }),
- *   ],
- * });
- * ```
+ * Note: Memory processors are handled via agent input/output processors.
+ * Conversation compaction is applied before sending in guided/normal modes.
  */
 
 import { Memory } from '@mastra/memory';
@@ -276,9 +253,16 @@ export class MemoryManager {
 						const basePath = (this.plugin.app.vault.adapter as any).basePath || '';
 						const memoryStoragePath = `${basePath}/.obsidian/plugins/obsidian-llmsider/memory-data`;
 						
-						// Create Orama storage adapter with persistence and add to TOP LEVEL (not in options)
+						// Create Orama storage adapter with persistence
 						const storageAdapter = new OramaStorageAdapter(oramaManager, memoryStoragePath);
-						memoryOptions.storage = storageAdapter;
+						memoryOptions.storage = {
+							getStore: async (storeName: string) => (storeName === 'memory' ? storageAdapter : undefined),
+							init: async () => {
+								if (storageAdapter.init) {
+									await storageAdapter.init();
+								}
+							}
+						};
 						storageConfigured = true;
 					}
 				}
@@ -484,7 +468,14 @@ export class MemoryManager {
 				},
 			};
 			
-			memoryOptions.storage = inMemoryStorage;
+			memoryOptions.storage = {
+				getStore: async (storeName: string) => (storeName === 'memory' ? inMemoryStorage : undefined),
+				init: async () => {
+					if (inMemoryStorage.init) {
+						await inMemoryStorage.init();
+					}
+				}
+			};
 			Logger.debug('[MemoryManager] ✅ In-memory storage adapter configured');
 		}
 
@@ -507,95 +498,7 @@ export class MemoryManager {
 		if (config.enableConversationHistory) {
 			memoryOptions.options.lastMessages = config.conversationHistoryLimit;
 			
-			// Configure conversation compaction processor if enabled
-			if (config.enableCompaction) {
-				try {
-					const { ConversationCompactor } = require('./memory-processors');
-					
-					// Get model for compaction
-					let compactionModelProvider = null;
-					const compactionModelId = config.compactionModel;
-					
-					if (compactionModelId) {
-						// Parse connectionId::modelId
-						const [connId, modelId] = compactionModelId.split('::');
-						
-						// Find connection and model config
-						const connection = this.plugin.settings.connections.find(c => c.id === connId);
-						const modelConfig = this.plugin.settings.models.find(m => m.id === modelId);
-						
-						if (connection && modelConfig && connection.enabled && modelConfig.enabled) {
-							try {
-								// Get provider for this connection/model
-								const { ProviderFactory } = require('../../utils/provider-factory');
-								const providerId = ProviderFactory.generateProviderId(connection.id, modelConfig.id);
-								const provider = this.plugin.getProvider(providerId);
-								
-								if (provider) {
-									// Create a function that returns the AI SDK model
-									compactionModelProvider = () => (provider as any).model;
-									Logger.debug('[MemoryManager] 📝 Compaction model configured:', compactionModelId);
-								}
-							} catch (error) {
-								Logger.error('[MemoryManager] ❌ Failed to get compaction model provider:', error);
-							}
-						}
-					}
-					
-					// If no model specified or failed to get, use first available enabled model
-					if (!compactionModelProvider) {
-						const firstConnection = this.plugin.settings.connections.find(c => c.enabled);
-						if (firstConnection) {
-							const firstModel = this.plugin.settings.models.find(
-								m => m.connectionId === firstConnection.id && m.enabled && !m.isEmbedding
-							);
-							
-							if (firstModel) {
-								try {
-									const { ProviderFactory } = require('../../utils/provider-factory');
-									const providerId = ProviderFactory.generateProviderId(firstConnection.id, firstModel.id);
-									const provider = this.plugin.getProvider(providerId);
-									
-									if (provider) {
-										compactionModelProvider = () => (provider as any).model;
-										Logger.debug('[MemoryManager] 📝 Using first available model for compaction:', 
-											`${firstConnection.name} - ${firstModel.name}`);
-									}
-								} catch (error) {
-									Logger.error('[MemoryManager] ❌ Failed to get first available model:', error);
-								}
-							}
-						}
-					}
-					
-					if (compactionModelProvider) {
-						// Create ConversationCompactor processor
-						const compactor = new ConversationCompactor({
-							tokenThreshold: config.compactionThreshold || 65536,
-							targetTokens: config.compactionTarget || 4000,
-							preserveRecentCount: config.compactionPreserveCount || 4,
-							modelProvider: compactionModelProvider,
-						});
-						
-						// Add processor to memory options
-						if (!memoryOptions.processors) {
-							memoryOptions.processors = [];
-						}
-						memoryOptions.processors.push(compactor);
-						
-						Logger.debug('[MemoryManager] ✅ Conversation compaction enabled', {
-							threshold: config.compactionThreshold,
-							target: config.compactionTarget,
-							preserve: config.compactionPreserveCount,
-						});
-					} else {
-						Logger.warn('[MemoryManager] ⚠️  No model available for compaction, disabling');
-					}
-				} catch (error) {
-					Logger.error('[MemoryManager] ❌ Failed to setup conversation compaction:', error);
-					// Continue without compaction
-				}
-			}
+			// Conversation compaction is applied before sending in guided/normal modes.
 		}
 
 		// Configure semantic recall with independent vector storage

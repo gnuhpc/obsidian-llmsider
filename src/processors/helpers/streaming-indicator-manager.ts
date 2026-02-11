@@ -390,97 +390,378 @@ export class StreamingIndicatorManager {
 		const existingIndicators = this.messageContainer.querySelectorAll('.llmsider-validation-result-indicator, .llmsider-validation-error-card');
 		existingIndicators.forEach(el => el.remove());
 
-		// Show error card (no auto-fix, always show validation errors)
-		const errorCard = this.messageContainer.createDiv({
-			cls: 'llmsider-validation-error-card llmsider-plan-execute-phase'
+		// 1. Main Container
+		const container = this.messageContainer.createDiv({
+			cls: 'llmsider-validation-error-card w-full max-w-2xl rounded-xl border border-destructive/20 bg-background overflow-hidden shadow-sm'
+		});
+		
+		// Apply basic styling since we might not have tailwind classes available
+		container.style.border = '1px solid var(--background-modifier-border-error)'; // border-destructive/20
+		container.style.borderRadius = '12px'; // rounded-xl
+		container.style.backgroundColor = 'var(--background-primary)'; // bg-background
+		container.style.overflow = 'hidden';
+		container.style.boxShadow = '0 1px 2px 0 rgba(0, 0, 0, 0.05)'; // shadow-sm
+		container.style.marginBottom = '16px';
+
+		// 2. Header
+		const header = container.createDiv({
+			cls: 'flex items-center gap-3 border-b border-destructive/10 bg-destructive/5 px-5 py-4'
+		});
+		header.style.display = 'flex';
+		header.style.alignItems = 'center';
+		header.style.gap = '12px'; // gap-3
+		header.style.borderBottom = '1px solid rgba(var(--color-red-rgb), 0.1)'; // border-destructive/10
+		header.style.backgroundColor = 'rgba(var(--color-red-rgb), 0.05)'; // bg-destructive/5
+		header.style.padding = '16px 20px'; // px-5 py-4
+
+		// Header Icon
+		const headerIconContainer = header.createDiv({
+			cls: 'flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive/10'
+		});
+		headerIconContainer.style.display = 'flex';
+		headerIconContainer.style.height = '36px'; // h-9
+		headerIconContainer.style.width = '36px'; // w-9
+		headerIconContainer.style.flexShrink = '0';
+		headerIconContainer.style.alignItems = 'center';
+		headerIconContainer.style.justifyContent = 'center';
+		headerIconContainer.style.borderRadius = '9999px'; // rounded-full
+		headerIconContainer.style.backgroundColor = 'rgba(var(--color-red-rgb), 0.1)'; // bg-destructive/10
+		headerIconContainer.innerHTML = SvgIcons.alertCircle();
+		const headerIconSvg = headerIconContainer.querySelector('svg');
+		if (headerIconSvg) {
+			headerIconSvg.style.height = '20px'; // h-5
+			headerIconSvg.style.width = '20px'; // w-5
+			headerIconSvg.style.color = 'var(--text-error)'; // text-destructive
+		}
+
+		// Header Text
+		const headerTextContainer = header.createDiv({ cls: 'flex-1 min-w-0' });
+		headerTextContainer.style.flex = '1';
+		headerTextContainer.style.minWidth = '0';
+
+		const headerTitle = headerTextContainer.createEl('h3', {
+			cls: 'text-base font-semibold text-foreground',
+			text: this.i18n.t('planExecute.validation.failedTitle') || 'Plan validation failed'
+		});
+		headerTitle.style.fontSize = '16px'; // text-base
+		headerTitle.style.fontWeight = '600'; // font-semibold
+		headerTitle.style.color = 'var(--text-normal)'; // text-foreground
+		headerTitle.style.margin = '0';
+
+		const headerSubtitle = headerTextContainer.createEl('p', {
+			cls: 'text-sm text-muted-foreground mt-0.5',
+			text: validationResult.errors.length === 1 
+				? '1 error found' 
+				: `${validationResult.errors.length} errors found`
+		});
+		headerSubtitle.style.fontSize = '14px'; // text-sm
+		headerSubtitle.style.color = 'var(--text-muted)'; // text-muted-foreground
+		headerSubtitle.style.marginTop = '2px'; // mt-0.5
+		headerSubtitle.style.margin = '2px 0 0 0';
+
+		// Expand/Collapse Button
+		let isExpanded = true;
+		const toggleBtn = header.createEl('button', {
+			cls: 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-foreground'
+		});
+		toggleBtn.style.display = 'flex';
+		toggleBtn.style.height = '32px'; // h-8
+		toggleBtn.style.width = '32px'; // w-8
+		toggleBtn.style.flexShrink = '0';
+		toggleBtn.style.alignItems = 'center';
+		toggleBtn.style.justifyContent = 'center';
+		toggleBtn.style.borderRadius = '8px'; // rounded-lg
+		toggleBtn.style.color = 'var(--text-muted)'; // text-muted-foreground
+		toggleBtn.style.background = 'transparent';
+		toggleBtn.style.border = 'none';
+		toggleBtn.style.cursor = 'pointer';
+		toggleBtn.style.transition = 'background-color 0.2s';
+		
+		// Initial icon
+		toggleBtn.innerHTML = SvgIcons.chevronDown();
+		let toggleIcon = toggleBtn.querySelector('svg');
+		if (toggleIcon) {
+			toggleIcon.style.height = '16px';
+			toggleIcon.style.width = '16px';
+		}
+
+		toggleBtn.onmouseenter = () => {
+			toggleBtn.style.backgroundColor = 'rgba(var(--color-red-rgb), 0.1)';
+			toggleBtn.style.color = 'var(--text-normal)';
+		};
+		toggleBtn.onmouseleave = () => {
+			toggleBtn.style.backgroundColor = 'transparent';
+			toggleBtn.style.color = 'var(--text-muted)';
+		};
+
+		// 3. Error List Container
+		const errorListContainer = container.createDiv({ cls: 'divide-y divide-border' });
+		// We'll simulate divide-y with border-bottom on items
+
+		toggleBtn.onclick = () => {
+			isExpanded = !isExpanded;
+			errorListContainer.style.display = isExpanded ? 'block' : 'none';
+			toggleBtn.innerHTML = isExpanded ? SvgIcons.chevronDown() : SvgIcons.chevronRight();
+			toggleIcon = toggleBtn.querySelector('svg');
+			if (toggleIcon) {
+				toggleIcon.style.height = '16px';
+				toggleIcon.style.width = '16px';
+			}
+			toggleBtn.setAttribute('aria-label', isExpanded ? 'Collapse errors' : 'Expand errors');
+		};
+
+		// 4. Render Errors
+		validationResult.errors.forEach((error, index) => {
+			const isLast = index === validationResult.errors.length - 1;
+			const errorItem = errorListContainer.createDiv({
+				cls: 'group relative px-5 py-4 transition-colors hover:bg-muted/30'
+			});
+			errorItem.style.padding = '16px 20px'; // px-5 py-4
+			errorItem.style.transition = 'background-color 0.2s';
+			if (!isLast) {
+				errorItem.style.borderBottom = '1px solid var(--background-modifier-border)';
+			}
+
+			errorItem.onmouseenter = () => {
+				errorItem.style.backgroundColor = 'var(--background-secondary)'; // hover:bg-muted/30 approx
+			};
+			errorItem.onmouseleave = () => {
+				errorItem.style.backgroundColor = 'transparent';
+			};
+
+			const errorFlex = errorItem.createDiv({ cls: 'flex items-start gap-3' });
+			errorFlex.style.display = 'flex';
+			errorFlex.style.alignItems = 'flex-start';
+			errorFlex.style.gap = '12px'; // gap-3
+
+			// Error Icon (X Circle)
+			const errorIconContainer = errorFlex.createDiv({
+				cls: 'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-destructive/10'
+			});
+			errorIconContainer.style.marginTop = '2px'; // mt-0.5
+			errorIconContainer.style.display = 'flex';
+			errorIconContainer.style.height = '24px'; // h-6
+			errorIconContainer.style.width = '24px'; // w-6
+			errorIconContainer.style.flexShrink = '0';
+			errorIconContainer.style.alignItems = 'center';
+			errorIconContainer.style.justifyContent = 'center';
+			errorIconContainer.style.borderRadius = '6px'; // rounded-md
+			errorIconContainer.style.backgroundColor = 'rgba(var(--color-red-rgb), 0.1)'; // bg-destructive/10
+			
+			// Use cross icon but styled as circle-x if possible, or just cross
+			errorIconContainer.innerHTML = SvgIcons.cross(); // reusing cross for now
+			const errorIconSvg = errorIconContainer.querySelector('svg');
+			if (errorIconSvg) {
+				errorIconSvg.style.height = '14px'; // h-3.5
+				errorIconSvg.style.width = '14px'; // w-3.5
+				errorIconSvg.style.color = 'var(--text-error)'; // text-destructive
+			}
+
+			// Content Wrapper
+			const contentWrapper = errorFlex.createDiv({ cls: 'flex-1 min-w-0 space-y-2' });
+			contentWrapper.style.flex = '1';
+			contentWrapper.style.minWidth = '0';
+			// space-y-2 is essentially margin-top on children except first, handled manually
+
+			// Badges Row
+			const badgesRow = contentWrapper.createDiv({ cls: 'flex flex-wrap items-center gap-2' });
+			badgesRow.style.display = 'flex';
+			badgesRow.style.flexWrap = 'wrap';
+			badgesRow.style.alignItems = 'center';
+			badgesRow.style.gap = '8px'; // gap-2
+			badgesRow.style.marginBottom = '8px'; // part of space-y-2
+
+			// Step Badge
+			const stepBadge = badgesRow.createEl('span', {
+				cls: 'inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground',
+				text: error.stepId
+			});
+			stepBadge.style.display = 'inline-flex';
+			stepBadge.style.alignItems = 'center';
+			stepBadge.style.borderRadius = '6px'; // rounded-md
+			stepBadge.style.backgroundColor = 'var(--background-secondary)'; // bg-muted
+			stepBadge.style.padding = '2px 8px'; // px-2 py-0.5
+			stepBadge.style.fontSize = '12px'; // text-xs
+			stepBadge.style.fontWeight = '500'; // font-medium
+			stepBadge.style.color = 'var(--text-muted)'; // text-muted-foreground
+
+			// Error Type Badge
+			const typeBadge = badgesRow.createEl('span', {
+				cls: 'inline-flex items-center rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive',
+				text: error.errorType
+			});
+			typeBadge.style.display = 'inline-flex';
+			typeBadge.style.alignItems = 'center';
+			typeBadge.style.borderRadius = '6px';
+			typeBadge.style.backgroundColor = 'rgba(var(--color-red-rgb), 0.1)'; // bg-destructive/10
+			typeBadge.style.padding = '2px 8px';
+			typeBadge.style.fontSize = '12px';
+			typeBadge.style.fontWeight = '500';
+			typeBadge.style.color = 'var(--text-error)'; // text-destructive
+
+			// Error Message Row
+			const msgRow = contentWrapper.createDiv({ cls: 'flex items-start justify-between gap-2' });
+			msgRow.style.display = 'flex';
+			msgRow.style.alignItems = 'flex-start';
+			msgRow.style.justifyContent = 'space-between';
+			msgRow.style.gap = '8px';
+			msgRow.style.marginBottom = '8px'; // part of space-y-2
+
+			const msgText = msgRow.createEl('p', {
+				cls: 'text-sm text-foreground leading-relaxed font-mono',
+				text: error.message
+			});
+			msgText.style.fontSize = '14px';
+			msgText.style.color = 'var(--text-normal)';
+			msgText.style.lineHeight = '1.625'; // leading-relaxed
+			msgText.style.fontFamily = 'var(--font-monospace)'; // font-mono
+			msgText.style.margin = '0';
+
+			// Copy Button
+			const copyBtn = msgRow.createEl('button', {
+				cls: 'mt-0.5 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100',
+				attr: { 'aria-label': 'Copy error' }
+			});
+			copyBtn.style.marginTop = '2px';
+			copyBtn.style.flexShrink = '0';
+			copyBtn.style.borderRadius = '6px';
+			copyBtn.style.padding = '4px';
+			copyBtn.style.color = 'var(--text-muted)';
+			copyBtn.style.background = 'transparent';
+			copyBtn.style.border = 'none';
+			copyBtn.style.cursor = 'pointer';
+			copyBtn.style.opacity = '0.5'; // Default visible for usability
+			copyBtn.style.transition = 'opacity 0.2s';
+			
+			copyBtn.onmouseenter = () => { copyBtn.style.opacity = '1'; copyBtn.style.backgroundColor = 'var(--background-secondary)'; };
+			copyBtn.onmouseleave = () => { copyBtn.style.opacity = '0.5'; copyBtn.style.backgroundColor = 'transparent'; };
+
+			// Copy Icon (Clipboard)
+			// Using clipboard icon from SvgIcons but simpler copy icon preferred
+			copyBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+			
+			copyBtn.onclick = () => {
+				const textToCopy = `[${error.stepId}] ${error.errorType}: ${error.message}`;
+				navigator.clipboard.writeText(textToCopy);
+				
+				// Show checkmark
+				copyBtn.innerHTML = SvgIcons.checkmark();
+				const checkSvg = copyBtn.querySelector('svg');
+				if (checkSvg) {
+					checkSvg.style.height = '14px';
+					checkSvg.style.width = '14px';
+					checkSvg.style.color = 'var(--text-success)';
+				}
+				
+				setTimeout(() => {
+					copyBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+				}, 2000);
+			};
+
+			// Suggestion Box
+			if (error.suggestion) {
+				const suggestionBox = contentWrapper.createDiv({
+					cls: 'flex items-start gap-2 rounded-lg bg-amber-500/5 border border-amber-500/10 px-3 py-2.5'
+				});
+				suggestionBox.style.display = 'flex';
+				suggestionBox.style.alignItems = 'flex-start';
+				suggestionBox.style.gap = '8px';
+				suggestionBox.style.borderRadius = '8px';
+				suggestionBox.style.backgroundColor = 'rgba(245, 158, 11, 0.05)'; // bg-amber-500/5
+				suggestionBox.style.border = '1px solid rgba(245, 158, 11, 0.1)'; // border-amber-500/10
+				suggestionBox.style.padding = '10px 12px'; // px-3 py-2.5
+
+				// Lightbulb Icon
+				const bulbIcon = suggestionBox.createDiv();
+				bulbIcon.style.marginTop = '2px';
+				bulbIcon.style.flexShrink = '0';
+				bulbIcon.style.color = 'var(--text-warning)'; // text-amber-500
+				bulbIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-1 1.5-2.4 1.5-3.8 0-3.3-2.7-6-6-6S6 4.7 6 8c0 1.4.5 2.8 1.5 3.8.8.8 1.3 1.5 1.5 2.5"></path><line x1="9" y1="18" x2="15" y2="18"></line><line x1="10" y1="22" x2="14" y2="22"></line></svg>`;
+
+				const suggestionText = suggestionBox.createEl('p', {
+					cls: 'text-xs text-amber-700 dark:text-amber-400 leading-relaxed',
+					text: error.suggestion
+				});
+				suggestionText.style.fontSize = '12px';
+				suggestionText.style.color = 'var(--text-warning)'; // text-amber-700
+				suggestionText.style.lineHeight = '1.625';
+				suggestionText.style.margin = '0';
+			}
 		});
 
-		// Header
-		const errorHeaderEl = errorCard.createDiv({ cls: 'plan-execute-header' });
-		errorHeaderEl.innerHTML = `
-			<span class="plan-execute-icon">${SvgIcons.alertCircle()}</span>
-			<span class="plan-execute-title" style="color: var(--text-error);">❌ ${this.i18n.t('planExecute.validation.failedTitle') || '计划验证失败'}</span>
-		`;
+		// 5. Footer
+		const footer = container.createDiv({
+			cls: 'flex flex-col gap-3 border-t border-border bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between'
+		});
+		footer.style.display = 'flex';
+		footer.style.flexDirection = 'row'; // Assuming desktop width mostly
+		footer.style.alignItems = 'center';
+		footer.style.justifyContent = 'space-between';
+		footer.style.gap = '12px';
+		footer.style.borderTop = '1px solid var(--background-modifier-border)';
+		footer.style.backgroundColor = 'var(--background-secondary)'; // bg-muted/30 approx
+		footer.style.padding = '16px 20px';
 
-		// Content area - show errors
-		const errorContentEl = errorCard.createDiv({ cls: 'plan-execute-content' });
-		if (validationResult.errors.length > 0) {
-			const errorSection = errorContentEl.createDiv({ cls: 'validation-error-section' });
-			errorSection.createEl('h4', {
-				text: `${this.i18n.t('planExecute.validation.errors') || '错误'} (${validationResult.errors.length}):`,
-				attr: { style: 'color: var(--text-error); margin: 8px 0 4px 0; font-size: 14px;' }
-			});
-			const errorsList = errorSection.createEl('div', { cls: 'validation-errors-list' });
-			validationResult.errors.forEach((err) => {
-				const errorItem = errorsList.createEl('div', { cls: 'validation-error-item' });
-				errorItem.createEl('p', {
-					text: `• [${err.stepId}] ${err.errorType}: ${err.message}`,
-					attr: { style: 'margin: 2px 0; padding-left: 8px; color: var(--text-error);' }
-				});
-				if (err.suggestion) {
-					errorItem.createEl('p', {
-						text: `  💡 ${err.suggestion}`,
-						attr: { style: 'margin: 2px 0; padding-left: 24px; color: var(--text-muted); font-size: 12px;' }
-					});
-				}
-			});
+		const footerText = footer.createEl('p', {
+			cls: 'text-sm text-muted-foreground leading-relaxed',
+			text: this.i18n.t('planExecute.validation.regenerateHint') || 'Validation failed. Errors will be automatically sent to AI for improvement.'
+		});
+		footerText.style.fontSize = '14px';
+		footerText.style.color = 'var(--text-muted)';
+		footerText.style.lineHeight = '1.625';
+		footerText.style.margin = '0';
+
+		// Regenerate Button
+		const regenerateBtn = footer.createEl('button', {
+			cls: 'shrink-0 gap-2 border-destructive/20 text-destructive hover:bg-destructive/5 hover:text-destructive bg-transparent',
+			text: this.i18n.t('planExecute.validation.regeneratePlan') || 'Regenerate Plan'
+		});
+		regenerateBtn.style.display = 'flex';
+		regenerateBtn.style.alignItems = 'center';
+		regenerateBtn.style.gap = '8px';
+		regenerateBtn.style.flexShrink = '0';
+		regenerateBtn.style.border = '1px solid rgba(var(--color-red-rgb), 0.2)'; // border-destructive/20
+		regenerateBtn.style.borderRadius = '6px';
+		regenerateBtn.style.padding = '6px 12px';
+		regenerateBtn.style.fontSize = '13px';
+		regenerateBtn.style.fontWeight = '500';
+		regenerateBtn.style.color = 'var(--text-error)'; // text-destructive
+		regenerateBtn.style.background = 'transparent';
+		regenerateBtn.style.cursor = 'pointer';
+		regenerateBtn.style.transition = 'background-color 0.2s';
+
+		// Prepend icon
+		const btnIcon = document.createElement('span');
+		btnIcon.innerHTML = SvgIcons.refresh();
+		const btnSvg = btnIcon.querySelector('svg');
+		if (btnSvg) {
+			btnSvg.style.height = '14px';
+			btnSvg.style.width = '14px';
 		}
+		regenerateBtn.prepend(btnIcon);
 
-		// Show warnings
-		if (validationResult.warnings.length > 0) {
-			const warnSection = errorContentEl.createDiv({ cls: 'validation-warning-section' });
-			warnSection.createEl('h4', {
-				text: `${this.i18n.t('planExecute.validation.warnings') || '警告'} (${validationResult.warnings.length}):`,
-				attr: { style: 'color: var(--text-warning); margin: 8px 0 4px 0; font-size: 14px;' }
-			});
-			const warnsList = warnSection.createEl('div', { cls: 'validation-warnings-list' });
-			validationResult.warnings.forEach((warn) => {
-				warnsList.createEl('p', {
-					text: `• [${warn.stepId}] ${warn.message}`,
-					attr: { style: 'margin: 2px 0; padding-left: 8px; color: var(--text-warning);' }
-				});
-			});
-		}
+		regenerateBtn.onmouseenter = () => {
+			regenerateBtn.style.backgroundColor = 'rgba(var(--color-red-rgb), 0.05)';
+		};
+		regenerateBtn.onmouseleave = () => {
+			regenerateBtn.style.backgroundColor = 'transparent';
+		};
 
-		// Add Regenerate Plan button if there are critical errors
-		const hasCriticalErrors = validationResult.errors.length > 0;
-		if (hasCriticalErrors) {
-			const actionSection = errorContentEl.createDiv({ cls: 'validation-action-section' });
-			actionSection.style.marginTop = '16px';
-			actionSection.style.paddingTop = '12px';
-			actionSection.style.borderTop = '1px solid var(--background-modifier-border)';
-			
-			actionSection.createEl('p', {
-				text: this.i18n.t('planExecute.validation.regenerateHint') || '由于计划验证失败，请重新生成计划。错误信息将自动发送给 AI 以改进计划。',
-				attr: { style: 'margin: 0 0 12px 0; color: var(--text-muted); font-size: 13px;' }
-			});
-			
-			const actionsEl = actionSection.createDiv({ cls: 'validation-actions' });
-			actionsEl.style.display = 'flex';
-			actionsEl.style.gap = '8px';
-
-			// Regenerate Plan button
-			const regenerateBtn = actionsEl.createEl('button', {
-				text: `🔄 ${this.i18n.t('planExecute.validation.regeneratePlan') || '重新生成计划'}`,
-				cls: 'mod-cta llmsider-regenerate-btn'
-			});
-			
-			regenerateBtn.onclick = async () => {
-				// Remove the error card
-				errorCard.remove();
-				this.plugin.debug('[ValidationResult] Regenerate Plan button clicked - triggering plan regeneration with error context');
-				try {
-					// Store validation errors for next regeneration
-					const errorContext = validationResult.errors.map(e => 
-						`[${e.stepId}] ${e.errorType}: ${e.message}${e.suggestion ? ` (建议: ${e.suggestion})` : ''}`
-					).join('\n');
-					(this as any).lastValidationErrors = errorContext;
-					await this.onRegeneratePlan();
-				} catch (error) {
-					Logger.error('[ValidationResult] Plan regeneration failed:', error);
-				}
-			};
-		}
+		regenerateBtn.onclick = async () => {
+			// Remove the error card
+			container.remove();
+			this.plugin.debug('[ValidationResult] Regenerate Plan button clicked - triggering plan regeneration with error context');
+			try {
+				// Store validation errors for next regeneration
+				const errorContext = validationResult.errors.map(e => 
+					`[${e.stepId}] ${e.errorType}: ${e.message}${e.suggestion ? ` (suggestion: ${e.suggestion})` : ''}`
+				).join('\n');
+				(this as any).lastValidationErrors = errorContext;
+				await this.onRegeneratePlan();
+			} catch (error) {
+				Logger.error('[ValidationResult] Plan regeneration failed:', error);
+			}
+		};
 
 		// Scroll to show the indicators
 		this.scrollToBottom();

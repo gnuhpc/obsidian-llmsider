@@ -23,6 +23,7 @@ import { UnifiedTool } from '../tools/unified-tool-manager';
  */
 export class FreeQwenProviderImpl extends BaseLLMProvider {
 	private ticket: string;
+	private cookieHeader: string | null = null;
 	private modelCodeToNameMap: Map<string, string> = new Map();
 	private modelNameToCodeMap: Map<string, string> = new Map();
 	private static modelCapabilitiesMap: Map<string, any[]> = new Map(); // 存储模型能力（静态，所有实例共享）
@@ -92,8 +93,9 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 			baseUrl: 'https://api.qianwen.com'
 		});
 		
-		// apiKey 在这里实际上是 ticket
+		// apiKey 在这里实际上是 ticket 或完整的 Cookie 头
 		this.ticket = config.apiKey;
+		this.cookieHeader = this.normalizeCookieInput(config.apiKey);
 		this.initializeModelConfig();
 	}
 
@@ -162,7 +164,7 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 						'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
 						'Content-Type': 'application/json',
 						'Content-Length': Buffer.byteLength(requestBody),
-						'Cookie': this.generateCookie(this.ticket),
+						'Cookie': this.getCookieHeader(),
 						'Origin': 'https://www.qianwen.com',
 						'Referer': 'https://www.qianwen.com/',
 						'Sec-Ch-Ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
@@ -264,6 +266,37 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 	}
 
 	/**
+	 * 规范化 Cookie 输入
+	 * - 支持直接粘贴完整 Cookie 头
+	 * - 兼容 "Cookie: ..." 前缀
+	 */
+	private normalizeCookieInput(input: string): string | null {
+		const trimmed = input.trim();
+		if (!trimmed) return null;
+
+		const withoutPrefix = trimmed.toLowerCase().startsWith('cookie:')
+			? trimmed.slice(trimmed.indexOf(':') + 1).trim()
+			: trimmed;
+
+		const hasKeyValue = /[A-Za-z0-9_\-]+=/.test(withoutPrefix);
+		const hasKnownTicket = /tongyi_sso_ticket=|login_aliyunid_ticket=/.test(withoutPrefix);
+		const hasDelimiter = withoutPrefix.includes(';');
+
+		if (hasKeyValue && (hasDelimiter || hasKnownTicket)) {
+			return withoutPrefix;
+		}
+
+		return null;
+	}
+
+	/**
+	 * 获取最终 Cookie 头
+	 */
+	private getCookieHeader(): string {
+		return this.cookieHeader || this.generateCookie(this.ticket);
+	}
+
+	/**
 	 * 生成 UUID
 	 */
 	private generateUUID(withHyphens: boolean = true): string {
@@ -339,7 +372,7 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 						'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
 						'Content-Type': 'application/json',
 						'Content-Length': Buffer.byteLength(requestBody),
-						'Cookie': this.generateCookie(this.ticket),
+						'Cookie': this.getCookieHeader(),
 						'Origin': 'https://www.qianwen.com',
 						'Referer': 'https://www.qianwen.com/',
 						'Sec-Ch-Ua': '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
@@ -539,7 +572,7 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 					'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
 					'Content-Type': 'application/json',
 					'Content-Length': Buffer.byteLength(requestBody),
-					'Cookie': this.generateCookie(this.ticket),
+					'Cookie': this.getCookieHeader(),
 					'Origin': 'https://www.qianwen.com',
 					'Referer': 'https://www.qianwen.com/chat',
 					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -605,9 +638,9 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 						'Accept': 'application/json, text/plain, */*',
 						'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
 						'Content-Type': 'application/json',
-						'Content-Length': Buffer.byteLength(requestBody),
-						'Cookie': this.generateCookie(this.ticket),
-						'Origin': 'https://www.qianwen.com',
+					'Content-Length': Buffer.byteLength(requestBody),
+					'Cookie': this.getCookieHeader(),
+					'Origin': 'https://www.qianwen.com',
 						'Referer': 'https://www.qianwen.com/',
 						'Sec-Ch-Ua': '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
 						'Sec-Ch-Ua-Mobile': '?0',
@@ -852,7 +885,7 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 					'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
 					'Content-Type': 'application/json',
 					'Content-Length': Buffer.byteLength(requestBody),
-					'Cookie': this.generateCookie(this.ticket),
+					'Cookie': this.getCookieHeader(),
 					'Origin': 'https://www.qianwen.com',
 					'Referer': 'https://www.qianwen.com/chat',
 					'Sec-Ch-Ua': '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
@@ -1105,7 +1138,7 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					'Cookie': this.generateCookie(this.ticket),
+					'Cookie': this.getCookieHeader(),
 					'Accept': 'text/event-stream',
 					'Accept-Language': 'zh-CN,zh;q=0.9',
 					'Origin': 'https://www.qianwen.com',
@@ -1256,7 +1289,7 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 				headers: {
 					'Content-Type': 'application/json',
 					'Content-Length': Buffer.byteLength(requestBody),
-					'Cookie': this.generateCookie(this.ticket),
+					'Cookie': this.getCookieHeader(),
 					'Accept': 'text/event-stream',
 					'Accept-Language': 'zh-CN,zh;q=0.9',
 					'Origin': 'https://www.qianwen.com',
@@ -1384,7 +1417,7 @@ export class FreeQwenProviderImpl extends BaseLLMProvider {
 					path: '/dialog/session/list',
 					method: 'POST',
 					headers: {
-						'Cookie': this.generateCookie(this.ticket),
+						'Cookie': this.getCookieHeader(),
 						'Content-Type': 'application/json',
 						'Content-Length': Buffer.byteLength(requestBody),
 						...FreeQwenProviderImpl.FAKE_HEADERS,

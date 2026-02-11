@@ -6010,6 +6010,10 @@
     display: none;
 }
 
+.llmsider-chat-container.llmsider-compact .llmsider-provider-btn .provider-text {
+    display: none !important;
+}
+
 .llmsider-chat-container.llmsider-compact .llmsider-provider-btn {
     min-width: 32px;
     padding: 4px;
@@ -7053,6 +7057,10 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary-alt);
 }
 
 /* Section */
@@ -7204,6 +7212,7 @@
     overflow-x: auto;
     max-width: 100%;
     box-sizing: border-box;
+    border: 1px solid var(--background-modifier-border);
 }
 
 .llmsider-tool-card-code {
@@ -7215,6 +7224,7 @@
     overflow-x: auto;
     max-width: 100%;
     box-sizing: border-box;
+    border: 1px solid var(--background-modifier-border);
 }
 
 /* Directory listing styles */

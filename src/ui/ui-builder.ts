@@ -13,6 +13,8 @@ export class UIBuilder {
 	private i18n: I18nManager;
 	private isExecutingCallback: (() => boolean) | null = null;
 	private toolPermissionHandler: ToolPermissionHandler;
+	private lastRowWrapped = false;
+	private lastWrapWidth: number | null = null;
 
 	constructor(plugin: LLMSiderPlugin, containerEl: HTMLElement, toolPermissionHandler?: ToolPermissionHandler) {
 		this.plugin = plugin;
@@ -149,17 +151,45 @@ export class UIBuilder {
 	}
 
 	private setupResponsiveClasses(container: HTMLElement): void {
-		const leftButtons = container.querySelector('.llmsider-button-row-left') as HTMLElement | null;
-		const rightButtons = container.querySelector('.llmsider-button-row-right') as HTMLElement | null;
-
 		const applyClasses = (width: number) => {
 			container.toggleClass('llmsider-narrow', width <= 360);
 			container.toggleClass('llmsider-compact', width <= 260);
 
+			const leftButtons = container.querySelector('.llmsider-button-row-left') as HTMLElement | null;
+			const rightButtons = container.querySelector('.llmsider-button-row-right') as HTMLElement | null;
+
 			if (leftButtons && rightButtons) {
-				const leftTop = leftButtons.getBoundingClientRect().top;
-				const rightTop = rightButtons.getBoundingClientRect().top;
-				container.toggleClass('llmsider-row-wrapped', rightTop - leftTop > 4);
+				const leftTop = leftButtons.offsetTop;
+				const rightTop = rightButtons.offsetTop;
+				const delta = Math.abs(leftTop - rightTop);
+				const rowsSplit = delta > 6;
+				const unwrapBuffer = 24;
+				let shouldWrap = rowsSplit;
+				if (rowsSplit) {
+					if (this.lastWrapWidth === null || width < this.lastWrapWidth) {
+						this.lastWrapWidth = width;
+					}
+				} else if (this.lastRowWrapped) {
+					if (this.lastWrapWidth !== null && width < this.lastWrapWidth + unwrapBuffer) {
+						shouldWrap = true;
+					} else {
+						this.lastWrapWidth = null;
+					}
+				} else {
+					this.lastWrapWidth = null;
+				}
+				this.lastRowWrapped = shouldWrap;
+				container.toggleClass('llmsider-row-wrapped', shouldWrap);
+				Logger.debug('[UI] responsive wrap check', {
+					width,
+					leftTop,
+					rightTop,
+					delta,
+					rowsSplit,
+					lastWrapWidth: this.lastWrapWidth,
+					unwrapBuffer,
+					shouldWrap
+				});
 			}
 		};
 
@@ -173,6 +203,10 @@ export class UIBuilder {
 
 		observer.observe(container);
 		(container as any)._llmsiderResizeObserver = observer;
+
+		requestAnimationFrame(() => {
+			applyClasses(container.clientWidth);
+		});
 	}
 
 	/**

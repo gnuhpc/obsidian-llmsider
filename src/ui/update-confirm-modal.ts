@@ -48,7 +48,7 @@ export class UpdateConfirmModal extends Modal {
 			const changelogContainer = contentEl.createDiv('update-changelog-container');
 			changelogContainer.createEl('h3', { text: this.i18n.t('ui.releaseNotes') });
 			const changelogContent = changelogContainer.createDiv('update-changelog-content');
-			changelogContent.innerHTML = this.updateInfo.changelog;
+			changelogContent.textContent = this.updateInfo.changelog;
 		}
 
 		contentEl.createDiv({ 

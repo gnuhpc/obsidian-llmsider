@@ -449,8 +449,8 @@ export class MastraAgent {
 		const mastraSteps = plan.steps.map((step, index) => {
 			return createStep({
 				id: step.id,
-				inputSchema: z.object({}),
-				outputSchema: z.object({}),
+				inputSchema: z.any(), // Accept any input type from previous steps
+				outputSchema: z.any(), // Allow any output type
 				execute: async ({ getStepResult }) => {
 					// Check for abort
 					if (options.abortController?.signal.aborted) {
@@ -508,41 +508,55 @@ export class MastraAgent {
 			}
 		}
 
-		const committedWorkflow = workflow.commit();
-		
-		// 3. Execute the workflow
-		const run = await committedWorkflow.createRunAsync();
+	const committedWorkflow = workflow.commit();
+	
+	// 3. Execute the workflow
+	const run = await committedWorkflow.createRun();
 		
 		// Watch for events to update UI and handle status changes
 		run.watch((event) => {
-			if (event.type === 'watch' && event.payload.currentStep) {
-				const { id, status, error, output } = event.payload.currentStep;
+			// Handle workflow-step-start events to track progress
+			if (event.type === 'workflow-step-start') {
+				const { id } = event.payload;
 				const agentStep = plan.steps.find(s => s.id === id);
 				
-				if (agentStep) {
-					let newStatus = this.convertMastraStatus(status);
-					
-					// Check if step actually failed but error was swallowed to allow workflow continuation
-					if (newStatus === 'completed' && output && output._status === 'failed') {
-						newStatus = 'failed';
-					}
-					
-					// Only update and notify if status changed or it's a final state
-					if (agentStep.status !== newStatus || newStatus === 'completed' || newStatus === 'failed') {
-						agentStep.status = newStatus;
-						if (error) {
-							agentStep.error = error instanceof Error ? error.message : String(error);
-						} else if (newStatus === 'failed' && output && output.error) {
-							agentStep.error = output.error;
-						}
-						
-						if (options.onStepExecuted) {
-							options.onStepExecuted(agentStep);
-						}
+				if (agentStep && agentStep.status !== 'executing') {
+					agentStep.status = 'executing';
+					if (options.onStepExecuted) {
+						options.onStepExecuted(agentStep);
 					}
 				}
 			}
-		}, 'watch');
+			
+			// Handle workflow-step-finish events to mark completion
+			if (event.type === 'workflow-step-finish') {
+				const { id } = event.payload;
+				const agentStep = plan.steps.find(s => s.id === id);
+				
+				if (agentStep) {
+					agentStep.status = 'completed';
+					if (options.onStepExecuted) {
+						options.onStepExecuted(agentStep);
+					}
+				}
+			}
+			
+			// Handle workflow-step-suspended for errors
+			if (event.type === 'workflow-step-suspended') {
+				const { id, output } = event.payload;
+				const agentStep = plan.steps.find(s => s.id === id);
+				
+				if (agentStep) {
+					if (output && output._status === 'failed') {
+						agentStep.status = 'failed';
+						agentStep.error = output.error || 'Step execution failed';
+					}
+					if (options.onStepExecuted) {
+						options.onStepExecuted(agentStep);
+					}
+				}
+			}
+		});
 
 		try {
 			await run.start({ inputData: {} });

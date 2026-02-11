@@ -76,6 +76,13 @@ export class PlanValidator {
 	static setToolsMap(tools: Record<string, any>): void {
 		this.toolsMap = tools;
 	}
+
+	private static normalizeToolName(toolName: string): string {
+		if (toolName === 'create' && this.toolsMap && this.toolsMap['create_file']) {
+			return 'create_file';
+		}
+		return toolName;
+	}
 	
 	/**
 	 * Get tool's outputSchema if available
@@ -313,6 +320,7 @@ export class PlanValidator {
 		// 验证每个步骤
 		for (let i = 0; i < steps.length; i++) {
 			const step = steps[i];
+			step.tool = this.normalizeToolName(step.tool);
 			
 			// ✅ NEW: 验证 outputSchema 是否遵循模式2（对象包装）
 			const schemaErrors = this.validateOutputSchemaPattern(step);

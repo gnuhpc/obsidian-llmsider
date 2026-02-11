@@ -1166,8 +1166,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		
 		// Get providers with names (Connection + Model architecture)
 		const providers = this.plugin.getAvailableProvidersWithNames();
+		const providerList = providers.length > 0
+			? providers
+			: this.plugin.getConfiguredProvidersWithNames();
 		
-		if (providers.length === 0) {
+		if (providerList.length === 0) {
 			const option = this.providerSelect.createEl('option', { text: this.plugin.i18n.t('ui.noProvidersConfigured') });
 			option.disabled = true;
 			return;
@@ -1176,7 +1179,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		// Group providers by connection
 		const connectionGroups = new Map<string, typeof providers>();
 
-		for (const provider of providers) {
+		for (const provider of providerList) {
 			if (provider.connectionId) {
 				// New architecture provider
 				if (!connectionGroups.has(provider.connectionId)) {
@@ -1212,9 +1215,9 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		}
 		
 		// If no active provider is set, auto-select the first available one
-		if (!this.plugin.settings.activeProvider && providers.length > 0) {
-			this.plugin.setActiveProvider(providers[0].id);
-			Logger.debug('Auto-selected first available provider:', providers[0].id);
+		if (!this.plugin.settings.activeProvider && providerList.length > 0) {
+			this.plugin.setActiveProvider(providerList[0].id);
+			Logger.debug('Auto-selected first available provider:', providerList[0].id);
 		}
 
 		this.updateSendButton();

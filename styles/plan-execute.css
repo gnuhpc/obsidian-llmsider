@@ -420,6 +420,19 @@
     margin: 0;
 }
 
+.llmsider-tool-card-expanded {
+    padding: 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    background: var(--background-primary-alt);
+}
+
+.llmsider-tool-card-content-preview,
+.llmsider-tool-card-code {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+}
+
 /* Step completion and error details */
 .step-completion-info, .step-error-info, .tool-result-details, .tool-error-details {
     margin-top: 8px;

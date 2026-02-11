@@ -266,7 +266,7 @@ export class SelectionPopup {
 
 	// Check if auto-add to context is enabled
 	if (this.plugin.settings.selectionPopup.autoAddToContext) {
-		await this.handleAddToContext(selectedText);
+		await this.handleAddToContext(selectedText, true);
 		return;
 	}
 	
@@ -459,7 +459,7 @@ export class SelectionPopup {
 	/**
 	 * Handle add to context action
 	 */
-	private async handleAddToContext(selectedText: string): Promise<void> {
+	private async handleAddToContext(selectedText: string, clearBeforeAdd: boolean = false): Promise<void> {
 		try {
 			// Get chat view and its context manager
 			const chatView = this.plugin.getChatView();
@@ -473,6 +473,10 @@ export class SelectionPopup {
 			if (!contextManager) {
 				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.contextManagerNotAvailable') || 'Context manager not available');
 				return;
+			}
+
+			if (clearBeforeAdd) {
+				contextManager.clearContext();
 			}
 			
 			let finalText = selectedText;
