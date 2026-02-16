@@ -143,13 +143,6 @@ export class MessageRenderer {
 			return; // Don't render the original content
 		}
 
-		// Only add "Add Provider" button if there are NO provider tabs
-		// (when provider tabs exist, they already have a "+" button)
-		if (!message.providerResponses || Object.keys(message.providerResponses).length === 0) {
-			// Add "Add Provider" button for multi-provider comparison (shown on hover)
-			this.addProviderComparisonButton(messageEl, message);
-		}
-
 		// Add action buttons for guided mode messages (after rendering content)
 		if (message.metadata?.isGuidedQuestion) {
 			this.addMessageActions(messageEl, message);
@@ -295,6 +288,34 @@ export class MessageRenderer {
 				if (index > 0) contentEl.createEl('br');
 				contentEl.appendText(line);
 			});
+		}
+
+		const referenceType = (message.metadata as any)?.contextReferenceType as 'text' | 'file' | undefined;
+		if (referenceType) {
+			contentEl.addClass('llmsider-user-context-has-indicator');
+			const indicator = contentEl.createDiv({
+				cls: 'llmsider-user-context-indicator',
+				attr: {
+					'aria-hidden': 'true'
+				}
+			});
+
+			if (referenceType === 'text') {
+				indicator.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+					<circle cx="6" cy="6" r="3"></circle>
+					<circle cx="6" cy="18" r="3"></circle>
+					<line x1="6" y1="9" x2="6" y2="15"></line>
+					<line x1="6" y1="9" x2="18" y2="20"></line>
+					<line x1="6" y1="15" x2="18" y2="4"></line>
+				</svg>`;
+			} else {
+				indicator.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+					<polyline points="14 2 14 8 20 8"></polyline>
+					<line x1="16" y1="13" x2="8" y2="13"></line>
+					<line x1="16" y1="17" x2="8" y2="17"></line>
+				</svg>`;
+			}
 		}
 
 		// Handle special system messages for tool execution
@@ -1039,31 +1060,7 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			};
 		});
 		
-		// Add "+" button to add more providers
-		const addBtn = tabsContainer.createEl('button', { 
-			cls: 'llmsider-provider-tab-add-btn',
-			title: 'Compare with another model',
-			attr: { 'aria-label': 'Compare with another model' }
-		});
-		// Use the same git-branch icon for consistency
-		addBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<line x1="6" y1="3" x2="6" y2="15"></line>
-			<circle cx="18" cy="6" r="3"></circle>
-			<circle cx="6" cy="18" r="3"></circle>
-			<path d="M18 9a9 9 0 0 1-9 9"></path>
-		</svg>`;
-		addBtn.onclick = (e) => {
-			e.stopPropagation();
-			window.dispatchEvent(new CustomEvent('llmsider-add-provider-for-message', {
-				detail: { 
-					messageId: message.id,
-					triggerButton: addBtn 
-				}
-			}));
-		};
-		
-// Tabs are already inserted before the content element, no need to move them
-}
+	}
 
 	/**
 	 * Get human-readable label for a provider
@@ -1080,23 +1077,22 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 		return providerKey;
 	}
 
-	private addProviderComparisonButton(messageEl: HTMLElement, message: ChatMessage): void {
+	private addProviderComparisonButton(actionsEl: HTMLElement, message: ChatMessage): void {
 		// Skip for special messages (working indicator, tool results, etc.)
 		if (message.metadata?.isWorking || 
-		    message.metadata?.toolResult || 
-		    message.metadata?.isGuidedQuestion) {
+		    message.metadata?.toolResult) {
 			return;
 		}
 
 		// Remove existing button first
-		const existingBtn = messageEl.querySelector('.llmsider-add-provider-btn');
+		const existingBtn = actionsEl.querySelector('.llmsider-add-provider-btn');
 		if (existingBtn) {
 			existingBtn.remove();
 		}
 
 		const i18n = this.plugin.getI18nManager();
-		const addProviderBtn = messageEl.createEl('button', {
-			cls: 'llmsider-add-provider-btn',
+		const addProviderBtn = actionsEl.createEl('button', {
+			cls: 'llmsider-action-btn llmsider-add-provider-btn',
 			title: i18n?.t('ui.addModelForComparison') || 'Compare with another model',
 			attr: { 'aria-label': i18n?.t('ui.addModelForComparison') || 'Compare with another model' }
 		});
@@ -1150,6 +1146,8 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 		// Users should be able to copy questions and generate notes
 
 		const actionsEl = this.ensureMessageFooter(messageEl, message);
+
+		this.addProviderComparisonButton(actionsEl, message);
 
 		// Check if message has text content
 		const hasTextContent = typeof message.content === 'string' && message.content.trim().length > 0;
@@ -1306,48 +1304,6 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 		</svg>`;
 		regenerateBtn.onclick = () => this.regenerateResponse(message);
 
-		// Add "Compare with other models" button in top-right corner
-		// Only show if there are no provider tabs yet (if tabs exist, they have their own "+" button)
-		if (!message.providerResponses || Object.keys(message.providerResponses).length === 0) {
-			this.addCompareButtonTopRight(messageEl, message);
-		}
-	}
-
-	/**
-	 * Add compare button in the top-right corner of message (for guided mode)
-	 * Uses the same style as normal mode's addProviderComparisonButton
-	 */
-	private addCompareButtonTopRight(messageEl: HTMLElement, message: ChatMessage): void {
-		// Remove existing button first
-		const existingBtn = messageEl.querySelector('.llmsider-add-provider-btn');
-		if (existingBtn) {
-			existingBtn.remove();
-		}
-
-		const i18n = this.plugin.getI18nManager();
-		const addProviderBtn = messageEl.createEl('button', {
-			cls: 'llmsider-add-provider-btn',
-			title: i18n?.t('ui.addModelForComparison') || 'Compare with another model',
-			attr: { 'aria-label': i18n?.t('ui.addModelForComparison') || 'Compare with another model' }
-		});
-		
-		// Icon showing git-branch style (representing comparison/branching)
-		addProviderBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<line x1="6" y1="3" x2="6" y2="15"></line>
-			<circle cx="18" cy="6" r="3"></circle>
-			<circle cx="6" cy="18" r="3"></circle>
-			<path d="M18 9a9 9 0 0 1-9 9"></path>
-		</svg>`;
-		
-		addProviderBtn.onclick = (e) => {
-			e.stopPropagation();
-			window.dispatchEvent(new CustomEvent('llmsider-add-provider-for-message', {
-				detail: { 
-					messageId: message.id,
-					triggerButton: addProviderBtn
-				}
-			}));
-		};
 	}
 
 	/**

@@ -171,6 +171,7 @@ export class ChatView extends ItemView {
 		// This ensures a clean state after plugin reload or view reopen
 		Logger.debug("Clearing context manager on view open");
 		this.contextManager.clearContext();
+		await this.contextManager.includeCurrentNote();
 
 		// Set execution check callback for UIBuilder
 		this.uiBuilder.setIsExecutingCallback(() => this.isExecuting());
@@ -569,6 +570,15 @@ export class ChatView extends ItemView {
 	) {
 		if (!this.currentSession) return;
 
+		const selectedTextContexts = this.contextManager.getSelectedTextContexts();
+		const noteContexts = this.contextManager.getCurrentNoteContext();
+		let contextReferenceType: 'text' | 'file' | undefined;
+		if (selectedTextContexts.length > 0) {
+			contextReferenceType = 'text';
+		} else if (noteContexts.length > 0) {
+			contextReferenceType = 'file';
+		}
+
 		// Create user message
 		const userMessage: ChatMessage = {
 			id: Date.now().toString(),
@@ -577,6 +587,7 @@ export class ChatView extends ItemView {
 			timestamp: Date.now(),
 			metadata: {
 				provider: this.plugin.settings.activeProvider,
+				...(contextReferenceType && { contextReferenceType }),
 				...metadata,
 			},
 		};

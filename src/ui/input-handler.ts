@@ -1245,9 +1245,10 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 */
 	private updateContextDisplay(): void {
 		this.contextDisplay.innerHTML = '';
+		const folderPlaceholders = this.getFolderPlaceholdersFromInput();
 		
 		// Check if we have any context to display
-		if (!this.contextManager.hasContext()) {
+		if (!this.contextManager.hasContext() && folderPlaceholders.length === 0) {
 			this.contextDisplay.style.display = 'none';
 			return;
 		}
@@ -1369,6 +1370,78 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				this.updateContextDisplay();
 			};
 		}
+
+		folderPlaceholders.forEach((folderPlaceholder) => {
+			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-clickable' });
+			const iconEl = contextTag.createEl('span', { cls: 'llmsider-context-icon' });
+			iconEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+			</svg>`;
+
+			contextTag.createEl('span', {
+				cls: 'llmsider-context-name',
+				text: folderPlaceholder.name
+			});
+
+			contextTag.ondblclick = async (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				if (!folderPlaceholder.path) {
+					return;
+				}
+				if (this.directoryFileMap.has(folderPlaceholder.displayName)) {
+					return;
+				}
+				try {
+					const beforeContextCount = this.contextManager.getCurrentNoteContext().length;
+					const result = await this.contextManager.includeDirectory(folderPlaceholder.folder);
+					if (result.success) {
+						const afterContext = this.contextManager.getCurrentNoteContext();
+						const newlyAddedFiles = afterContext.slice(beforeContextCount).map(ctx => ctx.name);
+						this.directoryFileMap.set(folderPlaceholder.displayName, newlyAddedFiles);
+						this.updateContextDisplay();
+					}
+				} catch (error) {
+					Logger.error('Error expanding folder placeholder:', error);
+				}
+			};
+
+			const removeBtn = contextTag.createEl('button', {
+				cls: 'llmsider-context-remove',
+				text: '×',
+				title: 'Remove folder context'
+			});
+
+			removeBtn.onclick = (e) => {
+				e.stopPropagation();
+				this.removePlaceholderFromInput(folderPlaceholder.name);
+				this.removePlaceholderMapping(folderPlaceholder.displayName);
+				this.handleDirectoryPlaceholderDeletion(folderPlaceholder.displayName);
+				this.updateContextDisplay();
+			};
+		});
+	}
+
+	private getFolderPlaceholdersFromInput(): Array<{ name: string; displayName: string; path?: string; folder: TFolder }> {
+		const content = this.inputElement.value;
+		const matches = content.matchAll(/@\[(📁[^\]]+)\]/g);
+		const uniqueDisplayNames = new Set<string>();
+		for (const match of matches) {
+			uniqueDisplayNames.add(match[1]);
+		}
+		const result: Array<{ name: string; displayName: string; path?: string; folder: TFolder }> = [];
+		uniqueDisplayNames.forEach(displayName => {
+			const name = displayName.replace(/^📁/, '');
+			const path = this.placeholderPathMap.get(displayName);
+			if (!path) {
+				return;
+			}
+			const folder = this.app.vault.getAbstractFileByPath(path);
+			if (folder && folder instanceof TFolder) {
+				result.push({ name, displayName, path, folder });
+			}
+		});
+		return result;
 	}
 
 	/**
@@ -1459,40 +1532,50 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 * Handle folder selected from suggestions
 	 */
 	private async handleFolderSelected(folder: TFolder): Promise<void> {
-		new Notice(this.plugin.i18n.t('ui.processingDirectory', {name: folder.name}) || `Processing directory "${folder.name}"...`);
-
-		try {
-			// Store current context count to track which files were added by this directory
-			const beforeContextCount = this.contextManager.getCurrentNoteContext().length;
-
-			const result = await this.contextManager.includeDirectory(folder);
-
-			if (result.success) {
-				// Track which files were added by this directory
-				const afterContext = this.contextManager.getCurrentNoteContext();
-				const newlyAddedFiles = afterContext.slice(beforeContextCount).map(ctx => ctx.name);
-
-				// Store mapping: directory display name -> list of added filenames
-				const displayName = `📁${folder.name || 'Root'}`;
-				this.directoryFileMap.set(displayName, newlyAddedFiles);
-
-				Logger.debug('Directory added, tracking files:', {
-					directory: displayName,
-					filesAdded: newlyAddedFiles,
-					totalFiles: newlyAddedFiles.length
-				});
-
-
-			new Notice(result.message);
-			this.updateContextDisplay();
-		} else {
-			new Notice(result.message);
-		}
-	} catch (error) {
-		Logger.error('Failed to include directory from @ suggestion:', error);
-		new Notice(this.plugin.i18n.t('ui.failedToProcessDirectory', {error: error instanceof Error ? error.message : 'Unknown error'}) || `Failed to process directory: ${error instanceof Error ? error.message : 'Unknown error'}`);
+		const displayName = `📁${folder.name || 'Root'}`;
+		this.addPlaceholderMapping(displayName, folder.path);
+		this.removeDirectoryContextsNotExplicitlyReferenced(folder.path);
+		this.updateContextDisplay();
 	}
-}	// Store captured selection to preserve across menu interactions
+
+	private removeDirectoryContextsNotExplicitlyReferenced(folderPath: string): void {
+		const referencedFilePaths = this.getReferencedFilePathsFromInput();
+		const activeFilePath = this.app.workspace.getActiveFile()?.path;
+		const prefix = folderPath.endsWith('/') ? folderPath : `${folderPath}/`;
+		const currentContexts = this.contextManager.getCurrentNoteContext();
+		currentContexts.forEach((context) => {
+			const filePath = context.filePath;
+			if (!filePath || !filePath.startsWith(prefix)) {
+				return;
+			}
+			if (filePath === activeFilePath) {
+				return;
+			}
+			if (referencedFilePaths.has(filePath)) {
+				return;
+			}
+			this.contextManager.removeNoteContext(context.name);
+		});
+	}
+
+	private getReferencedFilePathsFromInput(): Set<string> {
+		const referenced = new Set<string>();
+		const content = this.inputElement.value;
+		const matches = content.matchAll(/@\[([^\]]+)\]/g);
+		for (const match of matches) {
+			const displayName = match[1];
+			if (displayName.startsWith('📁')) {
+				continue;
+			}
+			const path = this.placeholderPathMap.get(displayName);
+			if (path) {
+				referenced.add(path);
+			}
+		}
+		return referenced;
+	}
+
+	// Store captured selection to preserve across menu interactions
 	private capturedSelection: string | null = null;
 
 	/**

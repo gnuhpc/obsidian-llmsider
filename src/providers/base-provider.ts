@@ -842,7 +842,9 @@ export abstract class BaseLLMProvider {
 			metadata: {
 				provider: this.getProviderName(),
 				rawResponse: result
-			}
+			},
+			isLoaded: true,
+			providerStatuses: {}
 		};
 	}
 

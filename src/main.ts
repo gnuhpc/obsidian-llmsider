@@ -177,16 +177,12 @@ export default class LLMSiderPlugin extends Plugin {
 						this.similarNotesManager.onFileOpen(file);
 					}
 					
-					if (this.settings.contextSettings?.autoAddActiveNote && file && file.extension === 'md') {
+					if (this.settings.contextSettings?.autoReference && file && file.extension === 'md') {
 						const chatView = this.getChatView();
 						if (chatView && (chatView as any).contextManager) {
 							const contextManager = (chatView as any).contextManager;
-							
-							const existingNotes = contextManager.getCurrentNoteContext();
-							for (const note of existingNotes) {
-								contextManager.removeNoteContext(note.name);
-							}
-							
+
+							contextManager.clearContext();
 							await contextManager.addFileToContext(file);
 							this.lastAutoAddedNotePath = file.path;
 							
@@ -749,7 +745,11 @@ export default class LLMSiderPlugin extends Plugin {
 
 			// Load selection popup settings
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			this.settings.selectionPopup = await this.configDb.getSelectionPopupSettings() as any;			// Load google search settings
+			this.settings.selectionPopup = await this.configDb.getSelectionPopupSettings() as any;
+
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			this.settings.contextSettings = await this.configDb.getContextSettings() as any;
+			// Load google search settings
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			this.settings.googleSearch = await this.configDb.getGoogleSearchSettings() as any;
 
@@ -1041,6 +1041,8 @@ export default class LLMSiderPlugin extends Plugin {
 
 				// Save selection popup settings
 				await this.configDb.setSelectionPopupSettings(this.settings.selectionPopup);
+
+				await this.configDb.setContextSettings(this.settings.contextSettings);
 
 				// Save google search settings
 				await this.configDb.setGoogleSearchSettings(this.settings.googleSearch);
@@ -1623,8 +1625,7 @@ export default class LLMSiderPlugin extends Plugin {
 			editorCallback: (editor, view) => {
 				if (this.inlineQuickChatHandler && this.settings.inlineQuickChat.enabled) {
 					// Get the CodeMirror 6 editor view
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const editorView = (view as any).editor?.cm;
+					const editorView = this.getEditorViewFromMarkdownView(view as any);
 					if (editorView) {
 						this.inlineQuickChatHandler.show(editorView);
 					} else {
@@ -1641,6 +1642,23 @@ export default class LLMSiderPlugin extends Plugin {
 				}
 			]
 		});
+	}
+
+	public getEditorViewFromMarkdownView(view: any): any | null {
+		const editor = view?.editor;
+		const candidates = [
+			editor?.cm,
+			editor?.cm6,
+			editor?.view,
+			editor?.cm?.view,
+			editor?.cm?.editorView
+		];
+		for (const candidate of candidates) {
+			if (candidate && typeof candidate.dispatch === 'function' && candidate.state) {
+				return candidate;
+			}
+		}
+		return null;
 	}
 
 	private registerContextMenu() {

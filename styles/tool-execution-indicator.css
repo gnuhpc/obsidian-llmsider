@@ -422,31 +422,37 @@
 }
 
 /* Web Fetch Progress Styles */
+.web-fetch-progress {
+	margin-top: 6px;
+}
+
 .web-fetch-list {
     list-style: none;
     padding: 0;
     margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
 }
 
 .web-fetch-item {
     display: flex;
-    align-items: center;
-    padding: 4px 0;
-    border-bottom: 1px solid var(--background-modifier-border);
+    align-items: flex-start;
+    padding: 8px 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    background: var(--background-primary);
     flex-wrap: wrap;
-}
-
-.web-fetch-item:last-child {
-    border-bottom: none;
 }
 
 .web-fetch-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
-    margin-right: 8px;
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    margin-top: 2px;
 }
 
 .web-fetch-icon.is-loading {
@@ -464,11 +470,13 @@
 
 .web-fetch-url {
     flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
     font-family: var(--font-monospace);
     font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-normal);
+    word-break: break-word;
 }
 
 .web-fetch-error {
@@ -476,7 +484,7 @@
     margin-left: 28px;
     font-size: 11px;
     color: var(--text-error);
-    margin-top: 2px;
+    margin-top: 4px;
 }
 
 @keyframes spin {

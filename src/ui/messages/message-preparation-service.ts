@@ -92,6 +92,9 @@ export class MessagePreparationService implements IMessagePreparationService {
 		memoryEnabled = false
 	): Promise<ChatMessage[]> {
 		const messages: ChatMessage[] = [];
+		const hasContext = this.contextManager.hasContext();
+		const includeExtrasWithContext = this.plugin.settings.contextSettings?.includeExtrasWithContext ?? false;
+		const allowExtraContext = !hasContext || includeExtrasWithContext;
 
 		// Add system message
 		const systemPrompt = await this.getSystemPrompt(memoryContext);
@@ -100,7 +103,7 @@ export class MessagePreparationService implements IMessagePreparationService {
 		// Skip during plugin initialization and session loading to prevent startup vector generation
 		let vectorSearchContext = '';
 		
-		if (this.plugin.settings.vectorSettings.autoSearchEnabled && 
+		if (allowExtraContext && this.plugin.settings.vectorSettings.autoSearchEnabled && 
 			this.plugin.state.isLoaded &&
 			!this.plugin.state.isLoadingSession) {
 			// Update step indicator to active
@@ -171,7 +174,7 @@ export class MessagePreparationService implements IMessagePreparationService {
 		let chatHistory: ChatMessage[] = [];
 
 		// Check if conversation history is enabled in settings
-		if (this.plugin.settings.memorySettings.enableConversationHistory) {
+		if (allowExtraContext && this.plugin.settings.memorySettings.enableConversationHistory) {
 			// Strategy: Try Memory first, then Local
 			let usedMemoryHistory = false;
 			const limit = this.plugin.settings.memorySettings.conversationHistoryLimit || 10;

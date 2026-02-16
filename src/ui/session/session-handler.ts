@@ -66,6 +66,7 @@ export class SessionHandler {
 		// Clear context first
 		Logger.debug('Clearing context manager');
 		this.contextManager.clearContext();
+		await this.contextManager.includeCurrentNote();
 		this.updateContextDisplay();
 
 		// Create new session

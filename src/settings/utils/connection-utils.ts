@@ -18,6 +18,7 @@ export function getConnectionTypeName(type: string): string {
 		'free-deepseek': 'Free Deepseek',
 		'hugging-chat': 'Hugging Chat',
 		'openai-compatible': 'OpenAI-Compatible',
+		'siliconflow': 'SiliconFlow',
 		'github-copilot': 'GitHub Copilot',
 		'local': 'Local',
 		'opencode': 'OpenCode'
@@ -42,6 +43,7 @@ export function getConnectionTypeLogo(type: string): string {
 		'free-deepseek': `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L4 6V18L12 22L20 18V6L12 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8V16M8 10L12 12L16 10M8 14L12 16L16 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="18" cy="6" r="2.5" fill="var(--text-success)" stroke="currentColor" stroke-width="0.5"/></svg>`,
 		'hugging-chat': `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="10" r="2" fill="currentColor"/><circle cx="16" cy="10" r="2" fill="currentColor"/><path d="M8 15C8 15 10 17 12 17C14 17 16 15 16 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 6C6 4 8 3 12 3C16 3 18 4 18 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M20 10C20 10 21 10 21 11C21 12 20 12 20 12M4 10C4 10 3 10 3 11C3 12 4 12 4 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
 		'openai-compatible': `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="6" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="18" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="18" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 12H8M16 12H18M12 8V6M12 18V16" stroke="currentColor" stroke-width="1.5"/></svg>`,
+		'siliconflow': `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="6" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="18" r="2" stroke="currentColor" stroke-width="1.5"/><circle cx="18" cy="12" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M6 12H8M16 12H18M12 8V6M12 18V16" stroke="currentColor" stroke-width="1.5"/></svg>`,
 		'opencode': `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 9L11 12L8 15M13 15H16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 	};
 	return logos[type] || logos['openai-compatible'];

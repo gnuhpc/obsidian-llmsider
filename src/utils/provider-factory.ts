@@ -12,6 +12,7 @@ import { FreeQwenProviderImpl } from '../providers/free-qwen-provider-impl';
 import { FreeGeminiProviderImpl } from '../providers/free-gemini-provider-impl';
 import { FreeDeepseekProviderImpl } from '../providers/free-deepseek-provider-impl';
 import { OpenAICompatibleProviderImpl } from '../providers/openai-compatible-provider';
+import { SiliconFlowProviderImpl } from '../providers/siliconflow-provider';
 import { GitHubCopilotProviderImpl } from '../providers/github-copilot-provider';
 import { HuggingChatProviderImpl } from '../providers/hugging-chat-provider';
 import { OpenCodeProviderImpl } from '../providers/opencode-provider';
@@ -110,6 +111,12 @@ export class ProviderFactory {
 					throw new Error('Base URL is required for OpenAI-compatible providers');
 				}
 				return new OpenAICompatibleProviderImpl(providerConfig);
+
+			case 'siliconflow':
+				if (!connection.baseUrl) {
+					providerConfig.baseUrl = 'https://api.siliconflow.cn/v1';
+				}
+				return new SiliconFlowProviderImpl(providerConfig);
 
 			case 'ollama':
 				if (!connection.baseUrl) {

@@ -121,6 +121,31 @@
     flex-shrink: 0;
 }
 
+.llmsider-message.llmsider-user .llmsider-user-context-has-indicator {
+    padding-right: 34px;
+    padding-bottom: 16px;
+}
+
+.llmsider-message.llmsider-user .llmsider-user-context-indicator {
+    position: absolute;
+    right: 12px;
+    bottom: 9px;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-on-accent) !important;
+    opacity: 1;
+    pointer-events: none;
+}
+
+.llmsider-message.llmsider-user .llmsider-user-context-indicator svg,
+.llmsider-message.llmsider-user .llmsider-user-context-indicator svg * {
+    stroke: currentColor !important;
+    color: inherit !important;
+}
+
 .llmsider-message.llmsider-user .llmsider-message-content {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
@@ -275,46 +300,8 @@
     transform: scale(0.95);
 }
 
-/* Add Provider Button (top-right corner, shown on hover) */
 .llmsider-add-provider-btn {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 20px;
-    height: 20px;
     padding: 0;
-    border: 1px solid var(--background-modifier-border) !important;
-    border-radius: 3px;
-    background: transparent !important;
-    color: var(--text-muted) !important;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.2s ease;
-    z-index: 10;
-    box-shadow: none !important;
-    font-size: 11px;
-}
-
-.llmsider-message.llmsider-assistant:hover .llmsider-add-provider-btn,
-.llmsider-message.llmsider-guided-mode:hover .llmsider-add-provider-btn {
-    opacity: 1;
-    visibility: visible;
-}
-
-.llmsider-add-provider-btn:hover {
-    background: var(--background-modifier-hover) !important;
-    color: var(--text-normal) !important;
-    border-color: var(--background-modifier-border-hover) !important;
-    transform: none !important;
-    box-shadow: none !important;
-}
-
-.llmsider-add-provider-btn:active {
-    transform: none !important;
 }
 
 /* Message-level provider tabs - shown INSIDE message content at the top */

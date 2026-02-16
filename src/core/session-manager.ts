@@ -170,7 +170,8 @@ export class SessionManager {
 		});
 
 		// Search state
-		let filteredSessions = sessions;
+		let allSessions = sessions;
+		let filteredSessions = allSessions;
 		let searchQuery = '';
 
 		// Render function for session list
@@ -310,9 +311,14 @@ export class SessionManager {
 						if (confirmDelete) {
 							await this.plugin.deleteChatSession(session.id);
 							new Notice(this.plugin.i18n.t('ui.conversationDeleted'));
-							// Refresh modal
-							modal.remove();
-							this.showChatHistory();
+							
+							// Update local sessions and refresh list without closing modal
+							allSessions = this.plugin.settings.chatSessions;
+							if (allSessions.length <= 1) {
+								modal.remove();
+							} else {
+								searchInput.dispatchEvent(new Event('input'));
+							}
 						}
 					};
 				}
@@ -339,9 +345,9 @@ export class SessionManager {
 		searchInput.oninput = () => {
 			searchQuery = searchInput.value.trim().toLowerCase();
 			if (!searchQuery) {
-				filteredSessions = sessions;
+				filteredSessions = allSessions;
 			} else {
-				filteredSessions = sessions.filter((session) => {
+				filteredSessions = allSessions.filter((session) => {
 					const name = (session.name || '').toLowerCase();
 					const firstMsg = session.messages.find(m => m.role === 'user');
 					const preview = firstMsg?.content ? (typeof firstMsg.content === 'string' ? firstMsg.content : '').toLowerCase() : '';

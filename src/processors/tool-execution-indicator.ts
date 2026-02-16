@@ -156,27 +156,51 @@ export class ToolExecutionIndicator {
 		this.accumulatedStreamContent = '';
 		this.currentContent = '';
 
+		const isSequential = this.parentEl.classList.contains('sequential-mode');
+		if (!targetEl && isSequential) {
+			const nodes = Array.from(this.parentEl.querySelectorAll('.llmsider-dag-node')) as HTMLElement[];
+			const fallbackTarget = nodes[stepIndex];
+			if (fallbackTarget) {
+				targetEl = fallbackTarget;
+			}
+		}
+
 		// Handle positioning if targetEl is provided
 		if (targetEl) {
-			this.containerEl.style.position = 'absolute';
-			this.containerEl.style.right = '16px';
-			this.containerEl.style.width = '40%';
-			this.containerEl.style.margin = '0';
-			this.containerEl.style.zIndex = '10';
-			
-			// Calculate top position relative to parent
-			// We assume parentEl is the container that holds both the targetEl (deeply) and this indicator
-			// But targetEl is likely inside a wrapper (dag-layers -> dag-layer)
-			// So we need offset relative to parentEl
-			
-			// Get relative offset
-			const parentRect = this.parentEl.getBoundingClientRect();
-			const targetRect = targetEl.getBoundingClientRect();
-			
-			const relativeTop = targetRect.top - parentRect.top;
-			this.containerEl.style.top = `${relativeTop}px`;
+			const parentWidth = this.parentEl.getBoundingClientRect().width;
+			const shouldStack = isSequential && parentWidth < 900;
+
+			if (shouldStack) {
+				this.parentEl.addClass('llmsider-sequential-stacked');
+				this.containerEl.style.position = 'relative';
+				this.containerEl.style.right = '';
+				this.containerEl.style.width = '100%';
+				this.containerEl.style.margin = '12px 0 0';
+				this.containerEl.style.zIndex = '';
+				this.containerEl.style.top = '';
+			} else {
+				this.parentEl.removeClass('llmsider-sequential-stacked');
+				this.containerEl.style.position = 'absolute';
+				this.containerEl.style.right = '16px';
+				this.containerEl.style.width = '40%';
+				this.containerEl.style.margin = '0';
+				this.containerEl.style.zIndex = '10';
+				
+				// Calculate top position relative to parent
+				// We assume parentEl is the container that holds both the targetEl (deeply) and this indicator
+				// But targetEl is likely inside a wrapper (dag-layers -> dag-layer)
+				// So we need offset relative to parentEl
+				
+				// Get relative offset
+				const parentRect = this.parentEl.getBoundingClientRect();
+				const targetRect = targetEl.getBoundingClientRect();
+				
+				const relativeTop = targetRect.top - parentRect.top;
+				this.containerEl.style.top = `${relativeTop}px`;
+			}
 		} else {
 			// Reset to default styles if no target
+			this.parentEl.removeClass('llmsider-sequential-stacked');
 			this.containerEl.style.position = '';
 			this.containerEl.style.right = '';
 			this.containerEl.style.width = '';

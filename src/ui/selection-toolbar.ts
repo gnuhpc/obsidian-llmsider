@@ -165,7 +165,7 @@ export class SelectionToolbar {
 		const rect = range.getBoundingClientRect();
 
 		// Position above the selection, centered
-		const toolbarWidth = 180; // Approximate width (updated for 4 buttons)
+		const toolbarWidth = 220;
 		const toolbarHeight = 36;
 		
 		let left = rect.left + (rect.width / 2) - (toolbarWidth / 2);
@@ -213,6 +213,16 @@ export class SelectionToolbar {
 			<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
 		</svg>`;
 		copyBtn.onclick = () => this.copySelectedText();
+
+		const addContextBtn = this.toolbar.createEl('button', {
+			cls: 'llmsider-selection-btn',
+			title: i18n?.t('ui.addToContext') || 'Add to Context',
+			attr: { 'aria-label': i18n?.t('ui.addToContext') || 'Add to Context' }
+		});
+		addContextBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M12 5v14M5 12h14"/>
+		</svg>`;
+		addContextBtn.onclick = () => this.addSelectionToContext();
 
 		// Generate note button
 		const noteBtn = this.toolbar.createEl('button', {
@@ -364,6 +374,46 @@ export class SelectionToolbar {
 		} catch (error) {
 			Logger.error('[SelectionToolbar] Failed to update note title:', error);
 			new Notice(i18n?.t('notifications.file.failedToUpdateTitle') || 'Failed to update note title');
+		}
+
+		this.clearSelection();
+		this.hideToolbar();
+	}
+
+	private async addSelectionToContext(): Promise<void> {
+		const selectedText = this.toolbar?.dataset.selectedText;
+		if (!selectedText) return;
+
+		const chatView = this.plugin.getChatView();
+		if (!chatView) {
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.pleaseOpenChatFirst') || 'Please open LLMSider chat first');
+			return;
+		}
+
+		if (chatView?.isExecuting()) {
+			new Notice(this.plugin.i18n.t('ui.cannotAddContextDuringExecution') || 'Cannot add context during execution');
+			return;
+		}
+
+		const chatViewAny = chatView as any;
+		const contextManager = chatViewAny.contextManager;
+		if (!contextManager) {
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.contextManagerNotAvailable') || 'Context manager not available');
+			return;
+		}
+
+		try {
+			const result = await contextManager.addTextToContext(selectedText);
+			if (result.success) {
+				if (chatViewAny.updateContextDisplay) {
+					chatViewAny.updateContextDisplay();
+				}
+			} else {
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToAddText', { error: result.message }) || 'Failed to add text: ' + result.message);
+			}
+		} catch (error) {
+			Logger.error('Error adding text to context:', error);
+			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.errorAddingTextToContext') || 'Error adding text to context');
 		}
 
 		this.clearSelection();

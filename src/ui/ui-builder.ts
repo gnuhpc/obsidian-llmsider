@@ -15,6 +15,7 @@ export class UIBuilder {
 	private toolPermissionHandler: ToolPermissionHandler;
 	private lastRowWrapped = false;
 	private lastWrapWidth: number | null = null;
+	private applyResponsiveClasses?: () => void;
 
 	constructor(plugin: LLMSiderPlugin, containerEl: HTMLElement, toolPermissionHandler?: ToolPermissionHandler) {
 		this.plugin = plugin;
@@ -152,6 +153,14 @@ export class UIBuilder {
 
 	private setupResponsiveClasses(container: HTMLElement): void {
 		const applyClasses = (width: number) => {
+			if (width <= 0) {
+				container.toggleClass('llmsider-narrow', false);
+				container.toggleClass('llmsider-compact', false);
+				container.toggleClass('llmsider-row-wrapped', false);
+				this.lastRowWrapped = false;
+				this.lastWrapWidth = null;
+				return;
+			}
 			container.toggleClass('llmsider-narrow', width <= 360);
 			container.toggleClass('llmsider-compact', width <= 260);
 
@@ -194,6 +203,7 @@ export class UIBuilder {
 		};
 
 		applyClasses(container.clientWidth);
+		this.applyResponsiveClasses = () => applyClasses(container.clientWidth);
 
 		const observer = new ResizeObserver((entries) => {
 			const entry = entries[0];
@@ -207,6 +217,14 @@ export class UIBuilder {
 		requestAnimationFrame(() => {
 			applyClasses(container.clientWidth);
 		});
+
+		setTimeout(() => {
+			applyClasses(container.clientWidth);
+		}, 300);
+
+		setTimeout(() => {
+			applyClasses(container.clientWidth);
+		}, 1000);
 	}
 
 	/**
@@ -1855,6 +1873,9 @@ export class UIBuilder {
 			</span>
 		`;
 		btn.title = this.i18n.t('ui.selectProvider') || 'Select Provider';
+		requestAnimationFrame(() => {
+			this.applyResponsiveClasses?.();
+		});
 	}
 
 	/**

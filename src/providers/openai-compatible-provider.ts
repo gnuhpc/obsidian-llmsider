@@ -25,7 +25,8 @@ export class OpenAICompatibleProviderImpl extends BaseLLMProvider {
 			this.model_config = createOpenAI({
 				apiKey: this.apiKey || 'not-needed',
 				baseURL: finalBaseURL,
-				fetch: this.createCustomFetch()
+				fetch: this.createCustomFetch(),
+				compatibility: 'compatible'
 			});
 
 		} catch (error) {

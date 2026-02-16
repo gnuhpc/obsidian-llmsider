@@ -450,6 +450,14 @@ export class FileSuggestions {
 				}
 			});
 		});
+
+		if (itemsToShow.length > 0) {
+			this.selectedSuggestionIndex = 0;
+			const firstSuggestion = listContainer.querySelector('.llmsider-file-suggestion') as HTMLElement | null;
+			if (firstSuggestion) {
+				firstSuggestion.classList.add('selected');
+			}
+		}
 		
 		// Add "load more" indicator if there are more items
 		if (this.currentDisplayCount < this.filteredItems.length) {
@@ -622,7 +630,17 @@ export class FileSuggestions {
 	 * Select current highlighted suggestion
 	 */
 	private selectCurrentFileSuggestion(): void {
-		if (!this.suggestionsContainer || this.selectedSuggestionIndex === -1) {
+		if (!this.suggestionsContainer) {
+			return;
+		}
+
+		if (this.selectedSuggestionIndex === -1) {
+			if (this.filteredItems.length === 0) {
+				return;
+			}
+			this.selectedSuggestionIndex = 0;
+		}
+		if (this.selectedSuggestionIndex === -1) {
 			return;
 		}
 		

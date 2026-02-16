@@ -66,6 +66,9 @@ export class SelectionPopup {
 	private popupEl: HTMLElement | null = null;
 	private hideTimeout: number | null = null;
 	private isMouseOverPopup: boolean = false;
+	private selectionChangeDebounce: number | null = null;
+	private lastSelectionText = '';
+	private lastAutoReferenceText = '';
 	
 	// Bound event handlers for proper cleanup
 	private boundHandleMouseUp: (e: MouseEvent) => void;
@@ -124,11 +127,82 @@ export class SelectionPopup {
 	 * Handle selection change event
 	 */
 	private handleSelectionChange(): void {
-		// Don't show on selection change if popup is already visible
-		// This prevents the popup from jumping around while text is being selected
-		if (this.popupEl) {
+		if (this.selectionChangeDebounce !== null) {
+			window.clearTimeout(this.selectionChangeDebounce);
+		}
+
+		this.selectionChangeDebounce = window.setTimeout(() => {
+			this.processSelectionChange();
+		}, 100);
+	}
+
+	private async processSelectionChange(): Promise<void> {
+		const selection = window.getSelection();
+		const selectedText = selection?.toString().trim() || '';
+		const hasSelection = !!selection && !selection.isCollapsed && !!selectedText;
+		Logger.debug('[SelectionPopup] processSelectionChange', {
+			hasSelection,
+			selectedLength: selectedText.length,
+			autoReference: this.isAutoReferenceEnabled(),
+			quickChatEnabled: this.plugin.settings.inlineQuickChat.enabled,
+			quickChatShowOnSelection: this.plugin.settings.inlineQuickChat.showOnSelection,
+			showAddToContext: this.plugin.settings.selectionPopup.showAddToContext
+		});
+
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const activeLeaf = this.app.workspace.activeLeaf;
+		let isInWebViewer = false;
+		if (activeLeaf?.view?.contentEl) {
+			const contentEl = activeLeaf.view.contentEl;
+			const webview = contentEl.querySelector('webview');
+			if (webview) {
+				isInWebViewer = true;
+			} else {
+				const iframes = contentEl.querySelectorAll('iframe');
+				for (const iframe of Array.from(iframes)) {
+					const src = iframe.getAttribute('src');
+					if (src && (src.startsWith('http://') || src.startsWith('https://'))) {
+						isInWebViewer = true;
+						break;
+					}
+				}
+			}
+		}
+
+		if (!activeView && !isInWebViewer) {
+			Logger.debug('[SelectionPopup] No active markdown view or webviewer; skip popup');
 			return;
 		}
+
+		if (!hasSelection) {
+			if (this.lastSelectionText) {
+				this.lastSelectionText = '';
+				this.lastAutoReferenceText = '';
+				this.hidePopup();
+				if (this.isAutoReferenceEnabled()) {
+					await this.switchToCurrentNoteContext();
+				}
+			}
+			return;
+		}
+
+		this.lastSelectionText = selectedText;
+
+		if (!this.isAutoReferenceEnabled()) {
+			return;
+		}
+
+		if (selectedText.length < 3) {
+			Logger.debug('[SelectionPopup] Selection too short for auto-reference');
+			return;
+		}
+
+		if (selectedText === this.lastAutoReferenceText) {
+			return;
+		}
+
+		this.lastAutoReferenceText = selectedText;
+		await this.handleAddToContext(selectedText, true, false);
 	}
 
 	/**
@@ -264,23 +338,43 @@ export class SelectionPopup {
 			}
 		}
 
-	// Check if auto-add to context is enabled
-	if (this.plugin.settings.selectionPopup.autoAddToContext) {
-		await this.handleAddToContext(selectedText, true);
-		return;
+		// Show popup near the selection
+		this.showPopup(rect, selectedText, isFromWebViewer);
 	}
-	
-	// Show popup near the selection
-	this.showPopup(rect, selectedText, isFromWebViewer);
-}
+
+	private isAutoReferenceEnabled(): boolean {
+		return this.plugin.settings.contextSettings?.autoReference ?? true;
+	}
+
+	private async switchToCurrentNoteContext(): Promise<void> {
+		const chatView = this.plugin.getChatView();
+		if (!chatView) {
+			return;
+		}
+
+		const contextManager = (chatView as unknown).contextManager;
+		if (!contextManager) {
+			return;
+		}
+
+		contextManager.clearContext();
+		await contextManager.includeCurrentNote();
+
+		if ((chatView as unknown).updateContextDisplay) {
+			(chatView as unknown).updateContextDisplay();
+		}
+	}
 
 	/**
 	 * Show the popup button
 	 */
 	private showPopup(rect: DOMRect, selectedText: string, isFromWebViewer: boolean = false): void {
+		const autoReferenceEnabled = this.isAutoReferenceEnabled();
+		const canShowAddToContext = this.plugin.settings.selectionPopup.showAddToContext && !autoReferenceEnabled;
+		const canShowQuickChat = this.plugin.settings.inlineQuickChat.enabled && this.plugin.settings.inlineQuickChat.showOnSelection;
+
 		// Check if any buttons are enabled before creating popup
-		if (!this.plugin.settings.selectionPopup.showAddToContext && 
-		    !this.plugin.settings.inlineQuickChat.enabled) {
+		if (!canShowAddToContext && !canShowQuickChat) {
 			// No buttons enabled, don't show popup
 			return;
 		}
@@ -298,7 +392,7 @@ export class SelectionPopup {
 		this.popupEl.appendChild(buttonContainer);
 
 		// Add to Context button (icon only) - only if enabled
-		if (this.plugin.settings.selectionPopup.showAddToContext) {
+		if (canShowAddToContext) {
 			const addContextBtn = document.createElement('button');
 			addContextBtn.className = 'llmsider-selection-popup-btn';
 			addContextBtn.setAttribute('aria-label', 'Add to Context');
@@ -330,7 +424,7 @@ export class SelectionPopup {
 
 		// Quick Chat button (icon only) - only if Quick Chat is enabled, showOnSelection is enabled, and NOT in web viewer
 		// Web viewer doesn't support Quick Chat because content cannot be edited
-		if (!isFromWebViewer && this.plugin.settings.inlineQuickChat.enabled && this.plugin.settings.inlineQuickChat.showOnSelection) {
+		if (!isFromWebViewer && canShowQuickChat) {
 			const quickChatBtn = document.createElement('button');
 			quickChatBtn.className = 'llmsider-selection-popup-btn llmsider-selection-popup-btn-quick-chat';
 			quickChatBtn.setAttribute('aria-label', this.plugin.i18n.t('quickChatUI.buttonLabel'));
@@ -459,7 +553,11 @@ export class SelectionPopup {
 	/**
 	 * Handle add to context action
 	 */
-	private async handleAddToContext(selectedText: string, clearBeforeAdd: boolean = false): Promise<void> {
+	private async handleAddToContext(
+		selectedText: string,
+		clearBeforeAdd: boolean = false,
+		hideAfter: boolean = true
+	): Promise<void> {
 		try {
 			// Get chat view and its context manager
 			const chatView = this.plugin.getChatView();
@@ -518,10 +616,6 @@ export class SelectionPopup {
 			const result = await contextManager.addTextToContext(finalText);
 			
 			if (result.success) {
-				const i18n = this.plugin.getI18nManager();
-				const message = i18n?.t('ui.addedSelectionToContext', { length: finalText.length }) || `✓ Added to context (${finalText.length} chars)`;
-				new Notice(message);
-				
 				// Update context display in chat view
 				if ((chatView as unknown).updateContextDisplay) {
 					(chatView as unknown).updateContextDisplay();
@@ -533,8 +627,10 @@ export class SelectionPopup {
 				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToAddText', { error: result.message }) || 'Failed to add text: ' + result.message);
 			}
 			
-			// Hide popup after action
-			this.hidePopup(true);
+			if (hideAfter) {
+				// Hide popup after action
+				this.hidePopup(true);
+			}
 
 		} catch (error) {
 			Logger.error('Error adding text to context:', error);
@@ -566,8 +662,7 @@ export class SelectionPopup {
 
 			// Activate the chat view
 			this.plugin.activateChatView();
-			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.selectedTextAddedToContext') || 'Selected text added to chat context');
-			return;
+				return;
 			}
 
 		// Get the inline quick chat handler
@@ -589,7 +684,6 @@ export class SelectionPopup {
 					}
 				}
 				this.plugin.activateChatView();
-				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.selectedTextAddedToContext') || 'Selected text added to chat context');
 			} else {
 				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.pleaseOpenChatFirst') || 'Please open LLMSider chat first');
 			}
@@ -618,9 +712,7 @@ export class SelectionPopup {
 		}
 
 		// Editing View (Source Mode)
-		// Get the CodeMirror editor view
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const editorView = (activeView.editor as any).cm;
+		const editorView = this.plugin.getEditorViewFromMarkdownView(activeView as any);
 		if (!editorView) {
 			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.editorNotReady') || 'Editor not ready');
 			return;
@@ -900,5 +992,9 @@ export class SelectionPopup {
 	destroy(): void {
 		this.hidePopup(true);
 		this.removeEventListeners();
+		if (this.selectionChangeDebounce !== null) {
+			window.clearTimeout(this.selectionChangeDebounce);
+			this.selectionChangeDebounce = null;
+		}
 	}
 }

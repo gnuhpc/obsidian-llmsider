@@ -15,7 +15,7 @@ export class ConnectionHandler {
 		private onUpdate: () => void
 	) {}
 
-	async showAddConnectionModal(type?: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode'): Promise<void> {
+	async showAddConnectionModal(type?: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode'): Promise<void> {
 		const modal = new ConnectionModal(
 			this.app,
 			this.plugin,

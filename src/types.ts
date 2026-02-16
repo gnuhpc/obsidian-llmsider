@@ -13,7 +13,7 @@ import type { ToolCategory } from './types/tool-categories';
 export interface LLMConnection {
   id: string;                 // Unique identifier
   name: string;               // Display name
-  type: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'local' | 'github-copilot' | 'hugging-chat' | 'openrouter' | 'opencode';
+  type: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'local' | 'github-copilot' | 'hugging-chat' | 'openrouter' | 'opencode';
   apiKey: string;             // API key (not required for github-copilot) - For hugging-chat, this is the hf-chat cookie value or base64 encoded username=xxx&password=xxx; For free-gemini, this is __Secure-1PSID and __Secure-1PSIDTS separated by |
   baseUrl?: string;           // Base URL (required for openai-compatible, ollama)
   organizationId?: string;    // Organization ID (OpenAI)
@@ -617,12 +617,12 @@ export interface LLMSiderSettings {
   // Selection Popup settings
   selectionPopup: {
     showAddToContext: boolean; // Show "Add to Context" button when text is selected
-    autoAddToContext: boolean; // Automatically add selected text to context (default: true)
   };
 
   // Context settings
   contextSettings: {
-    autoAddActiveNote: boolean; // Automatically add currently active note as context
+    autoReference: boolean;
+    includeExtrasWithContext: boolean;
   };
 
   // Update check settings
@@ -747,6 +747,19 @@ export interface GeneratedImage {
 		url: string; // Base64 data URL
 	};
 }
+export interface StreamingResponse {
+  delta: string;
+  isComplete: boolean;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  toolCalls?: ToolCall[];
+  metadata?: Record<string, unknown>;
+  images?: GeneratedImage[];
+}
+
 
 export interface LLMResponse {
 	content: string;
@@ -824,10 +837,10 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
   },
   selectionPopup: {
     showAddToContext: true, // Show "Add to Context" button by default
-    autoAddToContext: true // Automatically add selected text to context by default
   },
   contextSettings: {
-    autoAddActiveNote: true
+    autoReference: true,
+    includeExtrasWithContext: false
   },
   updateSettings: {
     notifyUpdates: true,

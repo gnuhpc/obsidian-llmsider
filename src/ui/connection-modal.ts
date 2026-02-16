@@ -90,6 +90,7 @@ export class ConnectionModal extends Modal {
 			this.typeDropdown.addOption('groq', 'Groq');
 			this.typeDropdown.addOption('xai', 'X.AI (Grok)');
 			this.typeDropdown.addOption('openrouter', 'OpenRouter');
+			this.typeDropdown.addOption('siliconflow', 'SiliconFlow (硅基流动)');
 			this.typeDropdown.addOption('ollama', 'Ollama');
 			this.typeDropdown.addOption('qwen', 'Qwen (通义千问)');
 			this.typeDropdown.addOption('free-qwen', 'Free Qwen (免费通义千问)');
@@ -111,6 +112,7 @@ export class ConnectionModal extends Modal {
 		this.typeDropdown.addOption('groq', 'Groq');
 		this.typeDropdown.addOption('xai', 'X.AI (Grok)');
 		this.typeDropdown.addOption('openrouter', 'OpenRouter');
+		this.typeDropdown.addOption('siliconflow', 'SiliconFlow (硅基流动)');
 		this.typeDropdown.addOption('ollama', 'Ollama');
 		this.typeDropdown.addOption('opencode', 'OpenCode');
 		this.typeDropdown.addOption('qwen', 'Qwen (通义千问)');
@@ -690,6 +692,22 @@ export class ConnectionModal extends Modal {
 					this.geminiPSIDTSInput.setValue(parts[1]);
 				}
 			}
+		} else if (type === 'siliconflow') {
+			const baseUrlGroup = container.createDiv({ cls: 'llmsider-form-group' });
+			baseUrlGroup.createEl('label', { text: this.i18n.t('ui.baseUrl'), cls: 'llmsider-form-label' });
+			baseUrlGroup.createEl('p', {
+				text: this.i18n.t('ui.baseUrlNote'),
+				cls: 'llmsider-form-note'
+			});
+			
+			this.baseUrlInput = new TextComponent(baseUrlGroup);
+			this.baseUrlInput.setPlaceholder(this.i18n.t('ui.baseUrlPlaceholder'));
+			this.baseUrlInput.inputEl.style.width = '100%';
+			if (this.existingConnection && this.existingConnection.baseUrl) {
+				this.baseUrlInput.setValue(this.existingConnection.baseUrl);
+			} else {
+				this.baseUrlInput.setValue('https://api.siliconflow.cn/v1');
+			}
 		} else if (type === 'openai-compatible') {
 			// Base URL (required for OpenAI-Compatible)
 			const baseUrlGroup = container.createDiv({ cls: 'llmsider-form-group' });
@@ -898,7 +916,7 @@ export class ConnectionModal extends Modal {
 
 	private async handleSave() {
 		try {
-		const type = this.typeDropdown.getValue() as 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'hugging-chat' | 'github-copilot' | 'opencode' | 'openrouter';
+		const type = this.typeDropdown.getValue() as 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'hugging-chat' | 'github-copilot' | 'opencode' | 'openrouter';
 		const name = this.nameInput.getValue().trim();
 		let apiKey = (type === 'github-copilot' || type === 'opencode') ? '' : this.apiKeyInput.getValue().trim();
 			
@@ -987,6 +1005,8 @@ export class ConnectionModal extends Modal {
 				this.restoreSaveButton();
 				return;
 			}
+		} else if (type === 'siliconflow') {
+			baseUrl = this.baseUrlInput?.getValue().trim() || 'https://api.siliconflow.cn/v1';
 		} else if (type === 'openai') {
 				organizationId = this.organizationIdInput?.getValue().trim() || undefined;
 			} else if (type === 'gemini' || type === 'qwen' || type === 'free-qwen' || type === 'free-deepseek' || type === 'free-gemini') {

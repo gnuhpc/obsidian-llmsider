@@ -249,13 +249,8 @@ class QuickChatBlockWidget extends WidgetType {
 			// Handle arrow keys for prompt navigation in the list below
 			const promptItems = Array.from(container.querySelectorAll('.llmsider-quick-prompt-item'));
 			
-			// Check if we should use history navigation or list navigation
-			// Use history navigation when:
-			// 1. The prompt list is hidden or empty
-			// 2. No item is selected in the list
 			const useHistoryNavigation = (quickPromptsSection.style.display === 'none' || 
-				promptItems.length === 0 || 
-				selectedPromptIndex === -1) && historyPrompts.length > 0;
+				promptItems.length === 0) && historyPrompts.length > 0;
 			
 			if (e.key === 'ArrowDown') {
 				e.preventDefault();
@@ -271,7 +266,11 @@ class QuickChatBlockWidget extends WidgetType {
 						input.value = currentInputBeforeHistory;
 					}
 				} else if (promptItems.length > 0) {
-					selectedPromptIndex = (selectedPromptIndex + 1) % promptItems.length;
+					if (selectedPromptIndex === -1) {
+						selectedPromptIndex = 0;
+					} else {
+						selectedPromptIndex = (selectedPromptIndex + 1) % promptItems.length;
+					}
 					promptItems.forEach((item, index) => {
 						item.toggleClass('selected', index === selectedPromptIndex);
 					});
@@ -300,13 +299,50 @@ class QuickChatBlockWidget extends WidgetType {
 						input.value = historyPrompts[historyIndex];
 					}
 				} else if (promptItems.length > 0) {
-					selectedPromptIndex = selectedPromptIndex <= 0 ? promptItems.length - 1 : selectedPromptIndex - 1;
+					if (selectedPromptIndex === -1) {
+						selectedPromptIndex = promptItems.length - 1;
+					} else {
+						selectedPromptIndex = selectedPromptIndex <= 0 ? promptItems.length - 1 : selectedPromptIndex - 1;
+					}
 					promptItems.forEach((item, index) => {
 						item.toggleClass('selected', index === selectedPromptIndex);
 					});
 					// Scroll selected item into view
 					if (selectedPromptIndex >= 0) {
 						promptItems[selectedPromptIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+					}
+				}
+				return;
+			}
+
+			if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+				if (!useHistoryNavigation || historyPrompts.length === 0) {
+					return;
+				}
+				e.preventDefault();
+
+				if (e.key === 'ArrowRight') {
+					// Navigate history backward (newer)
+					if (historyIndex > 0) {
+						historyIndex--;
+						input.value = historyPrompts[historyIndex];
+					} else if (historyIndex === 0) {
+						// Restore original input
+						historyIndex = -1;
+						input.value = currentInputBeforeHistory;
+					}
+				} else {
+					// Navigate history forward (older)
+					if (historyIndex === -1) {
+						// Start history navigation
+						currentInputBeforeHistory = input.value;
+						historyIndex = 0;
+						if (historyPrompts.length > 0) {
+							input.value = historyPrompts[0];
+						}
+					} else if (historyIndex < historyPrompts.length - 1) {
+						historyIndex++;
+						input.value = historyPrompts[historyIndex];
 					}
 				}
 				return;
@@ -675,6 +711,16 @@ class QuickChatBlockWidget extends WidgetType {
 			quickPromptsTitle.textContent = filter 
 				? this.i18n.t('quickChatUI.quickActionsMatching', { count: totalCount.toString() })
 				: this.i18n.t('quickChatUI.quickActionsAvailable', { count: (recentHistoryPrompts.length + builtInPrompts.length).toString() });
+
+			const promptItems = Array.from(quickPromptsList.querySelectorAll('.llmsider-quick-prompt-item')) as HTMLElement[];
+			if (promptItems.length > 0) {
+				selectedPromptIndex = 0;
+				promptItems.forEach((item, index) => {
+					item.toggleClass('selected', index === selectedPromptIndex);
+				});
+			} else {
+				selectedPromptIndex = -1;
+			}
 		};
 		
 		// Initial render with all prompts
@@ -783,7 +829,10 @@ class QuickChatBlockWidget extends WidgetType {
 		// Create accept button (✓) - Apply
 		const acceptBtn = this.actionsElement.createEl('button', {
 			cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-accept',
-			attr: { 'aria-label': 'Accept changes', 'title': 'Accept' }
+			attr: {
+				'aria-label': this.i18n.t('quickChatUI.acceptChanges'),
+				'title': this.i18n.t('quickChatUI.accept')
+			}
 		});
 		acceptBtn.innerHTML = '✓';
 		acceptBtn.onclick = () => {
@@ -827,7 +876,10 @@ class QuickChatBlockWidget extends WidgetType {
 		if (textToCopy) {
 			const copyBtn = this.actionsElement.createEl('button', {
 				cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-copy',
-				attr: { 'aria-label': 'Copy to clipboard', 'title': 'Copy' }
+				attr: {
+					'aria-label': this.i18n.t('quickChatUI.copyToClipboard'),
+					'title': this.i18n.t('quickChatUI.copy')
+				}
 			});
 			// Use SVG for copy icon
 			copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
@@ -866,7 +918,10 @@ class QuickChatBlockWidget extends WidgetType {
 		// Create reject button (✕) - Cancel
 		const rejectBtn = this.actionsElement.createEl('button', {
 			cls: 'llmsider-quick-chat-btn-icon',
-			attr: { 'aria-label': 'Reject changes', 'title': 'Reject' }
+			attr: {
+				'aria-label': this.i18n.t('quickChatUI.rejectChanges'),
+				'title': this.i18n.t('quickChatUI.reject')
+			}
 		});
 		rejectBtn.innerHTML = '✕';
 		rejectBtn.onclick = () => {
@@ -1515,7 +1570,10 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 						// Create accept button (✓) - Apply
 						const acceptBtn = actions.createEl('button', {
 							cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-accept',
-							attr: { 'aria-label': 'Accept changes', 'title': 'Accept' }
+							attr: {
+								'aria-label': i18n.t('quickChatUI.acceptChanges'),
+								'title': i18n.t('quickChatUI.accept')
+							}
 						});
 						acceptBtn.innerHTML = '✓';
 						acceptBtn.onclick = () => {
@@ -1598,7 +1656,10 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 						if (textToCopy) {
 							const copyBtn = actions.createEl('button', {
 								cls: 'llmsider-quick-chat-btn-icon llmsider-quick-chat-btn-icon-copy',
-								attr: { 'aria-label': 'Copy to clipboard', 'title': 'Copy' }
+								attr: {
+									'aria-label': i18n.t('quickChatUI.copyToClipboard'),
+									'title': i18n.t('quickChatUI.copy')
+								}
 							});
 							copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 							
@@ -1635,7 +1696,10 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 						// Create reject button (✕) - Cancel
 						const rejectBtn = actions.createEl('button', {
 							cls: 'llmsider-quick-chat-btn-icon',
-							attr: { 'aria-label': 'Reject changes', 'title': 'Reject' }
+							attr: {
+								'aria-label': i18n.t('quickChatUI.rejectChanges'),
+								'title': i18n.t('quickChatUI.reject')
+							}
 						});
 						rejectBtn.innerHTML = '✕';
 						rejectBtn.onclick = () => {

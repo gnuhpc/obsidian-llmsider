@@ -64,6 +64,23 @@ export class QwenProviderImpl extends BaseLLMProvider {
 			// Clone init to avoid mutation
 			const fetchInit = { ...init };
 			
+			if (typeof fetchInit.body === 'string' && fetchInit.body.includes('"role":"developer"')) {
+				try {
+					const parsedBody = JSON.parse(fetchInit.body);
+					if (Array.isArray(parsedBody?.messages)) {
+						parsedBody.messages = parsedBody.messages.map((message: { role?: string }) => {
+							if (message?.role === 'developer') {
+								return { ...message, role: 'system' };
+							}
+							return message;
+						});
+						fetchInit.body = JSON.stringify(parsedBody);
+					}
+				} catch (error) {
+					Logger.warn('[Qwen] Failed to normalize developer role in request body:', error);
+				}
+			}
+			
 		// Add adaptive timeout control
 		// Large content requests need longer timeout
 		// Streaming: 120s, Large non-streaming (>50KB): 180s, Default: 60s

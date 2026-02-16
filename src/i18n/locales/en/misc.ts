@@ -94,9 +94,7 @@ export const enAutoSummarize = {
 // Selection popup
 export const enSelectionPopup = {
   showAddToContextButton: 'Show "Add to Context" Button',
-  showAddToContextButtonDesc: 'Display button to add selected text to chat context',
-  autoAddToContext: 'Auto Add Selected Text to Context',
-  autoAddToContextDesc: 'Automatically add selected text to context (when enabled, selection popup will not appear)'
+  showAddToContextButtonDesc: 'Display button to add selected text to chat context'
 };
 
 // Commands
@@ -119,6 +117,12 @@ export const enQuickChatUI = {
   noMatchingPrompts: 'No matching prompts found',
   chatInputPlaceholder: 'Add context (@), built-in prompts (#)',
   editModePlaceholder: 'Tell me how to modify the note...',
+  accept: 'Accept',
+  acceptChanges: 'Accept changes',
+  copy: 'Copy',
+  copyToClipboard: 'Copy to clipboard',
+  reject: 'Reject',
+  rejectChanges: 'Reject changes',
   insertBefore: 'Insert before selection',
   insertAfter: 'Insert after selection',
   recentPrompts: 'Recent',
@@ -148,8 +152,12 @@ export const enVectorDatabase = {
 };
 
 export const enContextSettings = {
-  autoAddActiveNote: 'Auto-add Active Note as Context',
-  autoAddActiveNoteDesc: 'Automatically add the currently open note to chat context when you switch notes',
-  autoAddEnabledNotice: 'Auto-add active note enabled - Current note will be added to context',
-  autoAddDisabledNotice: 'Auto-add active note disabled'
+  autoReference: 'Auto Reference on Selection',
+  autoReferenceDesc: 'Automatically switch context to selected text, and back to the active note when selection clears or notes change',
+  autoReferenceEnabledNotice: 'Auto reference enabled - Selection and active note will be used as context',
+  autoReferenceDisabledNotice: 'Auto reference disabled',
+  includeExtrasWithContext: 'Include history/vector when context exists',
+  includeExtrasWithContextDesc: 'When there is context, also include conversation history and vector search results',
+  includeExtrasEnabledNotice: 'Enabled extra context (history/vector) when context exists',
+  includeExtrasDisabledNotice: 'Disabled extra context when context exists'
 };

@@ -1433,16 +1433,32 @@ export class ConfigDatabase {
     // Selection Popup Settings
     async getSelectionPopupSettings(): Promise<unknown> {
         const showAddToContext = await this.getConfig('selectionPopup.showAddToContext');
-        const autoAddToContext = await this.getConfig('selectionPopup.autoAddToContext');
         return {
-            showAddToContext: showAddToContext === null ? true : showAddToContext === 'true',
-            autoAddToContext: autoAddToContext === null ? true : autoAddToContext === 'true'
+            showAddToContext: showAddToContext === null ? true : showAddToContext === 'true'
         };
     }
 
     async setSelectionPopupSettings(settings: any): Promise<void> {
         await this.setConfig('selectionPopup.showAddToContext', settings.showAddToContext.toString());
-        await this.setConfig('selectionPopup.autoAddToContext', settings.autoAddToContext.toString());
+    }
+
+    async getContextSettings(): Promise<unknown> {
+        const autoReference = await this.getConfig('contextSettings.autoReference');
+        const includeExtrasWithContext = await this.getConfig('contextSettings.includeExtrasWithContext');
+        const legacyAutoAddToContext = await this.getConfig('selectionPopup.autoAddToContext');
+        const resolvedAutoReference = autoReference === null
+            ? (legacyAutoAddToContext === null ? true : legacyAutoAddToContext === 'true')
+            : autoReference === 'true';
+
+        return {
+            autoReference: resolvedAutoReference,
+            includeExtrasWithContext: includeExtrasWithContext === 'true'
+        };
+    }
+
+    async setContextSettings(settings: any): Promise<void> {
+        await this.setConfig('contextSettings.autoReference', settings.autoReference.toString());
+        await this.setConfig('contextSettings.includeExtrasWithContext', settings.includeExtrasWithContext.toString());
     }
 
     // Google Search Settings

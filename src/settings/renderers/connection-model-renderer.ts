@@ -48,7 +48,7 @@ export class ConnectionModelRenderer {
 		const connectionCardsContainer = addConnectionSection.createDiv({ cls: 'llmsider-connection-cards-grid' });
 
 		// Provider Cards with SVG logos - using centralized definitions
-		type ProviderType = 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode';
+		type ProviderType = 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode';
 		const providerTypes: ProviderType[] = [
 			'openai',
 			'anthropic',
@@ -57,6 +57,7 @@ export class ConnectionModelRenderer {
 			'gemini',
 			'groq',
 			'openrouter',
+			'siliconflow',
 			'ollama',
 			'opencode',
 			'qwen',

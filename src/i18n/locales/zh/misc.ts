@@ -94,9 +94,7 @@ export const zhAutoSummarize = {
 // 选择弹窗
 export const zhSelectionPopup = {
   showAddToContextButton: '显示"添加到上下文"按钮',
-  showAddToContextButtonDesc: '选中文本时显示按钮以添加文本到聊天上下文',
-  autoAddToContext: '自动添加选中文本到上下文',
-  autoAddToContextDesc: '自动将选中的文本添加到上下文（启用后，选择弹窗将不会出现）'
+  showAddToContextButtonDesc: '选中文本时显示按钮以添加文本到聊天上下文'
 };
 
 // 命令
@@ -119,6 +117,12 @@ export const zhQuickChatUI = {
   noMatchingPrompts: '未找到匹配的提示词',
   chatInputPlaceholder: '添加上下文 (@)，内置提示词 (#)',
   editModePlaceholder: '告诉我如何修改笔记...',
+  accept: '接受',
+  acceptChanges: '接受更改',
+  copy: '复制',
+  copyToClipboard: '复制到剪贴板',
+  reject: '拒绝',
+  rejectChanges: '拒绝更改',
   insertBefore: '插入到选中块之前',
   insertAfter: '插入到选中块之后',
   recentPrompts: '最近使用',
@@ -148,9 +152,12 @@ export const zhVectorDatabase = {
 };
 
 export const zhContextSettings = {
-  autoAddActiveNote: '自动添加当前笔记为上下文',
-  autoAddActiveNoteDesc: '切换笔记时,自动将当前打开的笔记添加到聊天上下文中',
-  autoAddEnabledNotice: '已启用自动添加当前笔记 - 当前笔记将被添加到上下文',
-  autoAddDisabledNotice: '已禁用自动添加当前笔记'
+  autoReference: '点选自动引用',
+  autoReferenceDesc: '选中文本时自动切换为选中文本，取消选择或切换笔记时自动切回当前笔记',
+  autoReferenceEnabledNotice: '已启用点选自动引用 - 将根据选择和当前笔记自动切换上下文',
+  autoReferenceDisabledNotice: '已禁用点选自动引用',
+  includeExtrasWithContext: '上下文存在时包含历史/向量',
+  includeExtrasWithContextDesc: '当已有上下文时，同时包含对话历史和向量搜索结果',
+  includeExtrasEnabledNotice: '已启用上下文额外内容（历史/向量）',
+  includeExtrasDisabledNotice: '已禁用上下文额外内容'
 };
-
