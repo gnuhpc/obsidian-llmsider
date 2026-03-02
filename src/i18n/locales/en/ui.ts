@@ -490,11 +490,11 @@ export const enUI = {
   closeButton: 'Close',
 
   // Update related
-  updateAvailableTitle: 'New Version Available',
+  updateAvailableTitle: 'obsidian-llmsider has a new version',
   currentVersion: 'Current Version',
   latestVersion: 'Latest Version',
   releaseNotes: 'Release Notes',
-  updateConfirmMessage: 'Would you like to update to the latest version? The plugin will automatically download and install the new version.',
+  updateConfirmMessage: 'Update now? The plugin will download and install automatically.',
   updateWarning: 'The plugin will be reloaded after update. Please save any unsaved work.',
   viewRelease: 'View Release',
   updateNow: 'Update Now',

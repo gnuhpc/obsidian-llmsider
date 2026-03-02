@@ -1,13 +1,20 @@
 import OpenAI from 'openai';
 import { requestUrl } from 'obsidian';
 import { BaseLLMProvider } from './base-provider';
-import { ChatMessage, LLMResponse, StreamingResponse, LLMProvider, ToolCall } from '../types';
+import { ChatMessage, LLMResponse, StreamingResponse, ToolCall } from '../types';
 import { UnifiedTool } from '../tools/unified-tool-manager';
 import { Logger } from '../utils/logger';
 import { llmLogger } from '../utils/llm-logger';
 import { TokenManager } from '../utils/token-manager';
 
-type SiliconFlowProviderConfig = LLMProvider;
+type SiliconFlowProviderConfig = {
+	apiKey: string;
+	model: string;
+	maxTokens: number;
+	temperature?: number;
+	baseUrl?: string;
+	supportsVision?: boolean;
+};
 
 export class SiliconFlowProviderImpl extends BaseLLMProvider {
 	private client?: OpenAI;
@@ -34,7 +41,6 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 
 		return async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 			const fetchInit = { ...init };
-
 			const isStreaming = fetchInit.body?.toString().includes('"stream":true');
 			const timeoutMs = isStreaming ? 120000 : 60000;
 
@@ -52,9 +58,7 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 
 			if (fetchInit.signal) {
 				const originalSignal = fetchInit.signal;
-				originalSignal.addEventListener('abort', () => {
-					controller.abort();
-				});
+				originalSignal.addEventListener('abort', () => controller.abort());
 			}
 			fetchInit.signal = controller.signal;
 
@@ -64,14 +68,12 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 				return response;
 			} catch (error) {
 				clearTimeout(timeoutId);
-
 				Logger.error('[SiliconFlow] Fetch error:', {
 					url: url.toString(),
 					error: error instanceof Error ? error.message : String(error),
 					code: (error as { code?: string }).code,
 					name: (error as { name?: string }).name
 				});
-
 				if ((error as { name?: string }).name === 'AbortError') {
 					throw new Error(`Request timeout after ${timeoutMs}ms for ${url}`);
 				}
@@ -81,25 +83,11 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 	}
 
 	private buildBaseURL(): string {
-		if (!this.baseUrl) {
-			return '';
-		}
-
+		if (!this.baseUrl) return '';
 		let url = this.baseUrl.replace(/\/$/, '');
-
-		if (url.includes('/chat/completions')) {
-			url = url.replace(/\/chat\/completions$/, '');
-		}
-
-		if (!url.endsWith('/v1')) {
-			url += '/v1';
-		}
-
+		if (url.includes('/chat/completions')) url = url.replace(/\/chat\/completions$/, '');
+		if (!url.endsWith('/v1')) url += '/v1';
 		return url;
-	}
-
-	protected getAISDKModel(): unknown {
-		return undefined;
 	}
 
 	protected getEndpointForLogging(): string {
@@ -110,17 +98,9 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 		return 'siliconflow';
 	}
 
-	async sendMessage(
-		messages: ChatMessage[],
-		tools?: UnifiedTool[],
-		systemMessage?: string
-	): Promise<LLMResponse> {
-		if (!this.client) {
-			throw new Error('SiliconFlow provider not properly initialized');
-		}
-
+	async sendMessage(messages: ChatMessage[], tools?: UnifiedTool[], systemMessage?: string): Promise<LLMResponse> {
+		if (!this.client) throw new Error('SiliconFlow provider not properly initialized');
 		await this.checkRateLimit();
-
 		const contextPrompt = systemMessage || '';
 		const modelName = this.model;
 		if (TokenManager.isTokenLimitExceeded(messages, contextPrompt, tools, modelName)) {
@@ -137,14 +117,8 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 
 		return this.retryWithBackoff(async () => {
 			const formattedMessages = this.formatMessagesForOpenAI(messages, systemMessage);
-
-			const aiSDKTools = tools && tools.length > 0
-				? this.convertToolsToProviderFormat(tools)
-				: undefined;
-
-			const estimatedTokens = TokenManager.estimateTokensForMessages(messages) +
-				TokenManager.estimateTokensForContext(systemMessage || '') +
-				(tools ? TokenManager.estimateTokensForTools(tools) : 0);
+			const aiSDKTools = tools && tools.length > 0 ? this.convertToolsToProviderFormat(tools) : undefined;
+			const estimatedTokens = TokenManager.estimateTokensForMessages(messages) + TokenManager.estimateTokensForContext(systemMessage || '') + (tools ? TokenManager.estimateTokensForTools(tools) : 0);
 			this.logEnhancedRequest(requestId, this.getEndpointForLogging(), messages, tools, systemMessage, false, estimatedTokens);
 
 			const response = await this.client!.chat.completions.create({
@@ -157,7 +131,6 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 
 			const choice = response.choices?.[0];
 			const toolCalls = this.parseToolCalls(choice?.message?.tool_calls);
-
 			const llmResponse: LLMResponse = {
 				content: choice?.message?.content || '',
 				model: this.model,
@@ -166,9 +139,7 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 					completionTokens: response.usage?.completion_tokens || 0,
 					totalTokens: response.usage?.total_tokens || 0
 				},
-				finishReason: toolCalls.length > 0
-					? 'tool_calls'
-					: (choice?.finish_reason === 'length' ? 'length' : 'stop'),
+				finishReason: toolCalls.length > 0 ? 'tool_calls' : (choice?.finish_reason === 'length' ? 'length' : 'stop'),
 				toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
 				isLoaded: true,
 				providerStatuses: {}
@@ -179,19 +150,9 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 		});
 	}
 
-	async sendStreamingMessage(
-		messages: ChatMessage[],
-		onChunk: (chunk: StreamingResponse) => void,
-		abortSignal?: AbortSignal,
-		tools?: UnifiedTool[],
-		systemMessage?: string
-	): Promise<void> {
-		if (!this.client) {
-			throw new Error('SiliconFlow provider not properly initialized');
-		}
-
+	async sendStreamingMessage(messages: ChatMessage[], onChunk: (chunk: StreamingResponse) => void, abortSignal?: AbortSignal, tools?: UnifiedTool[], systemMessage?: string): Promise<void> {
+		if (!this.client) throw new Error('SiliconFlow provider not properly initialized');
 		await this.checkRateLimit();
-
 		const contextPrompt = systemMessage || '';
 		const modelName = this.model;
 		if (TokenManager.isTokenLimitExceeded(messages, contextPrompt, tools, modelName)) {
@@ -201,27 +162,15 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 				const maxContextTokens = Math.floor(effectiveLimit * 0.3);
 				systemMessage = TokenManager.truncateContextPrompt(contextPrompt, maxContextTokens);
 			}
-			onChunk({
-				delta: '',
-				isComplete: false,
-				metadata: {
-					warning: 'TOKEN_LIMIT_EXCEEDED',
-					message: `Token limit exceeded for model ${modelName}. Conversation history and context have been truncated to fit within limits.`
-				}
-			});
+			onChunk({ delta: '', isComplete: false, metadata: { warning: 'TOKEN_LIMIT_EXCEEDED', message: `Token limit exceeded for model ${modelName}.` } });
 		}
 
 		const requestId = llmLogger.generateRequestId();
-		const estimatedTokens = TokenManager.estimateTokensForMessages(messages) +
-			TokenManager.estimateTokensForContext(systemMessage || '') +
-			(tools ? TokenManager.estimateTokensForTools(tools) : 0);
+		const estimatedTokens = TokenManager.estimateTokensForMessages(messages) + TokenManager.estimateTokensForContext(systemMessage || '') + (tools ? TokenManager.estimateTokensForTools(tools) : 0);
 		this.logEnhancedRequest(requestId, this.getEndpointForLogging(), messages, tools, systemMessage, true, estimatedTokens);
 
 		const formattedMessages = this.formatMessagesForOpenAI(messages, systemMessage);
-		const providerTools = tools && tools.length > 0
-			? this.convertToolsToProviderFormat(tools)
-			: undefined;
-
+		const providerTools = tools && tools.length > 0 ? this.convertToolsToProviderFormat(tools) : undefined;
 		const toolCallsAccumulator: Map<number, { id?: string; type?: string; function?: { name?: string; arguments?: string } }> = new Map();
 
 		const stream = await this.client.chat.completions.create({
@@ -235,33 +184,22 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 		});
 
 		for await (const chunk of stream) {
-			if (abortSignal?.aborted) {
-				return;
-			}
-
+			if (abortSignal?.aborted) return;
 			const choice = chunk.choices?.[0];
 			const delta = choice?.delta?.content || '';
-			if (delta) {
-				onChunk({ delta, isComplete: false });
-			}
+			if (delta) onChunk({ delta, isComplete: false });
 
 			if (choice?.delta?.tool_calls) {
 				for (const toolCallDelta of choice.delta.tool_calls) {
 					const index = toolCallDelta.index ?? 0;
-					if (!toolCallsAccumulator.has(index)) {
-						toolCallsAccumulator.set(index, {});
-					}
+					if (!toolCallsAccumulator.has(index)) toolCallsAccumulator.set(index, {});
 					const tc = toolCallsAccumulator.get(index)!;
 					if (toolCallDelta.id) tc.id = toolCallDelta.id;
 					if (toolCallDelta.type) tc.type = toolCallDelta.type;
 					if (toolCallDelta.function) {
 						if (!tc.function) tc.function = {};
-						if (toolCallDelta.function.name) {
-							tc.function.name = toolCallDelta.function.name;
-						}
-						if (toolCallDelta.function.arguments) {
-							tc.function.arguments = (tc.function.arguments || '') + toolCallDelta.function.arguments;
-						}
+						if (toolCallDelta.function.name) tc.function.name = toolCallDelta.function.name;
+						if (toolCallDelta.function.arguments) tc.function.arguments = (tc.function.arguments || '') + toolCallDelta.function.arguments;
 					}
 				}
 			}
@@ -269,27 +207,9 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 			if (choice?.finish_reason) {
 				const toolCalls = Array.from(toolCallsAccumulator.values())
 					.filter(tc => tc.function?.name && tc.function?.arguments)
-					.map(tc => ({
-						id: tc.id || `call_${Date.now()}`,
-						type: 'function' as const,
-						function: {
-							name: tc.function!.name!,
-							arguments: tc.function!.arguments!
-						}
-					}));
-
-				if (toolCalls.length > 0) {
-					onChunk({
-						delta: '',
-						isComplete: false,
-						toolCalls
-					});
-				}
-
-				onChunk({
-					delta: '',
-					isComplete: true
-				});
+					.map(tc => ({ id: tc.id || `call_${Date.now()}`, type: 'function' as const, function: { name: tc.function!.name!, arguments: tc.function!.arguments! } }));
+				if (toolCalls.length > 0) onChunk({ delta: '', isComplete: false, toolCalls });
+				onChunk({ delta: '', isComplete: true });
 			}
 		}
 	}
@@ -299,7 +219,6 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 			Logger.debug(`[SiliconFlow] Using user vision configuration for ${this.model}:`, this.supportsVisionOverride);
 			return this.supportsVisionOverride;
 		}
-
 		Logger.debug(`[SiliconFlow] No vision configuration set for ${this.model}, defaulting to false`);
 		return false;
 	}
@@ -307,38 +226,16 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 	async listModels(): Promise<string[]> {
 		try {
 			const baseURL = this.buildBaseURL();
-			if (!baseURL) {
-				Logger.warn('No baseUrl configured, cannot list models');
-				return [];
-			}
-
+			if (!baseURL) { Logger.warn('No baseUrl configured, cannot list models'); return []; }
 			const modelsUrl = `${baseURL}/models`;
-			const response = await requestUrl({
-				url: modelsUrl,
-				method: 'GET',
-				headers: {
-					'Authorization': `Bearer ${this.apiKey}`,
-					'Content-Type': 'application/json'
-				}
-			});
-
-			if (response.status !== 200) {
-				Logger.error('Error Response:', response.text);
-				throw new Error(`Failed to list models: ${response.status}`);
-			}
-
+			const response = await requestUrl({ url: modelsUrl, method: 'GET', headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' } });
+			if (response.status !== 200) { Logger.error('Error Response:', response.text); throw new Error(`Failed to list models: ${response.status}`); }
 			const data = response.json;
 			if (data.data && Array.isArray(data.data)) {
-				return data.data
-					.map((model: { id?: string; model_name?: string; name?: string }) => model.id || model.model_name || model.name)
-					.filter((id: string) => id)
-					.sort();
+				return data.data.map((model: { id?: string; model_name?: string; name?: string }) => model.id || model.model_name || model.name).filter((id: string) => id).sort();
 			}
 			if (Array.isArray(data)) {
-				return data
-					.map((model: { id?: string; model_name?: string; name?: string }) => model.id || model.model_name || model.name)
-					.filter((id: string) => id)
-					.sort();
+				return data.map((model: { id?: string; model_name?: string; name?: string }) => model.id || model.model_name || model.name).filter((id: string) => id).sort();
 			}
 			return [];
 		} catch (error) {
@@ -349,36 +246,16 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 
 	private formatMessagesForOpenAI(messages: ChatMessage[], systemMessage?: string): Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }> {
 		const converted: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }> = [];
-
-		if (systemMessage) {
-			converted.push({ role: 'system', content: systemMessage });
-		}
-
+		if (systemMessage) converted.push({ role: 'system', content: systemMessage });
 		for (const msg of messages) {
 			let role = msg.role;
-			if (role === 'tool') {
-				role = 'user';
-			}
-
-			if (typeof msg.content === 'string') {
-				converted.push({ role, content: msg.content });
-				continue;
-			}
-
+			if (role === 'tool') role = 'user';
+			if (typeof msg.content === 'string') { converted.push({ role, content: msg.content }); continue; }
 			const hasImages = msg.content.some(item => item.type === 'image');
 			if (hasImages && this.supportsVision()) {
 				const contentParts = msg.content.map(contentItem => {
-					if (contentItem.type === 'text') {
-						return { type: 'text', text: contentItem.text };
-					}
-					if (contentItem.type === 'image') {
-						return {
-							type: 'image_url',
-							image_url: {
-								url: `data:${contentItem.source.media_type};base64,${contentItem.source.data}`
-							}
-						};
-					}
+					if (contentItem.type === 'text') return { type: 'text', text: contentItem.text };
+					if (contentItem.type === 'image') return { type: 'image_url', image_url: { url: `data:${contentItem.source.media_type};base64,${contentItem.source.data}` } };
 					return { type: 'text', text: '' };
 				});
 				converted.push({ role, content: contentParts });
@@ -387,22 +264,11 @@ export class SiliconFlowProviderImpl extends BaseLLMProvider {
 				converted.push({ role, content: textContent });
 			}
 		}
-
 		return converted;
 	}
 
 	private parseToolCalls(toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> | undefined): ToolCall[] {
-		if (!toolCalls || toolCalls.length === 0) {
-			return [];
-		}
-		return toolCalls.map(tc => ({
-			id: tc.id,
-			type: 'function',
-			function: {
-				name: tc.function.name,
-				arguments: tc.function.arguments
-			}
-		}));
+		if (!toolCalls || toolCalls.length === 0) return [];
+		return toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.function.name, arguments: tc.function.arguments } }));
 	}
-
 }

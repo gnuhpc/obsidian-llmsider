@@ -68,8 +68,6 @@ export const enAutocomplete = {
 export const enQuickChat = {
   enabled: 'Enable Quick Chat',
   enabledDesc: 'Show floating input box on text selection for quick AI interactions',
-  showOnSelection: 'Show Quick Chat Button on Selection',
-  showOnSelectionDesc: 'Automatically show Quick Chat button when text is selected',
   enableDiffPreview: 'Enable Diff Preview',
   enableDiffPreviewDesc: 'Show diff preview when applying Quick Chat changes',
   enabledNotice: 'Quick Chat enabled! Press {key} to use it.',

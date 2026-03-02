@@ -13,7 +13,7 @@ import type { ToolCategory } from './types/tool-categories';
 export interface LLMConnection {
   id: string;                 // Unique identifier
   name: string;               // Display name
-  type: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'local' | 'github-copilot' | 'hugging-chat' | 'openrouter' | 'opencode';
+  type: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'local' | 'github-copilot' | 'hugging-chat' | 'openrouter' | 'opencode';
   apiKey: string;             // API key (not required for github-copilot) - For hugging-chat, this is the hf-chat cookie value or base64 encoded username=xxx&password=xxx; For free-gemini, this is __Secure-1PSID and __Secure-1PSIDTS separated by |
   baseUrl?: string;           // Base URL (required for openai-compatible, ollama)
   organizationId?: string;    // Organization ID (OpenAI)
@@ -610,7 +610,6 @@ export interface LLMSiderSettings {
   inlineQuickChat: {
     enabled: boolean; // Global toggle for quick chat
     triggerKey: string; // Keyboard shortcut to trigger (default: 'Ctrl+/')
-    showOnSelection: boolean; // Automatically show Quick Chat button when text is selected
     enableDiffPreview: boolean; // Show inline diff for replacements
   };
 
@@ -832,7 +831,6 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
   inlineQuickChat: {
     enabled: false, // Default disabled for first-time installation
     triggerKey: 'Mod+/',
-    showOnSelection: false, // Auto-enabled when Quick Chat is enabled
     enableDiffPreview: true, // Default enabled for diff preview
   },
   selectionPopup: {

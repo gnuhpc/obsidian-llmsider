@@ -48,7 +48,7 @@ export class ConnectionModelRenderer {
 		const connectionCardsContainer = addConnectionSection.createDiv({ cls: 'llmsider-connection-cards-grid' });
 
 		// Provider Cards with SVG logos - using centralized definitions
-		type ProviderType = 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode';
+		type ProviderType = 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode';
 		const providerTypes: ProviderType[] = [
 			'openai',
 			'anthropic',
@@ -58,6 +58,7 @@ export class ConnectionModelRenderer {
 			'groq',
 			'openrouter',
 			'siliconflow',
+			'kimi',
 			'ollama',
 			'opencode',
 			'qwen',
@@ -469,7 +470,9 @@ export class ConnectionModelRenderer {
 				dropdown.addOption('long-sentence', this.i18n.t('autocomplete.longSentence'));
 				dropdown.setValue(this.plugin.settings.autocomplete.granularity);
 				dropdown.onChange(async (value: unknown) => {
-					this.plugin.settings.autocomplete.granularity = value;
+					if (value === 'phrase' || value === 'short-sentence' || value === 'long-sentence') {
+						this.plugin.settings.autocomplete.granularity = value;
+					}
 					await this.plugin.saveSettings();
 				});
 			});

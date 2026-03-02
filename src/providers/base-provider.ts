@@ -19,6 +19,15 @@ export abstract class BaseLLMProvider {
 	protected memoryManager?: MemoryManager;
 	protected currentThreadId?: string;
 
+	// Proxy configuration
+	protected proxyEnabled?: boolean;
+	protected proxyType?: 'socks5' | 'http' | 'https';
+	protected proxyHost?: string;
+	protected proxyPort?: number;
+	protected proxyAuth?: boolean;
+	protected proxyUsername?: string;
+	protected proxyPassword?: string;
+
 	constructor(config: {
 		apiKey?: string; // Optional for local providers
 		model: string;
@@ -28,6 +37,13 @@ export abstract class BaseLLMProvider {
 		toolManager?: UnifiedToolManager;
 		memoryManager?: MemoryManager;
 		threadId?: string;
+		proxyEnabled?: boolean;
+		proxyType?: 'socks5' | 'http' | 'https';
+		proxyHost?: string;
+		proxyPort?: number;
+		proxyAuth?: boolean;
+		proxyUsername?: string;
+		proxyPassword?: string;
 	}) {
 		this.apiKey = config.apiKey || ''; // Default to empty string for local providers
 		this.model = config.model;
@@ -37,6 +53,13 @@ export abstract class BaseLLMProvider {
 		this.toolManager = config.toolManager;
 		this.memoryManager = config.memoryManager;
 		this.currentThreadId = config.threadId;
+		this.proxyEnabled = config.proxyEnabled;
+		this.proxyType = config.proxyType;
+		this.proxyHost = config.proxyHost;
+		this.proxyPort = config.proxyPort;
+		this.proxyAuth = config.proxyAuth;
+		this.proxyUsername = config.proxyUsername;
+		this.proxyPassword = config.proxyPassword;
 	}
 
 	// Abstract methods that must be implemented by concrete providers
@@ -1243,6 +1266,13 @@ export abstract class BaseLLMProvider {
 		temperature: number;
 		baseUrl: string;
 		toolManager: UnifiedToolManager;
+		proxyEnabled: boolean;
+		proxyType: 'socks5' | 'http' | 'https';
+		proxyHost: string;
+		proxyPort: number;
+		proxyAuth: boolean;
+		proxyUsername: string;
+		proxyPassword: string;
 	}>): void {
 		if (config.apiKey !== undefined) this.apiKey = config.apiKey;
 		if (config.model !== undefined) this.model = config.model;
@@ -1250,6 +1280,13 @@ export abstract class BaseLLMProvider {
 		if (config.temperature !== undefined) this.temperature = config.temperature;
 		if (config.baseUrl !== undefined) this.baseUrl = config.baseUrl;
 		if (config.toolManager !== undefined) this.toolManager = config.toolManager;
+		if (config.proxyEnabled !== undefined) this.proxyEnabled = config.proxyEnabled;
+		if (config.proxyType !== undefined) this.proxyType = config.proxyType;
+		if (config.proxyHost !== undefined) this.proxyHost = config.proxyHost;
+		if (config.proxyPort !== undefined) this.proxyPort = config.proxyPort;
+		if (config.proxyAuth !== undefined) this.proxyAuth = config.proxyAuth;
+		if (config.proxyUsername !== undefined) this.proxyUsername = config.proxyUsername;
+		if (config.proxyPassword !== undefined) this.proxyPassword = config.proxyPassword;
 	}
 
 	/**

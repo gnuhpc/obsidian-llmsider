@@ -19,6 +19,7 @@ export interface SpeedReadingResult {
 
 export class SpeedReadingManager {
 	private drawer: SpeedReadingDrawer | null = null;
+	private drawerContainerEl: HTMLElement | null = null;
 	private isStreaming = false;
 	private currentFilePath: string | null = null;
 	private streamingContent = '';
@@ -31,19 +32,30 @@ export class SpeedReadingManager {
 	 * Initialize drawer
 	 */
 	initializeDrawer(containerEl: HTMLElement): void {
-		if (!this.drawer) {
-			this.drawer = new SpeedReadingDrawer(this.plugin.app, this.plugin, containerEl);
+		const shouldRecreate =
+			!this.drawer ||
+			!this.drawerContainerEl ||
+			!this.drawerContainerEl.isConnected ||
+			this.drawerContainerEl !== containerEl;
+
+		if (!shouldRecreate) {
+			return;
 		}
+
+		if (this.drawer?.isDrawerOpen()) {
+			this.drawer.close();
+		}
+
+		this.drawer = new SpeedReadingDrawer(this.plugin.app, this.plugin, containerEl);
+		this.drawerContainerEl = containerEl;
 	}
 
 	/**
 	 * Ensure drawer is initialized
 	 */
 	private ensureDrawerInitialized(): void {
-		if (!this.drawer) {
-			const container = activeDocument ? activeDocument.body : document.body;
-			this.initializeDrawer(container);
-		}
+		const container = activeDocument ? activeDocument.body : document.body;
+		this.initializeDrawer(container);
 	}
 
 	/**
@@ -126,6 +138,7 @@ export class SpeedReadingManager {
 				keyPoints: [],
 				mindMap: this.streamingContent,
 				extendedReading: [],
+				guessYouCareAbout: [],
 				createdAt: Date.now(),
 				updatedAt: Date.now()
 			};
@@ -161,7 +174,7 @@ export class SpeedReadingManager {
 		const vectorDBManager = this.plugin.vectorDBManager;
 		const settings = this.plugin.settings;
 		
-		if (vectorDBManager && settings.vectorDB?.enabled && settings.vectorDB?.showSimilarNotes) {
+		if (vectorDBManager && settings.vectorSettings?.enabled && settings.vectorSettings?.showSimilarNotes) {
 			try {
 				const similarNoteFinder = (vectorDBManager as any).similarNoteFinder;
 				if (similarNoteFinder) {

@@ -183,3 +183,7 @@ append: {
 	},
 	// 维基百科工具
 	searchWikipedia: {
+		name: '搜索维基百科',
+		description: '在维基百科中搜索条目。返回条目标题、摘要和URL。适合快速查找任意主题的信息。'
+	}
+};

@@ -145,7 +145,6 @@ export class SelectionPopup {
 			selectedLength: selectedText.length,
 			autoReference: this.isAutoReferenceEnabled(),
 			quickChatEnabled: this.plugin.settings.inlineQuickChat.enabled,
-			quickChatShowOnSelection: this.plugin.settings.inlineQuickChat.showOnSelection,
 			showAddToContext: this.plugin.settings.selectionPopup.showAddToContext
 		});
 
@@ -371,7 +370,7 @@ export class SelectionPopup {
 	private showPopup(rect: DOMRect, selectedText: string, isFromWebViewer: boolean = false): void {
 		const autoReferenceEnabled = this.isAutoReferenceEnabled();
 		const canShowAddToContext = this.plugin.settings.selectionPopup.showAddToContext && !autoReferenceEnabled;
-		const canShowQuickChat = this.plugin.settings.inlineQuickChat.enabled && this.plugin.settings.inlineQuickChat.showOnSelection;
+		const canShowQuickChat = this.plugin.settings.inlineQuickChat.enabled;
 
 		// Check if any buttons are enabled before creating popup
 		if (!canShowAddToContext && !canShowQuickChat) {
@@ -422,8 +421,6 @@ export class SelectionPopup {
 			buttonContainer.appendChild(addContextBtn);
 		}
 
-		// Quick Chat button (icon only) - only if Quick Chat is enabled, showOnSelection is enabled, and NOT in web viewer
-		// Web viewer doesn't support Quick Chat because content cannot be edited
 		if (!isFromWebViewer && canShowQuickChat) {
 			const quickChatBtn = document.createElement('button');
 			quickChatBtn.className = 'llmsider-selection-popup-btn llmsider-selection-popup-btn-quick-chat';

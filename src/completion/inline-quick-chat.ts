@@ -1445,7 +1445,7 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 							// Also we throttle updates slightly to avoid overwhelming the editor
 							// but for now direct update should be fine as CodeMirror is efficient
 							// Pass streaming=true to use coarse diff (block replace) during streaming
-							this.showDiffPreview(this.currentView, originalText, response, true);
+							this.showDiffPreview(this.currentView, originalText, response, true, true);
 						}
 					}
 				}
@@ -1465,7 +1465,7 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 			
 			// Always show preview (diff or no-diff based on setting) and wait for confirmation
 			// Pass streaming=false to use fine-grained diff after completion (if diff enabled)
-			this.showDiffPreview(this.currentView, originalText, response, false);
+			this.showDiffPreview(this.currentView, originalText, response, false, true);
 			
 			// Show accept/reject buttons in widget
 			widget.showAcceptReject(response);
@@ -2069,9 +2069,14 @@ Please provide ONLY the generated text as output, without any explanations or ad
 	/**
 	 * Show inline diff preview using decorations (like GitHub Copilot)
 	 */
-	private showDiffPreview(view: EditorView, original: string, modified: string, streaming: boolean = false) {
-		// Hide the input widget
-		if (this.widgetElement) {
+	private showDiffPreview(
+		view: EditorView,
+		original: string,
+		modified: string,
+		streaming: boolean = false,
+		keepWidget: boolean = false
+	) {
+		if (!keepWidget && this.widgetElement) {
 			this.widgetElement.remove();
 			this.widgetElement = null;
 		}

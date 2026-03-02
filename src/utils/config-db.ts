@@ -1318,14 +1318,12 @@ export class ConfigDatabase {
     async getInlineQuickChatSettings(): Promise<unknown> {
         const enabled = await this.getConfig('inlineQuickChat.enabled');
         const triggerKey = await this.getConfig('inlineQuickChat.triggerKey');
-        const showOnSelection = await this.getConfig('inlineQuickChat.showOnSelection');
         const enableDiffPreview = await this.getConfig('inlineQuickChat.enableDiffPreview');
         const showQuickChatButton = await this.getConfig('inlineQuickChat.showQuickChatButton');
 
         return {
             enabled: enabled === 'true',
             triggerKey: triggerKey || 'Mod+/',
-            showOnSelection: showOnSelection === 'true',
             enableDiffPreview: enableDiffPreview === null ? true : enableDiffPreview === 'true',
             showQuickChatButton: showQuickChatButton === null ? true : showQuickChatButton === 'true'
         };
@@ -1335,7 +1333,6 @@ export class ConfigDatabase {
     async setInlineQuickChatSettings(settings: any): Promise<void> {
         await this.setConfig('inlineQuickChat.enabled', settings.enabled.toString());
         await this.setConfig('inlineQuickChat.triggerKey', settings.triggerKey);
-        await this.setConfig('inlineQuickChat.showOnSelection', settings.showOnSelection.toString());
         await this.setConfig('inlineQuickChat.enableDiffPreview', settings.enableDiffPreview.toString());
         await this.setConfig('inlineQuickChat.showQuickChatButton', settings.showQuickChatButton.toString());
     }

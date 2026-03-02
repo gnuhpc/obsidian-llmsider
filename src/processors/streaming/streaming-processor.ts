@@ -6,6 +6,21 @@ import { ActionValidatorUtils } from '../utils/action-validator-utils';
 import { ChatMessage } from '../../types';
 import { SvgIcons } from '../../utils/svg-icons';
 
+type StreamingChunk = {
+	content?: string;
+	delta?: string;
+	images?: unknown[];
+};
+
+type StreamingProvider = {
+	sendStreamingMessage: (
+		messages: ChatMessage[],
+		onChunk: (chunk: StreamingChunk) => void
+	) => Promise<void>;
+};
+
+type StreamingPhase = 'question' | 'plan' | 'thought' | 'action' | 'observation' | 'final_answer';
+
 /**
  * StreamingProcessor - 负责处理流式响应
  * 从 plan-execute-processor.ts 提取，专门处理流式内容的解析、阶段检测和消息管理
@@ -76,12 +91,12 @@ export class StreamingProcessor {
 	 */
 	async processStreamingWithPlanExecute(
 		prompt: string,
-		provider: unknown,
+		provider: StreamingProvider,
 		conversationMessages: ChatMessage[],
 		abortController: AbortController | null,
 		isAborted: boolean,
 		isExecutingTool: boolean,
-		processPhaseCallback: (phase: 'question' | 'plan' | 'thought' | 'action' | 'observation' | 'final_answer', content: string) => Promise<void>,
+		processPhaseCallback: (phase: StreamingPhase, content: string) => Promise<void>,
 		getIsExecutingTool: () => boolean,
 		getIsAborted: () => boolean,
 		updateConversationMessages: (messages: ChatMessage[]) => void
@@ -176,78 +191,78 @@ export class StreamingProcessor {
 
 				// Stream response from LLM
 				let accumulatedImages: any[] = [];
-				await provider.sendStreamingMessage(currentMessages, (chunk: unknown) => {
+				await provider.sendStreamingMessage(currentMessages, (chunk: StreamingChunk) => {
 					if (abortController?.signal.aborted || getIsAborted()) {
 						return;
 					}
 
-				// Handle content (new format) or delta (legacy format)
-				const textContent = chunk.content || chunk.delta || '';
-				if (textContent) {
-					this.buffer += textContent;
-					lastResponse += textContent;
+					const textContent = chunk.content || chunk.delta || '';
+					if (textContent) {
+						this.buffer += textContent;
+						lastResponse += textContent;
 
-					this.streamingIndicatorManager.updateStreamingResponse(lastResponse);
+						this.streamingIndicatorManager.updateStreamingResponse(lastResponse);
 
-					const previousPhase = this.currentPhase;
-					this.processStreamingChunk(processPhaseCallback);
-					if (this.currentPhase && this.currentPhase !== previousPhase) {
-						Logger.debug(`PHASE CHANGE (iteration ${iterationCount}):`, {
-							from: previousPhase,
-							to: this.currentPhase,
-							bufferLength: this.buffer.length,
-							timestamp: new Date().toISOString()
-						});
-						hasProcessedPhase = true;
-						this.streamingIndicatorManager.hideStreamingIndicator();
+						const previousPhase = this.currentPhase;
+						this.processStreamingChunk(processPhaseCallback);
+						if (this.currentPhase && this.currentPhase !== previousPhase) {
+							Logger.debug(`PHASE CHANGE (iteration ${iterationCount}):`, {
+								from: previousPhase,
+								to: this.currentPhase,
+								bufferLength: this.buffer.length,
+								timestamp: new Date().toISOString()
+							});
+							hasProcessedPhase = true;
+							this.streamingIndicatorManager.hideStreamingIndicator();
+						}
 					}
-				}
 
-				// Collect generated images from streaming chunks
-				if (chunk.images && Array.isArray(chunk.images)) {
-					Logger.debug(`[StreamingProcessor] Received images in chunk:`, chunk.images.length);
-					accumulatedImages = [...accumulatedImages, ...chunk.images];
-					Logger.debug(`[StreamingProcessor] Total accumulated images:`, accumulatedImages.length);
-					responsePreview: lastResponse.substring(0, 200) + '...',
-					currentPhase: this.currentPhase,
-					bufferLength: this.buffer.length
+					if (chunk.images && Array.isArray(chunk.images)) {
+						Logger.debug(`[StreamingProcessor] Received images in chunk:`, chunk.images.length);
+						accumulatedImages = [...accumulatedImages, ...chunk.images];
+						Logger.debug(`[StreamingProcessor] Total accumulated images:`, accumulatedImages.length);
+					}
+
+					Logger.debug('CHUNK RECEIVED from Model:', {
+						iteration: iterationCount,
+						responsePreview: lastResponse.substring(0, 200) + '...',
+						currentPhase: this.currentPhase,
+						bufferLength: this.buffer.length
+					});
 				});
-				// Model interaction completed
 
-				// Inject assistant's response into conversation
-			// For image generation, response might be empty but we still need to save images
-			if (lastResponse.trim() || accumulatedImages.length > 0) {
-				this.streamingIndicatorManager.showStreamingIndicator(this.i18n.t('common.processingResponse'));
+				if (lastResponse.trim() || accumulatedImages.length > 0) {
+					this.streamingIndicatorManager.showStreamingIndicator(this.i18n.t('common.processingResponse'));
 
-				const messageMetadata: any = {
-					phase: this.currentPhase || undefined
-				};
+					const messageMetadata: any = {
+						phase: this.currentPhase || undefined
+					};
 
-				// Add generated images to metadata if any
-				if (accumulatedImages.length > 0) {
-				Logger.debug(`[StreamingProcessor] Adding ${accumulatedImages.length} images to message metadata`);
-				messageMetadata.generatedImages = accumulatedImages;
-				Logger.debug(`[StreamingProcessor] First image preview:`, accumulatedImages[0]?.image_url?.url?.substring(0, 100));
-			} else {
-				Logger.debug(`[StreamingProcessor] No images to add to message`);
-			}
+					if (accumulatedImages.length > 0) {
+						Logger.debug(`[StreamingProcessor] Adding ${accumulatedImages.length} images to message metadata`);
+						messageMetadata.generatedImages = accumulatedImages;
+						Logger.debug(`[StreamingProcessor] First image preview:`, accumulatedImages[0]?.image_url?.url?.substring(0, 100));
+					} else {
+						Logger.debug(`[StreamingProcessor] No images to add to message`);
+					}
 
-			// For image generation models, use a default message if content is empty
-			const messageContent = lastResponse.trim() || 
-				(accumulatedImages.length > 0 ? `Generated ${accumulatedImages.length} image(s)` : '');
+					const messageContent = lastResponse.trim() ||
+						(accumulatedImages.length > 0 ? `Generated ${accumulatedImages.length} image(s)` : '');
 
-			currentMessages.push({
-				id: Date.now().toString(),
-				role: 'assistant',
-				content: messageContent,
-				timestamp: Date.now(),
-				metadata: messageMetadata
-			});
-			Logger.debug(`[StreamingProcessor] Assistant message added with metadata:`, {
-				hasImages: !!messageMetadata.generatedImages,
-				imageCount: messageMetadata.generatedImages?.length || 0,
-				contentLength: messageContent.length
-					// Assistant response injected
+					currentMessages.push({
+						id: Date.now().toString(),
+						role: 'assistant',
+						content: messageContent,
+						timestamp: Date.now(),
+						metadata: messageMetadata
+					});
+
+					Logger.debug(`[StreamingProcessor] Assistant message added with metadata:`, {
+						hasImages: !!messageMetadata.generatedImages,
+						imageCount: messageMetadata.generatedImages?.length || 0,
+						contentLength: messageContent.length
+					});
+
 					await new Promise(resolve => setTimeout(resolve, 300));
 				} else {
 					Logger.warn(`Empty response received in iteration ${iterationCount}`);
@@ -390,12 +405,12 @@ export class StreamingProcessor {
 	/**
 	 * Process incoming streaming chunks and detect XML tags
 	 */
-	private processStreamingChunk(processPhaseCallback: (phase: 'question' | 'plan' | 'thought' | 'action' | 'observation' | 'final_answer', content: string) => Promise<void>): void {
+	private processStreamingChunk(processPhaseCallback: (phase: StreamingPhase, content: string) => Promise<void>): void {
 		// First check for streaming final_answer content
 		this.processStreamingFinalAnswer();
 
 		// Check for complete XML tags in buffer
-		const tagPatterns = [
+		const tagPatterns: Array<{ tag: StreamingPhase; pattern: RegExp; requiresCompleteContent?: boolean }> = [
 			{ tag: 'question', pattern: /<question>([\s\S]*?)<\/question>/ },
 			{ tag: 'plan', pattern: /<plan>([\s\S]*?)<\/plan>/ },
 			{ tag: 'thought', pattern: /<thought>([\s\S]*?)<\/thought>/ },
@@ -412,8 +427,8 @@ export class StreamingProcessor {
 				// Handle observation tags
 				if (tag === 'observation') {
 					Logger.debug('Processing observation:', content.substring(0, 200) + '...');
-					processPhaseCallback(tag as unknown, content);
-					this.currentPhase = tag as unknown;
+					processPhaseCallback(tag, content);
+					this.currentPhase = tag;
 					this.buffer = this.buffer.replace(pattern, '');
 					break;
 				}
@@ -436,8 +451,8 @@ export class StreamingProcessor {
 				Logger.debug(`Detected complete ${tag}:`, content.substring(0, 100) + '...');
 
 				// Process the detected phase
-				processPhaseCallback(tag as unknown, content);
-				this.currentPhase = tag as unknown;
+				processPhaseCallback(tag, content);
+				this.currentPhase = tag;
 				this.buffer = this.buffer.replace(pattern, '');
 				break;
 			}
@@ -448,35 +463,37 @@ export class StreamingProcessor {
 	 * Process streaming final_answer content
 	 */
 	private processStreamingFinalAnswer(): void {
+		const messageContainer = this.finalAnswerElement?.parentElement as HTMLElement | null;
+		if (!messageContainer) {
+			return;
+		}
+
 		const result = AnswerGeneratorUtils.processStreamingFinalAnswer(
 			this.buffer,
-			this.currentFinalAnswerMessage,
-			this.i18n,
-			this.streamingIndicatorManager,
-			this.onFinalAnswerCallback,
-			() => {
-				this.initializeFinalAnswerMessage();
-				return this.currentFinalAnswerMessage!;
-			}
+			this.finalAnswerElement,
+			messageContainer,
+			this.i18n
 		);
 
-		if (result.shouldInitialize) {
-			this.streamingIndicatorManager.hideStreamingIndicator();
+		this.finalAnswerElement = result.element;
+
+		if (!this.currentFinalAnswerMessage && this.finalAnswerElement) {
 			this.initializeFinalAnswerMessage();
 		}
 
-		if (result.shouldUpdate) {
+		if (this.currentFinalAnswerMessage && result.hasContent && this.finalAnswerElement) {
 			const currentContent = this.extractCurrentFinalAnswerContent();
-			if (currentContent !== null) {
-				this.updateFinalAnswerContent(currentContent);
-			}
+			this.updateFinalAnswerContent(currentContent);
 		}
 
-		if (result.shouldFinalize && result.finalContent) {
-			this.finalizeFinalAnswerMessage(result.finalContent);
-			if (result.newBuffer !== undefined) {
-				this.buffer = result.newBuffer;
+		if (this.buffer.includes('</final_answer>') && this.currentFinalAnswerMessage) {
+			const finalContent = this.extractCurrentFinalAnswerContent();
+			const finalized = this.finalizeFinalAnswerMessage(finalContent);
+			if (this.onFinalAnswerCallback) {
+				this.onFinalAnswerCallback(finalized);
 			}
+			this.currentPhase = 'final_answer';
+			this.buffer = this.buffer.replace(/<final_answer>[\s\S]*?<\/final_answer>/, '');
 		}
 	}
 
@@ -484,11 +501,11 @@ export class StreamingProcessor {
 	 * Initialize streaming final answer message
 	 */
 	private initializeFinalAnswerMessage(): void {
-		this.currentFinalAnswerMessage = AnswerGeneratorUtils.initializeFinalAnswerMessage(
-			this.planTasks,
-			this.i18n,
-			this.streamingIndicatorManager
-		);
+		if (!this.finalAnswerElement) {
+			return;
+		}
+
+		this.currentFinalAnswerMessage = AnswerGeneratorUtils.initializeFinalAnswerMessage(this.finalAnswerElement);
 
 		if (this.onFinalAnswerCallback && this.currentFinalAnswerMessage) {
 			this.onFinalAnswerCallback(this.currentFinalAnswerMessage);
@@ -498,7 +515,7 @@ export class StreamingProcessor {
 	/**
 	 * Extract current final answer content from buffer
 	 */
-	private extractCurrentFinalAnswerContent(): string | null {
+	private extractCurrentFinalAnswerContent(): string {
 		return AnswerGeneratorUtils.extractCurrentFinalAnswerContent(this.buffer);
 	}
 
@@ -506,31 +523,40 @@ export class StreamingProcessor {
 	 * Update final answer content during streaming
 	 */
 	private updateFinalAnswerContent(newContent: string): void {
+		if (!this.currentFinalAnswerMessage || !this.finalAnswerElement) {
+			return;
+		}
+
 		AnswerGeneratorUtils.updateFinalAnswerContent(
 			this.currentFinalAnswerMessage,
 			newContent,
-			this.i18n,
-			this.streamingIndicatorManager,
-			this.onFinalAnswerCallback
+			this.finalAnswerElement
 		);
+
+		if (this.onFinalAnswerCallback) {
+			this.onFinalAnswerCallback(this.currentFinalAnswerMessage);
+		}
 	}
 
 	/**
 	 * Finalize final answer message
 	 */
-	finalizeFinalAnswerMessage(finalContent: string): { updatedConversationMessages: ChatMessage[], currentPhase: 'final_answer' } {
-		const result = AnswerGeneratorUtils.finalizeFinalAnswerMessage(
-			this.currentFinalAnswerMessage,
-			finalContent,
-			[], // Will be updated by caller
-			this.streamingIndicatorManager,
-			this.onFinalAnswerCallback
-		);
-		
-		// Reset streaming state
+	finalizeFinalAnswerMessage(finalContent: string): ChatMessage {
+		if (!this.currentFinalAnswerMessage) {
+			return {
+				id: `final-answer-${Date.now()}`,
+				role: 'assistant',
+				content: finalContent,
+				timestamp: Date.now()
+			};
+		}
+
+		this.currentFinalAnswerMessage.content = finalContent;
+		const result = AnswerGeneratorUtils.finalizeFinalAnswerMessage(this.currentFinalAnswerMessage);
+
 		this.currentFinalAnswerMessage = null;
 		this.finalAnswerElement = null;
-		
+
 		return result;
 	}
 
@@ -540,10 +566,7 @@ export class StreamingProcessor {
 	private isActionContentComplete(actionContent: string): boolean {
 		return ActionValidatorUtils.isActionContentComplete(
 			actionContent,
-			this.incompleteActionChecks,
-			(message) => this.streamingIndicatorManager.showStreamingIndicator(message),
-			(message) => this.streamingIndicatorManager.updateStreamingIndicator(message),
-			() => this.streamingIndicatorManager.hideStreamingIndicator()
+			this.incompleteActionChecks
 		);
 	}
 }

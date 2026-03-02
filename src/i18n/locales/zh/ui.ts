@@ -488,11 +488,11 @@ export const zhUI = {
   closeButton: '关闭',
 
   // 更新相关
-  updateAvailableTitle: '发现新版本',
+  updateAvailableTitle: 'obsidian-llmsider 有新版本了',
   currentVersion: '当前版本',
   latestVersion: '最新版本',
   releaseNotes: '发布说明',
-  updateConfirmMessage: '是否要更新到最新版本？插件将自动下载并安装新版本。',
+  updateConfirmMessage: '是否现在更新？插件将自动下载并安装。',
   updateWarning: '更新后插件将重新加载，请保存未保存的工作。',
   viewRelease: '查看发布页',
   updateNow: '立即更新',

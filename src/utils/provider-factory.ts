@@ -13,6 +13,7 @@ import { FreeGeminiProviderImpl } from '../providers/free-gemini-provider-impl';
 import { FreeDeepseekProviderImpl } from '../providers/free-deepseek-provider-impl';
 import { OpenAICompatibleProviderImpl } from '../providers/openai-compatible-provider';
 import { SiliconFlowProviderImpl } from '../providers/siliconflow-provider';
+import { KimiProviderImpl } from '../providers/kimi-provider';
 import { GitHubCopilotProviderImpl } from '../providers/github-copilot-provider';
 import { HuggingChatProviderImpl } from '../providers/hugging-chat-provider';
 import { OpenCodeProviderImpl } from '../providers/opencode-provider';
@@ -117,6 +118,12 @@ export class ProviderFactory {
 					providerConfig.baseUrl = 'https://api.siliconflow.cn/v1';
 				}
 				return new SiliconFlowProviderImpl(providerConfig);
+
+			case 'kimi':
+				if (!connection.baseUrl) {
+					providerConfig.baseUrl = 'https://api.moonshot.cn/v1';
+				}
+				return new KimiProviderImpl(providerConfig);
 
 			case 'ollama':
 				if (!connection.baseUrl) {

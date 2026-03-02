@@ -687,6 +687,8 @@ export class UIBuilder {
 				return;
 			}
 			
+			speedReadingManager.initializeDrawer(this.containerEl);
+			
 			Logger.debug('[SpeedReading] Calling processActiveNote');
 			await speedReadingManager.processActiveNote();
 		};

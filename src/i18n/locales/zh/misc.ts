@@ -68,8 +68,6 @@ export const zhAutocomplete = {
 export const zhQuickChat = {
   enabled: '启用快聊',
   enabledDesc: '选中文本时显示浮动输入框以便快速进行 AI 交互',
-  showOnSelection: '选中时显示快聊按钮',
-  showOnSelectionDesc: '选中文本时自动显示快聊按钮',
   enableDiffPreview: '启用差异预览',
   enableDiffPreviewDesc: '应用快聊的更改时显示差异预览',
   enabledNotice: '快聊已启用!按 {key} 使用它。',

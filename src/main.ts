@@ -164,6 +164,8 @@ export default class LLMSiderPlugin extends Plugin {
 			// Initialize providers
 			await this.initializeProviders();
 
+			await this.initializeSpeedReadingManager();
+			
 			// Initialize MCP Manager
 			await this.initializeMCPManager();
 
@@ -1481,15 +1483,6 @@ export default class LLMSiderPlugin extends Plugin {
 
 			Logger.debug('Vector database initialized successfully (background)');
 
-			// Initialize Speed Reading Manager
-			try {
-				const { SpeedReadingManager } = await import('./features/speed-reading');
-				this.speedReadingManager = new SpeedReadingManager(this);
-				Logger.debug('Speed Reading Manager initialized');
-			} catch (error) {
-				Logger.error('Failed to initialize speed reading manager:', error);
-			}
-
 			// Update UI to reflect vector DB initialization in all open chat views
 			// Do this BEFORE similar notes initialization to ensure it happens even if similar notes fails
 			try {
@@ -1535,6 +1528,19 @@ export default class LLMSiderPlugin extends Plugin {
 			Logger.error('Failed to initialize vector database:', error);
 			new Notice(this.i18n.t('notifications.vectorDatabase.initFailed'));
 			// Don't throw error - vector DB is optional functionality
+		}
+	}
+
+	private async initializeSpeedReadingManager(): Promise<void> {
+		if (this.speedReadingManager) {
+			return;
+		}
+		try {
+			const { SpeedReadingManager } = await import('./features/speed-reading');
+			this.speedReadingManager = new SpeedReadingManager(this);
+			Logger.debug('Speed Reading Manager initialized');
+		} catch (error) {
+			Logger.error('Failed to initialize speed reading manager:', error);
 		}
 	}
 

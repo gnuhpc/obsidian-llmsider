@@ -1,6 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { Logger } from './../utils/logger';
 import { requestUrl } from 'obsidian';
+import { obsidianFetch } from '../utils/obsidian-fetch';
 import { BaseLLMProvider } from './base-provider';
 import { ChatMessage, LLMResponse, StreamingResponse, AnthropicProvider } from '../types';
 import { UnifiedTool } from '../tools/unified-tool-manager';
@@ -25,54 +26,45 @@ export class AnthropicProviderImpl extends BaseLLMProvider {
 	 * Create a custom fetch wrapper with timeout and Keep-Alive support
 	 */
 	private createCustomFetch() {
-		const originalFetch = global.fetch || fetch;
-		
 		return async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-			// Clone init to avoid mutation
 			const fetchInit = { ...init };
-			
-			// Add timeout control
 			const isStreaming = fetchInit.body?.toString().includes('"stream":true');
 			const timeoutMs = isStreaming ? 120000 : 60000;
-			
-			// Add Keep-Alive header
-			fetchInit.headers = {
-				...fetchInit.headers,
-				'Connection': 'keep-alive',
-				'Keep-Alive': 'timeout=120, max=100'
-			};
-			
-			// Create AbortController for timeout
+
 			const controller = new AbortController();
 			const timeoutId = setTimeout(() => {
 				Logger.warn(`[Anthropic] Request timeout after ${timeoutMs}ms for ${url}`);
 				controller.abort();
 			}, timeoutMs);
-			
-			// Merge abort signals
+
 			if (fetchInit.signal) {
 				const originalSignal = fetchInit.signal;
-				originalSignal.addEventListener('abort', () => {
-					controller.abort();
-				});
+				originalSignal.addEventListener('abort', () => controller.abort());
 			}
 			fetchInit.signal = controller.signal;
-			
+
 			try {
-				const response = await originalFetch(url, fetchInit);
+				const response = await obsidianFetch(url, {
+					...fetchInit,
+					proxyEnabled: this.proxyEnabled,
+					proxyType: this.proxyType,
+					proxyHost: this.proxyHost,
+					proxyPort: this.proxyPort,
+					proxyAuth: this.proxyAuth,
+					proxyUsername: this.proxyUsername,
+					proxyPassword: this.proxyPassword,
+				});
 				clearTimeout(timeoutId);
 				return response;
 			} catch (error) {
 				clearTimeout(timeoutId);
-				
 				Logger.error('[Anthropic] Fetch error:', {
 					url: url.toString(),
-					error: error.message,
-					code: error.code,
-					name: error.name
+					error: (error as Error).message,
+					code: (error as any).code,
+					name: (error as Error).name
 				});
-				
-				if (error.name === 'AbortError') {
+				if ((error as Error).name === 'AbortError') {
 					throw new Error(`Request timeout after ${timeoutMs}ms for ${url}`);
 				}
 				throw error;
