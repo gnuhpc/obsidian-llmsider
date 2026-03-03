@@ -7,6 +7,7 @@ import { FileSuggestions } from './file-suggestions';
 import { PromptManager } from '../core/prompt-manager';
 import { PromptSelector } from './prompt-selector';
 import { SmartSearchModal } from './smart-search-modal';
+import { showPersistentSelectionHighlightEffect, hidePersistentSelectionHighlightEffect } from '../completion/inline-quick-chat';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -16,6 +17,8 @@ type ChatViewContextModalHost = {
 };
 
 export class InputHandler {
+	private static readonly KEEP_SELECTION_CLASS = 'llmsider-chat-input-focused';
+
 	private app: App;
 	private plugin: LLMSiderPlugin;
 	private contextManager: ContextManager;
@@ -51,6 +54,11 @@ export class InputHandler {
 	private onSendMessage?: (content: string) => void;
 	private onModeChange?: (mode: ChatMode) => void;
 	private boundOptimizePromptHandler?: (event: Event) => void;
+	private boundInputFocusHandler?: () => void;
+	private boundInputBlurHandler?: () => void;
+	private boundInputMouseDownHandler?: () => void;
+	private persistentSelectionHighlightEl: HTMLElement | null = null;
+	private persistentSourceHighlightView: { dispatch: (transaction: unknown) => void } | null = null;
 
 	constructor(
 		app: App, 
@@ -136,6 +144,29 @@ export class InputHandler {
 	 * Setup event listeners
 	 */
 	private setupEventListeners(): void {
+		this.boundInputMouseDownHandler = () => {
+			Logger.debug('[SelectionPersist] input mousedown(capture)', this.getSelectionDebugInfo('mousedown-before-persist'));
+			this.persistCurrentReadingSelection();
+			document.body.classList.add(InputHandler.KEEP_SELECTION_CLASS);
+			Logger.debug('[SelectionPersist] input mousedown(capture) done', this.getSelectionDebugInfo('mousedown-after-persist'));
+		};
+		this.inputElement.addEventListener('mousedown', this.boundInputMouseDownHandler, true);
+
+		this.boundInputFocusHandler = () => {
+			Logger.debug('[SelectionPersist] input focus', this.getSelectionDebugInfo('focus-before-persist'));
+			this.persistCurrentReadingSelection();
+			document.body.classList.add(InputHandler.KEEP_SELECTION_CLASS);
+			Logger.debug('[SelectionPersist] input focus done', this.getSelectionDebugInfo('focus-after-persist'));
+		};
+		this.boundInputBlurHandler = () => {
+			Logger.debug('[SelectionPersist] input blur', this.getSelectionDebugInfo('blur-before-clear'));
+			document.body.classList.remove(InputHandler.KEEP_SELECTION_CLASS);
+			this.clearPersistentReadingSelection();
+			Logger.debug('[SelectionPersist] input blur done', this.getSelectionDebugInfo('blur-after-clear'));
+		};
+		this.inputElement.addEventListener('focus', this.boundInputFocusHandler);
+		this.inputElement.addEventListener('blur', this.boundInputBlurHandler);
+
 		// Input events
 		this.inputElement.addEventListener('input', () => {
 			this.autoResizeTextarea();
@@ -1575,8 +1606,228 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		return referenced;
 	}
 
+	private persistCurrentReadingSelection(): void {
+		const selection = window.getSelection();
+		if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+			Logger.debug('[SelectionPersist] skip persist: invalid selection', this.getSelectionDebugInfo('persist-invalid-selection'));
+			return;
+		}
+
+		const selectedText = selection.toString().trim();
+		if (!selectedText) {
+			Logger.debug('[SelectionPersist] skip persist: empty selected text', this.getSelectionDebugInfo('persist-empty-text'));
+			return;
+		}
+
+		const range = selection.getRangeAt(0);
+		const container = range.commonAncestorContainer instanceof Element
+			? range.commonAncestorContainer
+			: range.commonAncestorContainer.parentElement;
+		if (!container) {
+			Logger.debug('[SelectionPersist] skip persist: no container', this.getSelectionDebugInfo('persist-no-container'));
+			return;
+		}
+
+		if (container.closest('.cm-editor')) {
+			Logger.debug('[SelectionPersist] persist source-mode selection requested', this.getSelectionDebugInfo('persist-in-cm'));
+			this.persistCurrentSourceSelection(container);
+			return;
+		}
+
+		if (!container.closest('.markdown-preview-view, .markdown-rendered')) {
+			Logger.debug('[SelectionPersist] skip persist: not in markdown preview', this.getSelectionDebugInfo('persist-not-preview'));
+			return;
+		}
+
+		if (container.closest('.llmsider-chat-container')) {
+			Logger.debug('[SelectionPersist] skip persist: selection in chat container', this.getSelectionDebugInfo('persist-in-chat'));
+			return;
+		}
+
+		this.clearPersistentReadingSelection();
+
+		try {
+			const highlight = document.createElement('span');
+			highlight.className = 'llmsider-persist-selection';
+			range.surroundContents(highlight);
+			this.persistentSelectionHighlightEl = highlight;
+			Logger.debug('[SelectionPersist] persist success via surroundContents', this.getSelectionDebugInfo('persist-success-surround'));
+		} catch (_error) {
+			Logger.debug('[SelectionPersist] surroundContents failed, fallback extract/insert', this.getSelectionDebugInfo('persist-fallback-start'));
+			try {
+				const highlight = document.createElement('span');
+				highlight.className = 'llmsider-persist-selection';
+				const contents = range.extractContents();
+				highlight.appendChild(contents);
+				range.insertNode(highlight);
+				this.persistentSelectionHighlightEl = highlight;
+				Logger.debug('[SelectionPersist] persist success via extract/insert', this.getSelectionDebugInfo('persist-success-fallback'));
+			} catch (_fallbackError) {
+				this.persistentSelectionHighlightEl = null;
+				Logger.debug('[SelectionPersist] persist failed in fallback', this.getSelectionDebugInfo('persist-failed-fallback'));
+			}
+		}
+	}
+
+	private persistCurrentSourceSelection(selectionContainer?: Element | null): void {
+		let editorView: {
+			dispatch: (transaction: unknown) => void;
+			state: { selection: { main: { from: number; to: number } } };
+		} | null = null;
+
+		if (selectionContainer) {
+			const cmEditorEl = selectionContainer.closest('.cm-editor') as (HTMLElement & {
+				cmView?: {
+					view?: {
+						dispatch?: (transaction: unknown) => void;
+						state?: { selection?: { main?: { from?: number; to?: number } } };
+					};
+				};
+			}) | null;
+			const viewFromDom = cmEditorEl?.cmView?.view;
+			if (viewFromDom?.dispatch && viewFromDom?.state?.selection?.main) {
+				editorView = viewFromDom as {
+					dispatch: (transaction: unknown) => void;
+					state: { selection: { main: { from: number; to: number } } };
+				};
+			}
+
+			if (editorView) {
+				Logger.debug('[SelectionPersist] source persist resolved editor view from selection container');
+			} else {
+				Logger.debug('[SelectionPersist] source persist DOM resolve failed', {
+					hasCmEditorEl: !!cmEditorEl,
+					hasCmView: !!cmEditorEl?.cmView,
+					hasCmViewView: !!cmEditorEl?.cmView?.view,
+					tagName: selectionContainer.tagName
+				});
+			}
+		}
+
+		if (!editorView && selectionContainer) {
+			const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+			for (const leaf of markdownLeaves) {
+				const markdownView = leaf.view as unknown as { contentEl?: HTMLElement };
+				if (markdownView?.contentEl && markdownView.contentEl.contains(selectionContainer)) {
+					const viewFromLeaf = this.plugin.getEditorViewFromMarkdownView(markdownView as unknown);
+					if (viewFromLeaf?.dispatch && viewFromLeaf?.state?.selection?.main) {
+						editorView = viewFromLeaf as {
+							dispatch: (transaction: unknown) => void;
+							state: { selection: { main: { from: number; to: number } } };
+						};
+						Logger.debug('[SelectionPersist] source persist resolved editor view from markdown leaf containing selection');
+						break;
+					}
+				}
+			}
+		}
+
+		if (!editorView) {
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (activeView) {
+				const viewFromActive = this.plugin.getEditorViewFromMarkdownView(activeView as unknown);
+				if (viewFromActive?.dispatch && viewFromActive?.state?.selection?.main) {
+					editorView = viewFromActive as {
+						dispatch: (transaction: unknown) => void;
+						state: { selection: { main: { from: number; to: number } } };
+					};
+				}
+				if (editorView) {
+					Logger.debug('[SelectionPersist] source persist resolved editor view from active markdown view');
+				}
+			}
+		}
+
+		if (!editorView) {
+			Logger.debug('[SelectionPersist] skip source persist: no editor view', {
+				hasSelectionContainer: !!selectionContainer,
+				hasActiveMarkdownView: !!this.app.workspace.getActiveViewOfType(MarkdownView)
+			});
+			return;
+		}
+
+		const selection = editorView.state.selection.main;
+		if (selection.from >= selection.to) {
+			Logger.debug('[SelectionPersist] skip source persist: collapsed selection', {
+				from: selection.from,
+				to: selection.to
+			});
+			return;
+		}
+
+		editorView.dispatch({
+			effects: showPersistentSelectionHighlightEffect.of({
+				from: selection.from,
+				to: selection.to
+			})
+		});
+		this.persistentSourceHighlightView = editorView as { dispatch: (transaction: unknown) => void };
+
+		Logger.debug('[SelectionPersist] source persist success', {
+			from: selection.from,
+			to: selection.to
+		});
+	}
+
+	private clearPersistentReadingSelection(): void {
+		if (this.persistentSourceHighlightView) {
+			this.persistentSourceHighlightView.dispatch({
+				effects: hidePersistentSelectionHighlightEffect.of()
+			});
+			this.persistentSourceHighlightView = null;
+			Logger.debug('[SelectionPersist] source highlight cleared');
+		}
+
+		if (!this.persistentSelectionHighlightEl) {
+			Logger.debug('[SelectionPersist] clear skip: no persistent highlight');
+			return;
+		}
+
+		const highlight = this.persistentSelectionHighlightEl;
+		const parent = highlight.parentNode;
+		if (parent) {
+			while (highlight.firstChild) {
+				parent.insertBefore(highlight.firstChild, highlight);
+			}
+			parent.removeChild(highlight);
+		}
+
+		this.persistentSelectionHighlightEl = null;
+		Logger.debug('[SelectionPersist] clear done', this.getSelectionDebugInfo('clear-done'));
+	}
+
+	private getSelectionDebugInfo(stage: string): {
+		stage: string;
+		hasSelection: boolean;
+		rangeCount: number;
+		isCollapsed: boolean;
+		selectedLength: number;
+		hasPersistentHighlight: boolean;
+		hasPersistentSourceHighlight: boolean;
+		keepSelectionClass: boolean;
+		activeTag: string | null;
+		activeClasses: string | null;
+	} {
+		const selection = window.getSelection();
+		const selectedText = selection?.toString() || '';
+		const activeEl = document.activeElement as HTMLElement | null;
+		return {
+			stage,
+			hasSelection: !!selection && selection.rangeCount > 0 && !selection.isCollapsed,
+			rangeCount: selection?.rangeCount ?? 0,
+			isCollapsed: selection?.isCollapsed ?? true,
+			selectedLength: selectedText.trim().length,
+			hasPersistentHighlight: !!this.persistentSelectionHighlightEl,
+			hasPersistentSourceHighlight: !!this.persistentSourceHighlightView,
+			keepSelectionClass: document.body.classList.contains(InputHandler.KEEP_SELECTION_CLASS),
+			activeTag: activeEl?.tagName || null,
+			activeClasses: activeEl?.className || null
+		};
+	}
+
 	// Store captured selection to preserve across menu interactions
 	private capturedSelection: string | null = null;
+	private capturedSelectionFilePath: string | null = null;
 
 	/**
 	 * Show context options menu
@@ -1720,19 +1971,21 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			} else if (action === 'selection') {
 				await this.includeSelectedTextWithCaptured();
 			} else if (action === 'smart-search') {
-				// Close menu and open smart search modal
-				menu.remove();
-				this.capturedSelection = null;
-				this.openSmartSearchModal();
+					// Close menu and open smart search modal
+					menu.remove();
+					this.capturedSelection = null;
+					this.capturedSelectionFilePath = null;
+					this.openSmartSearchModal();
 				return; // Early return to skip the menu.remove() below
 			} else if (action === 'file-directory') {
 				// Trigger file/folder selector by simulating @ input
 				Logger.debug('File&Directory button clicked, triggering file selector');
 				this.triggerFileFolderSelector();
-			} else if (action === 'webpage-content') {
-				// Close menu immediately to prevent UI blocking
-				menu.remove();
-				this.capturedSelection = null;
+				} else if (action === 'webpage-content') {
+					// Close menu immediately to prevent UI blocking
+					menu.remove();
+					this.capturedSelection = null;
+					this.capturedSelectionFilePath = null;
 				
 				// Show loading notice and fetch content asynchronously
 				const loadingNotice = new Notice(this.plugin.i18n.t('ui.fetchingWebpageContent'), 0);
@@ -1747,10 +2000,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				}, 10);
 				
 				return; // Early return to skip the menu.remove() below
-			} else if (action === 'epub-page') {
-				// Close menu immediately to prevent UI blocking
-				menu.remove();
-				this.capturedSelection = null;
+				} else if (action === 'epub-page') {
+					// Close menu immediately to prevent UI blocking
+					menu.remove();
+					this.capturedSelection = null;
+					this.capturedSelectionFilePath = null;
 				
 				// Show loading notice and fetch content asynchronously
 				const loadingNotice = new Notice(this.plugin.i18n.t('ui.fetchingEpubPageContent') || 'Fetching epub page content...', 0);
@@ -1769,6 +2023,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			
 			// Clear captured selection after use
 			this.capturedSelection = null;
+			this.capturedSelectionFilePath = null;
 			menu.remove();
 		});
 
@@ -1782,10 +2037,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 
 		// Close dropdown when clicking outside
 		const closeHandler = (e: MouseEvent) => {
-			if (!menu.contains(e.target as Node) && !attachBtn?.contains(e.target as Node)) {
-				menu.remove();
-				// Clear captured selection if menu is cancelled
-				this.capturedSelection = null;
+				if (!menu.contains(e.target as Node) && !attachBtn?.contains(e.target as Node)) {
+					menu.remove();
+					// Clear captured selection if menu is cancelled
+					this.capturedSelection = null;
+					this.capturedSelectionFilePath = null;
 				document.removeEventListener('click', closeHandler);
 			}
 		};
@@ -1860,6 +2116,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 * Capture current text selection from all possible sources
 	 */
 	private captureCurrentSelection(): string | null {
+		const sourceFilePath = this.app.workspace.getActiveFile()?.path || null;
 		let selectedText = '';
 		
 		// Method 1: Try from active markdown view editor (highest priority for editor selection)
@@ -1870,6 +2127,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				selectedText = editor.getSelection();
 				Logger.debug('Captured from MarkdownView editor:', selectedText.length);
 				if (selectedText && selectedText.trim()) {
+					this.capturedSelectionFilePath = sourceFilePath;
 					return selectedText.trim();
 				}
 			}
@@ -1882,6 +2140,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				selectedText = selection.toString().trim();
 				Logger.debug('Captured from window selection:', selectedText.length);
 				if (selectedText && selectedText.trim()) {
+					this.capturedSelectionFilePath = sourceFilePath;
 					return selectedText.trim();
 				}
 			}
@@ -1895,13 +2154,15 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 					selectedText = docSelection.toString().trim();
 					Logger.debug('Captured from document selection:', selectedText.length);
 					if (selectedText && selectedText.trim()) {
+						this.capturedSelectionFilePath = sourceFilePath;
 						return selectedText.trim();
 					}
 				}
 			}
 		}
-		
+		 
 		Logger.debug('No text selection found during capture');
+		this.capturedSelectionFilePath = null;
 		return null;
 	}
 
@@ -1924,7 +2185,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			});
 			
 			// Use the context manager's addTextToContext method directly
-			const result = await this.contextManager.addTextToContext(textToAdd);
+			const sourceFile = this.capturedSelectionFilePath
+				? this.app.vault.getAbstractFileByPath(this.capturedSelectionFilePath)
+				: null;
+			const resolvedSourceFile = sourceFile instanceof TFile ? sourceFile : null;
+			const result = await this.contextManager.addTextToContext(textToAdd, undefined, resolvedSourceFile);
 			
 			if (result.success) {
 				let noticeMessage = `Added selected text to context: ${result.context?.preview || 'Added'}`;
@@ -2314,6 +2579,20 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 * Cleanup when component is destroyed
 	 */
 	destroy(): void {
+		document.body.classList.remove(InputHandler.KEEP_SELECTION_CLASS);
+		this.clearPersistentReadingSelection();
+		if (this.boundInputMouseDownHandler) {
+			this.inputElement.removeEventListener('mousedown', this.boundInputMouseDownHandler, true);
+			this.boundInputMouseDownHandler = undefined;
+		}
+		if (this.boundInputFocusHandler) {
+			this.inputElement.removeEventListener('focus', this.boundInputFocusHandler);
+			this.boundInputFocusHandler = undefined;
+		}
+		if (this.boundInputBlurHandler) {
+			this.inputElement.removeEventListener('blur', this.boundInputBlurHandler);
+			this.boundInputBlurHandler = undefined;
+		}
 		if (this.boundOptimizePromptHandler) {
 			this.inputElement.removeEventListener('llmsider-optimize-prompt', this.boundOptimizePromptHandler);
 			this.boundOptimizePromptHandler = undefined;

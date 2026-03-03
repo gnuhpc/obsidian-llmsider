@@ -86,8 +86,11 @@ export interface NoteContext {
 }
 
 export interface SelectedTextContext {
-	text: string;
-	preview: string;
+    text: string;
+    preview: string;
+    rawText?: string;
+    filePath?: string;
+    fileName?: string;
 }
 
 export class ContextManager {
@@ -198,16 +201,21 @@ export class ContextManager {
 	async includeSelectedText(): Promise<{ success: boolean; message: string; context?: SelectedTextContext }> {
 		Logger.debug('Attempting to get selected text...');
 		const selectedText = await this.getSelectedText();
-		
-		if (selectedText && selectedText.trim()) {
+		const activeFile = this.app.workspace.getActiveFile();
+
+		const trimmedText = selectedText.trim();
+		if (selectedText && trimmedText) {
 			// Create preview (first 50 characters)
-			const preview = selectedText.length > 50 
-				? selectedText.substring(0, 50) + '...' 
-				: selectedText;
+			const preview = trimmedText.length > 50 
+				? trimmedText.substring(0, 50) + '...' 
+				: trimmedText;
 			
 			const context: SelectedTextContext = {
-				text: selectedText.trim(),
-				preview: preview
+				text: trimmedText,
+				preview: preview,
+				rawText: selectedText,
+				filePath: activeFile?.path,
+				fileName: activeFile?.name
 			};
 
 			this.selectedTextContexts.push(context);
@@ -235,7 +243,7 @@ export class ContextManager {
 	/**
 	 * Add specific text to context (for context menu integration)
 	 */
-	async addTextToContext(text: string, title?: string): Promise<{ success: boolean; message: string; context?: SelectedTextContext }> {
+	async addTextToContext(text: string, title?: string, sourceFile?: TFile | null): Promise<{ success: boolean; message: string; context?: SelectedTextContext }> {
 		if (!text || !text.trim()) {
 			return {
 				success: false,
@@ -252,8 +260,14 @@ export class ContextManager {
 		
 		const context: SelectedTextContext = {
 			text: trimmedText,
-			preview: preview
+			preview: preview,
+			rawText: text
 		};
+
+		if (sourceFile) {
+			context.filePath = sourceFile.path;
+			context.fileName = sourceFile.name;
+		}
 
 		this.selectedTextContexts.push(context);
 		
@@ -261,6 +275,7 @@ export class ContextManager {
 			length: trimmedText.length,
 			preview: preview,
 			title: title,
+			file: sourceFile?.path,
 			totalSelections: this.selectedTextContexts.length
 		});
 		

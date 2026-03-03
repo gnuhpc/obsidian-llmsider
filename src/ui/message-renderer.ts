@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { MarkdownRenderer, Component, App, Notice, MarkdownView, setIcon, Modal } from 'obsidian';
+import { MarkdownRenderer, Component, App, Notice, MarkdownView, setIcon, Modal, TFile } from 'obsidian';
 import { Logger } from './../utils/logger';
 import { ChatMessage, MessageContent, PlanExecutePhase, PlanExecuteState } from '../types';
 import LLMSiderPlugin from '../main';
@@ -1753,9 +1753,27 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			const activeContent = this.getActiveProviderContent(message);
 			const textContent = this.extractTextContent(activeContent);
 			
-			// Get the active file
+			// Check if this is selected text mode
+			const isSelectedTextMode = (message.metadata as any)?.isSelectedTextMode;
+			const selectedTextContext = (message.metadata as any)?.selectedTextContext;
+			const originalContent = (message.metadata as any)?.originalContent;
+
+			// Get the active file and any stored reference
 			const activeFile = this.app.workspace.getActiveFile();
-			if (!activeFile) {
+			const referencedFilePath = (selectedTextContext as any)?.filePath;
+			let targetFile: TFile | null = null;
+			if (referencedFilePath) {
+				const abstractFile = this.app.vault.getAbstractFileByPath(referencedFilePath);
+				if (abstractFile instanceof TFile) {
+					targetFile = abstractFile;
+				} else {
+					Logger.warn('Referenced file not found, falling back to active file', referencedFilePath);
+				}
+			}
+			if (!targetFile) {
+				targetFile = activeFile;
+			}
+			if (!targetFile) {
 				const i18n = this.plugin.getI18nManager();
 				new Notice(i18n?.t('notifications.messageRenderer.noActiveNoteToApply') || 'No active note found to apply changes to');
 				return;
@@ -1774,66 +1792,63 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 				return;
 			}
 
-			// Check if this is selected text mode
-			const isSelectedTextMode = (message.metadata as any)?.isSelectedTextMode;
-			const selectedTextContext = (message.metadata as any)?.selectedTextContext;
-			const originalContent = (message.metadata as any)?.originalContent;
-
-		if (isSelectedTextMode && selectedTextContext && originalContent) {
-			// Selected text mode: replace only the selected portion
-			Logger.debug('Applying changes in selected text mode:', {
-				selectedText: selectedTextContext.preview,
-				originalLength: originalContent.length,
-				modifiedLength: textContent.length
-			});
+			if (isSelectedTextMode && selectedTextContext && originalContent) {
+				// Selected text mode: replace only the selected portion
+				Logger.debug('Applying changes in selected text mode:', {
+					selectedText: selectedTextContext.preview,
+					originalLength: originalContent.length,
+					modifiedLength: textContent.length
+				});
 
 				// Read current file content
-				const currentFileContent = await this.app.vault.read(activeFile);
-				
+				const currentFileContent = await this.app.vault.read(targetFile);
+
 				// Find and replace the original selected text with modified content
-				const selectedText = selectedTextContext.text;
-				const modifiedText = textContent.trim();
-				
+				const selectedText = selectedTextContext.rawText ?? selectedTextContext.text;
+				const modifiedText = textContent;
+
 				// Check if the selected text still exists in the file
-				const selectedTextIndex = currentFileContent.indexOf(selectedText);
-				if (selectedTextIndex === -1) {
+				const match = this.findSelectedTextMatch(currentFileContent, selectedText);
+				if (!match) {
 					const proceed = confirm(
 						'The selected text was not found in the current file. It may have been modified since selection. ' +
 						'Do you want to replace the entire file content instead?'
 					);
-					if (!proceed) return;
-					
+					if (!proceed) {
+						return;
+					}
+
 					// Fallback to full file replacement
-					await this.app.vault.modify(activeFile, modifiedText);
+					await this.app.vault.modify(targetFile, modifiedText);
 					const i18n = this.plugin.getI18nManager();
-					new Notice(i18n?.t('notifications.messageRenderer.appliedToEntireFile', { file: activeFile.name }) || `Applied changes to entire file "${activeFile.name}"`);
+					new Notice(i18n?.t('notifications.messageRenderer.appliedToEntireFile', { file: targetFile.name }) || `Applied changes to entire file "${targetFile.name}"`);
 				} else {
 					// Replace only the selected portion
-					const newFileContent = 
-						currentFileContent.substring(0, selectedTextIndex) +
+					const newFileContent =
+						currentFileContent.substring(0, match.start) +
 						modifiedText +
-						currentFileContent.substring(selectedTextIndex + selectedText.length);
-					
-					await this.app.vault.modify(activeFile, newFileContent);
-					const i18n = this.plugin.getI18nManager();
-					new Notice(i18n?.t('notifications.messageRenderer.appliedToSelectedText', { file: activeFile.name }) || `Applied changes to selected text in "${activeFile.name}"`);
-				}
-				
-		} else {
-			// Full file mode: replace entire file content
-			Logger.debug('Applying changes in full file mode');
+						currentFileContent.substring(match.start + match.length);
 
-			Logger.debug('Applying changes to active file:', {
-				filename: activeFile.name,
+					await this.app.vault.modify(targetFile, newFileContent);
+					const i18n = this.plugin.getI18nManager();
+					new Notice(i18n?.t('notifications.messageRenderer.appliedToSelectedText', { file: targetFile.name }) || `Applied changes to selected text in "${targetFile.name}"`);
+				}
+
+			} else {
+				// Full file mode: replace entire file content
+				Logger.debug('Applying changes in full file mode');
+
+				Logger.debug('Applying changes to active file:', {
+					filename: targetFile.name,
 					messageId: message.id,
 					contentLength: textContent.length
 				});
 
-				// Apply the content to the active file
-				await this.app.vault.modify(activeFile, textContent);
-				
+				// Apply the content to the target file
+				await this.app.vault.modify(targetFile, textContent);
+
 				const i18n = this.plugin.getI18nManager();
-				new Notice(i18n?.t('notifications.messageRenderer.appliedChanges', { file: activeFile.name }) || `Applied changes to ${activeFile.name}`);
+				new Notice(i18n?.t('notifications.messageRenderer.appliedChanges', { file: targetFile.name }) || `Applied changes to ${targetFile.name}`);
 			}
 			
 		} catch (error) {
@@ -1841,6 +1856,81 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			const i18n = this.plugin.getI18nManager();
 			new Notice(i18n?.t('notifications.messageRenderer.failedToApply', { error: error instanceof Error ? error.message : 'Unknown error' }) || 'Failed to apply changes: ' + (error instanceof Error ? error.message : 'Unknown error'));
 		}
+	}
+
+	private findSelectedTextMatch(content: string, selectedText: string): { start: number; length: number } | null {
+		if (!selectedText) {
+			return null;
+		}
+
+		const exactIndex = content.indexOf(selectedText);
+		if (exactIndex !== -1) {
+			return { start: exactIndex, length: selectedText.length };
+		}
+
+		const trimmedText = selectedText.trim();
+		if (trimmedText && trimmedText !== selectedText) {
+			const trimmedIndex = content.indexOf(trimmedText);
+			if (trimmedIndex !== -1) {
+				return { start: trimmedIndex, length: trimmedText.length };
+			}
+		}
+
+		const normalizedText = trimmedText || selectedText;
+		if (!normalizedText) {
+			return null;
+		}
+
+		const escaped = normalizedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const flexibleWhitespace = escaped.replace(/\s+/g, '\\s+');
+		const regex = new RegExp(flexibleWhitespace, 'g');
+		const match = regex.exec(content);
+		if (match && match.index !== undefined) {
+			return { start: match.index, length: match[0].length };
+		}
+
+		// Fallback: token sequence match to tolerate markdown markup and formatting differences
+		// between rendered selection text and source markdown.
+		const tokenMatch = this.findTokenSequenceMatch(content, selectedText);
+		if (tokenMatch) {
+			return tokenMatch;
+		}
+
+		return null;
+	}
+
+	private findTokenSequenceMatch(content: string, selectedText: string): { start: number; length: number } | null {
+		const selectedTokens = this.tokenizeNormalized(selectedText);
+		if (selectedTokens.length < 2) {
+			return null;
+		}
+
+		const maxTokensToMatch = 80;
+		const tokensToMatch = selectedTokens.slice(0, maxTokensToMatch);
+		const connector = '[^A-Za-z0-9\u4E00-\u9FFF]*';
+		const escapedTokens = tokensToMatch.map(token => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+		const pattern = escapedTokens.join(connector);
+		if (!pattern) {
+			return null;
+		}
+
+		const regex = new RegExp(pattern, 'iu');
+		const match = regex.exec(content);
+		if (match && typeof match.index === 'number') {
+			return { start: match.index, length: match[0].length };
+		}
+
+		return null;
+	}
+
+	private tokenizeNormalized(text: string): string[] {
+		const tokens: string[] = [];
+		const tokenRegex = /[A-Za-z0-9]+|[\u4E00-\u9FFF]+/gu;
+		let match: RegExpExecArray | null;
+		while ((match = tokenRegex.exec(text)) !== null) {
+			tokens.push(match[0].toLowerCase().normalize('NFKC'));
+		}
+		return tokens;
 	}
 
 	/**

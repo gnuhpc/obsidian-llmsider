@@ -990,6 +990,8 @@ const showQuickChatEffect = StateEffect.define<{
 	to: number;
 }>();
 const hideQuickChatEffect = StateEffect.define<void>();
+export const showPersistentSelectionHighlightEffect = StateEffect.define<{ from: number; to: number }>();
+export const hidePersistentSelectionHighlightEffect = StateEffect.define<void>();
 const showDiffPreviewEffect = StateEffect.define<{ 
 	original: string; 
 	modified: string;
@@ -1112,6 +1114,40 @@ export const quickChatState = StateField.define<QuickChatState>({
 			block: true  // Make it a block-level widget (creates a new line)
 		}));
 		
+		return builder.finish();
+	})
+});
+
+export const persistentSelectionHighlightState = StateField.define<{ from: number; to: number } | null>({
+	create: () => null,
+	update: (state, tr) => {
+		for (const effect of tr.effects) {
+			if (effect.is(showPersistentSelectionHighlightEffect)) {
+				const range = effect.value;
+				if (range.from >= range.to) {
+					return null;
+				}
+				return range;
+			}
+			if (effect.is(hidePersistentSelectionHighlightEffect)) {
+				return null;
+			}
+		}
+		return state;
+	},
+	provide: field => EditorView.decorations.from(field, range => {
+		if (!range) {
+			return Decoration.none;
+		}
+
+		const builder = new RangeSetBuilder<Decoration>();
+		builder.add(
+			range.from,
+			range.to,
+			Decoration.mark({
+				class: 'llmsider-quick-chat-selection-highlight'
+			})
+		);
 		return builder.finish();
 	})
 });

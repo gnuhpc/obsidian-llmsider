@@ -1640,6 +1640,23 @@ select.llmsider-model-select-dropdown option {
     caret-color: #007AFF !important;
 }
 
+body.llmsider-chat-input-focused .cm-editor .cm-selectionLayer,
+body.llmsider-chat-input-focused .markdown-source-view.mod-cm6 .cm-selectionLayer {
+    opacity: 1 !important;
+    display: block !important;
+}
+
+body.llmsider-chat-input-focused .cm-editor .cm-selectionLayer .cm-selectionBackground,
+body.llmsider-chat-input-focused .markdown-source-view.mod-cm6 .cm-selectionLayer .cm-selectionBackground {
+    background: var(--text-selection) !important;
+}
+
+body.llmsider-chat-input-focused .cm-editor:not(.cm-focused) .cm-selectionLayer .cm-selectionBackground,
+body.llmsider-chat-input-focused .markdown-source-view.mod-cm6 .cm-editor:not(.cm-focused) .cm-selectionLayer .cm-selectionBackground {
+    background: var(--text-selection) !important;
+    opacity: 1 !important;
+}
+
 /* Context Modal Styles */
 .llmsider-context-modal {
     position: fixed;

@@ -20,6 +20,12 @@
     filter: none;
 }
 
+.llmsider-persist-selection {
+    background-color: var(--text-selection);
+    color: inherit;
+    border-radius: 2px;
+}
+
 .llmsider-selection-btn {
     width: 26px;
     height: 26px;

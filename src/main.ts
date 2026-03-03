@@ -247,10 +247,11 @@ export default class LLMSiderPlugin extends Plugin {
 			this.readingViewQuickChatHandler = new ReadingViewQuickChatHandler(this);
 
 			// Register state fields and keymap for quick chat
-			const { quickChatState, diffPreviewState, createDiffKeymap } = await import('./completion/inline-quick-chat');
+			const { quickChatState, diffPreviewState, persistentSelectionHighlightState, createDiffKeymap } = await import('./completion/inline-quick-chat');
 			this.registerEditorExtension([
 				quickChatState,
 				diffPreviewState,
+				persistentSelectionHighlightState,
 				createDiffKeymap(this.inlineQuickChatHandler)
 			]);
 
@@ -1745,7 +1746,12 @@ export default class LLMSiderPlugin extends Plugin {
 
 			// If we have selected text, add it directly to context
 			if (selectedText && selectedText.trim()) {
-				const result = await contextManager.addTextToContext(selectedText.trim());
+				const activeFile = this.app.workspace.getActiveFile();
+				const result = await contextManager.addTextToContext(
+					selectedText.trim(),
+					undefined,
+					activeFile instanceof TFile ? activeFile : null
+				);
 
 				if (result.success) {
 					new Notice(this.i18n.t('notifications.context.addedToContext', { preview: result.context?.preview || 'Added' }));

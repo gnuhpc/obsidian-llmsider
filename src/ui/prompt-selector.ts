@@ -190,16 +190,11 @@ export class PromptSelector {
         // Use fixed positioning for reliable placement
         const maxHeight = 250; // Match CSS max-height
         const selectorHeight = Math.min(maxHeight, this.suggestions.length * 35 + 80); // Dynamic height based on suggestions, reduced padding
-        let top = position.y - selectorHeight; // Position above the input
-        
-        // If would be above viewport, position below the input instead
-        if (top < 10) {
-            top = position.y + 60; // Position below the input with enough spacing
-        }
-        
+
         this.selectorEl.style.position = 'fixed';
-        this.selectorEl.style.left = position.x + 'px';
-        this.selectorEl.style.top = top + 'px';
+        this.selectorEl.style.left = '50%';
+        this.selectorEl.style.top = '50%';
+        this.selectorEl.style.transform = 'translate(-50%, -50%)';
         this.selectorEl.style.width = '350px';
         this.selectorEl.style.maxHeight = maxHeight + 'px';
         this.selectorEl.style.zIndex = '10000';

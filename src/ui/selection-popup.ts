@@ -1,4 +1,4 @@
-import { App, Notice, MarkdownView, requestUrl } from 'obsidian';
+import { App, Notice, MarkdownView, TFile, requestUrl } from 'obsidian';
 import { Logger } from './../utils/logger';
 import LLMSiderPlugin from '../main';
 
@@ -127,6 +127,13 @@ export class SelectionPopup {
 	 * Handle selection change event
 	 */
 	private handleSelectionChange(): void {
+		const selection = window.getSelection();
+		Logger.debug('[SelectionPopup] handleSelectionChange trigger', {
+			rangeCount: selection?.rangeCount ?? 0,
+			isCollapsed: selection?.isCollapsed ?? true,
+			selectedLength: selection?.toString().trim().length ?? 0,
+			keepSelectionClass: document.body.classList.contains('llmsider-chat-input-focused')
+		});
 		if (this.selectionChangeDebounce !== null) {
 			window.clearTimeout(this.selectionChangeDebounce);
 		}
@@ -150,6 +157,11 @@ export class SelectionPopup {
 
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const activeLeaf = this.app.workspace.activeLeaf;
+		Logger.debug('[SelectionPopup] active view snapshot', {
+			hasActiveMarkdownView: !!activeView,
+			activeLeafType: activeLeaf?.view?.getViewType?.() ?? null,
+			keepSelectionClass: document.body.classList.contains('llmsider-chat-input-focused')
+		});
 		let isInWebViewer = false;
 		if (activeLeaf?.view?.contentEl) {
 			const contentEl = activeLeaf.view.contentEl;
@@ -174,6 +186,11 @@ export class SelectionPopup {
 		}
 
 		if (!hasSelection) {
+			Logger.debug('[SelectionPopup] no selection branch', {
+				hadLastSelectionText: !!this.lastSelectionText,
+				lastSelectionLength: this.lastSelectionText.length,
+				lastAutoReferenceLength: this.lastAutoReferenceText.length
+			});
 			if (this.lastSelectionText) {
 				this.lastSelectionText = '';
 				this.lastAutoReferenceText = '';
@@ -184,6 +201,7 @@ export class SelectionPopup {
 			}
 			return;
 		}
+
 
 		this.lastSelectionText = selectedText;
 
@@ -547,6 +565,7 @@ export class SelectionPopup {
 		this.isMouseOverPopup = false;
 	}
 
+
 	/**
 	 * Handle add to context action
 	 */
@@ -609,8 +628,10 @@ export class SelectionPopup {
 				}
 			}
 			
-			// Add text to context directly without URL prefix
-			const result = await contextManager.addTextToContext(finalText);
+				// Add text to context directly without URL prefix
+				const activeFile = this.app.workspace.getActiveFile();
+				const sourceFile = activeFile instanceof TFile ? activeFile : null;
+				const result = await contextManager.addTextToContext(finalText, undefined, sourceFile);
 			
 			if (result.success) {
 				// Update context display in chat view
@@ -650,9 +671,11 @@ export class SelectionPopup {
 				return;
 			}				// Add selected text to context
 				const contextManager = (chatView as unknown).contextManager;
-				if (contextManager) {
-					await contextManager.addTextToContext(selectedText);
-					if ((chatView as unknown).updateContextDisplay) {
+							if (contextManager) {
+								const activeFile = this.app.workspace.getActiveFile();
+								const sourceFile = activeFile instanceof TFile ? activeFile : null;
+								await contextManager.addTextToContext(selectedText, undefined, sourceFile);
+								if ((chatView as unknown).updateContextDisplay) {
 						(chatView as unknown).updateContextDisplay();
 					}
 				}
@@ -675,7 +698,9 @@ export class SelectionPopup {
 			if (chatView) {
 				const contextManager = (chatView as unknown).contextManager;
 				if (contextManager) {
-					await contextManager.addTextToContext(selectedText);
+					const activeFile = this.app.workspace.getActiveFile();
+					const sourceFile = activeFile instanceof TFile ? activeFile : null;
+					await contextManager.addTextToContext(selectedText, undefined, sourceFile);
 					if ((chatView as unknown).updateContextDisplay) {
 						(chatView as unknown).updateContextDisplay();
 					}

@@ -656,7 +656,7 @@ export class MessageManager {
 				// Determine original content based on priority
 				if (selectedTextContexts.length === 1) {
 					// Single selected text - use it for diff
-					originalContent = selectedTextContexts[0].text.trim();
+					originalContent = selectedTextContexts[0].rawText ?? selectedTextContexts[0].text;
 					isSelectedTextMode = true;
 					Logger.debug('Using single selected text context for diff:', {
 						selectedTextLength: originalContent.length,

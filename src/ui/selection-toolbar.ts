@@ -8,7 +8,7 @@
 import { Logger } from '../utils/logger';
 import LLMSiderPlugin from '../main';
 import { MessageActions } from './message-actions';
-import { Notice } from 'obsidian';
+import { Notice, TFile } from 'obsidian';
 
 export class SelectionToolbar {
 	private plugin: LLMSiderPlugin;
@@ -19,6 +19,7 @@ export class SelectionToolbar {
 	private isToolbarVisible: boolean = false;
 	private selectionChangeDebounce: number | null = null;
 	private suppressNextMouseUp = false;
+	private persistentHighlightEl: HTMLElement | null = null;
 	private boundMouseUp?: (event: MouseEvent) => void;
 	private boundSelectionChange?: () => void;
 	private boundMouseDown?: (event: MouseEvent) => void;
@@ -50,12 +51,17 @@ export class SelectionToolbar {
 			return;
 		}
 		const target = event.target as Node | null;
+		const targetEl = event.target as HTMLElement | null;
 		if (target && this.toolbar.contains(target)) {
+			return;
+		}
+		if (targetEl && targetEl.closest('.llmsider-input-container')) {
 			return;
 		}
 		this.suppressNextMouseUp = true;
 		const selection = window.getSelection();
 		selection?.removeAllRanges();
+		this.clearPersistentHighlight();
 		this.hideToolbar();
 	}
 
@@ -76,6 +82,57 @@ export class SelectionToolbar {
 	private clearSelection(): void {
 		const selection = window.getSelection();
 		selection?.removeAllRanges();
+	}
+
+	private applyPersistentHighlight(selection: Selection): void {
+		if (!selection || selection.rangeCount === 0) {
+			return;
+		}
+
+		const range = selection.getRangeAt(0);
+		const container = range.commonAncestorContainer;
+		const messageEl = this.findParentMessageElement(container);
+		if (!messageEl || !messageEl.classList.contains('llmsider-assistant')) {
+			return;
+		}
+
+		this.clearPersistentHighlight();
+
+		try {
+			const highlight = document.createElement('span');
+			highlight.className = 'llmsider-persist-selection';
+			range.surroundContents(highlight);
+			this.persistentHighlightEl = highlight;
+		} catch (error) {
+			try {
+				const highlight = document.createElement('span');
+				highlight.className = 'llmsider-persist-selection';
+				const contents = range.extractContents();
+				highlight.appendChild(contents);
+				range.insertNode(highlight);
+				this.persistentHighlightEl = highlight;
+			} catch (fallbackError) {
+				Logger.debug('[SelectionToolbar] Failed to persist selection highlight:', fallbackError);
+				this.persistentHighlightEl = null;
+			}
+		}
+	}
+
+	private clearPersistentHighlight(): void {
+		if (!this.persistentHighlightEl) {
+			return;
+		}
+
+		const highlight = this.persistentHighlightEl;
+		const parent = highlight.parentNode;
+		if (parent) {
+			while (highlight.firstChild) {
+				parent.insertBefore(highlight.firstChild, highlight);
+			}
+			parent.removeChild(highlight);
+		}
+
+		this.persistentHighlightEl = null;
 	}
 
 	private handleSelectionChange(): void {
@@ -121,6 +178,7 @@ export class SelectionToolbar {
 			return;
 		}
 
+		this.applyPersistentHighlight(selection);
 		// Show toolbar near the selection
 		this.showToolbar(selection, selectedText, event);
 	}
@@ -305,6 +363,7 @@ export class SelectionToolbar {
 
 		await this.messageActions.copyToClipboard(selectedText);
 		this.clearSelection();
+		this.clearPersistentHighlight();
 		this.hideToolbar();
 	}
 
@@ -316,6 +375,7 @@ export class SelectionToolbar {
 		// (selections are usually short, don't need AI-generated titles)
 		await this.messageActions.generateNote(selectedText, false);
 		this.clearSelection();
+		this.clearPersistentHighlight();
 		this.hideToolbar();
 	}
 
@@ -325,6 +385,7 @@ export class SelectionToolbar {
 
 		await this.messageActions.insertAtCursor(selectedText);
 		this.clearSelection();
+		this.clearPersistentHighlight();
 		this.hideToolbar();
 	}
 
@@ -377,6 +438,7 @@ export class SelectionToolbar {
 		}
 
 		this.clearSelection();
+		this.clearPersistentHighlight();
 		this.hideToolbar();
 	}
 
@@ -403,7 +465,12 @@ export class SelectionToolbar {
 		}
 
 		try {
-			const result = await contextManager.addTextToContext(selectedText);
+		const activeFile = this.plugin.app.workspace.getActiveFile();
+		const result = await contextManager.addTextToContext(
+			selectedText,
+			undefined,
+			activeFile instanceof TFile ? activeFile : null
+		);
 			if (result.success) {
 				if (chatViewAny.updateContextDisplay) {
 					chatViewAny.updateContextDisplay();
