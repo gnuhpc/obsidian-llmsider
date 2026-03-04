@@ -62,7 +62,6 @@ export class UIBuilder {
 		providerSelect: HTMLSelectElement;
 		contextDisplay: HTMLElement;
 		heroContainer: HTMLElement;
-		suggestionPillsContainer: HTMLElement;
 		inputHint: HTMLElement;
 	} {
 		const container = this.containerEl;
@@ -81,25 +80,11 @@ export class UIBuilder {
 		// Input container at bottom
 		const inputComponents = this.buildInputContainer(container);
 
-		// Suggestion Pills (above input)
-		const suggestionPillsContainer = this.buildSuggestionPills(inputComponents.inputContainer);
-		inputComponents.inputContainer.prepend(suggestionPillsContainer);
-
-		const inputHint = inputComponents.inputContainer.createDiv({
-			cls: 'llmsider-input-hint',
-			text: this.i18n.t('ui.inputHint')
-		});
-		const inputWrapper = inputComponents.inputContainer.querySelector('.llmsider-input-wrapper');
-		if (inputWrapper) {
-			inputComponents.inputContainer.insertBefore(inputHint, inputWrapper);
-		}
-
 		return {
 			messageContainer,
 			...inputComponents,
 			heroContainer,
-			suggestionPillsContainer,
-			inputHint
+			inputHint: inputComponents.inputHint
 		};
 	}
 
@@ -117,38 +102,6 @@ export class UIBuilder {
 		hero.createEl('p', { text: this.i18n.t('ui.heroSubtitle'), cls: 'llmsider-hero-subtitle' });
 		
 		return hero;
-	}
-
-	/**
-	 * Build Suggestion Pills
-	 */
-	private buildSuggestionPills(container: HTMLElement): HTMLElement {
-		const pillsContainer = container.createDiv({ cls: 'llmsider-suggestion-pills' });
-		
-		const suggestions = [
-			{ text: this.i18n.t('ui.suggestionPillQuantum'), icon: 'lightbulb' },
-			{ text: this.i18n.t('ui.suggestionPillBlog'), icon: 'file-text' },
-			{ text: this.i18n.t('ui.suggestionPillTranslate'), icon: 'globe' },
-			{ text: this.i18n.t('ui.suggestionPillDebug'), icon: 'cpu' }
-		];
-		
-			suggestions.forEach(suggestion => {
-				const pill = pillsContainer.createEl('button', { cls: 'llmsider-suggestion-pill' });
-				const icon = pill.createSpan({ cls: 'llmsider-suggestion-pill-icon' });
-				setIcon(icon, suggestion.icon);
-				pill.createSpan({ text: suggestion.text });
-				
-				pill.onclick = () => {
-					const inputEl = this.containerEl.querySelector('.llmsider-input') as HTMLTextAreaElement;
-					if (inputEl) {
-						inputEl.value = suggestion.text;
-						inputEl.focus();
-						inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-					}
-				};
-			});
-		
-		return pillsContainer;
 	}
 
 	private setupResponsiveClasses(container: HTMLElement): void {
@@ -371,13 +324,20 @@ export class UIBuilder {
 		stopButton: HTMLElement;
 		providerSelect: HTMLSelectElement;
 		contextDisplay: HTMLElement;
+		inputHint: HTMLElement;
 	} {
 		const inputContainer = container.createDiv({ cls: 'llmsider-input-container' });
 
+		const contextHintRow = inputContainer.createDiv({ cls: 'llmsider-context-hint-row' });
 
 		// Context display area (above input)
-		const contextDisplay = inputContainer.createDiv({ cls: 'llmsider-context-display' });
+		const contextDisplay = contextHintRow.createDiv({ cls: 'llmsider-context-display' });
 		contextDisplay.style.display = 'none'; // Initially hidden
+
+		const inputHint = contextHintRow.createDiv({
+			cls: 'llmsider-input-hint',
+			text: this.i18n.t('ui.inputHint')
+		});
 
 	// Main input wrapper with modern design
 	const inputWrapper = inputContainer.createDiv({ cls: 'llmsider-input-wrapper' });
@@ -534,7 +494,8 @@ export class UIBuilder {
 			sendButton,
 			stopButton,
 			providerSelect,
-			contextDisplay
+			contextDisplay,
+			inputHint
 		};
 	}
 

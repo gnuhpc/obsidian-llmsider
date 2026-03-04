@@ -45,7 +45,8 @@ export class InputHandler {
 	private placeholderPathMap: Map<string, string> = new Map();
 
 	// Track which files were added by which directory placeholder
-	private directoryFileMap: Map<string, string[]> = new Map();
+	private directoryFileMap: Map<string, Array<{ name: string; path?: string }>> = new Map();
+	private expandedDirectoryPlaceholders: Set<string> = new Set();
 
 	// Store dragged folder path from global drag events
 	private draggedFolderPath: string | null = null;
@@ -190,7 +191,7 @@ export class InputHandler {
 
 		// Send button click
 		this.sendButton.addEventListener('click', () => {
-			this.handleSendMessage();
+			void this.handleSendMessage();
 		});
 
 		// Provider select change
@@ -334,7 +335,7 @@ export class InputHandler {
 				} else {
 					// Enter: Send message
 					event.preventDefault();
-					this.handleSendMessage();
+					void this.handleSendMessage();
 				}
 			}
 		});
@@ -817,35 +818,6 @@ export class InputHandler {
 		// Store placeholder mapping
 		this.addPlaceholderMapping(`📁${displayName}`, folder.path);
 		
-		// Add folder to context
-		const i18n = this.plugin.getI18nManager();
-		new Notice(i18n?.t('notifications.ui.processingDirectory', { name: displayName }) || `Processing directory "${displayName}"...`);
-		
-		try {
-			// Store current context count to track which files were added by this directory
-			const beforeContextCount = this.contextManager.getCurrentNoteContext().length;
-			
-			const result = await this.contextManager.includeDirectory(folder);
-			
-			if (result.success) {
-				// Track which files were added by this directory
-				const afterContext = this.contextManager.getCurrentNoteContext();
-				const newlyAddedFiles = afterContext.slice(beforeContextCount).map(ctx => ctx.name);
-				
-				// Store mapping: directory display name -> list of added filenames
-				this.directoryFileMap.set(`📁${displayName}`, newlyAddedFiles);
-				
-				new Notice(result.message);
-			} else {
-				new Notice(result.message);
-			}
-		} catch (error) {
-			Logger.error('Error processing directory:', error);
-			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-			const i18n = this.plugin.getI18nManager();
-			new Notice(i18n?.t('notifications.ui.errorProcessingDirectory', { error: errorMessage }) || `Error processing directory: ${errorMessage}`);
-		}
-		
 		// Update UI
 		this.autoResizeTextarea();
 		this.updateSendButton();
@@ -858,11 +830,13 @@ export class InputHandler {
 	/**
 	 * Handle send message action
 	 */
-	private handleSendMessage(): void {
+	private async handleSendMessage(): Promise<void> {
 		const content = this.inputElement.value.trim();
 
 		// Allow sending if we have content OR a selected prompt
 		if (!content && !this.selectedPrompt) return;
+
+		await this.ensureFolderContextsLoaded();
 
 		// Process file placeholders before sending
 		const processedContent = this.processFilePlaceholders(content);
@@ -899,6 +873,33 @@ export class InputHandler {
 		// Call callback if provided
 		if (this.onSendMessage) {
 			this.onSendMessage(finalContent);
+		}
+	}
+
+	private async ensureFolderContextsLoaded(): Promise<void> {
+		const folderPlaceholders = this.getFolderPlaceholdersFromInput();
+		if (folderPlaceholders.length === 0) {
+			return;
+		}
+		
+		for (const folderPlaceholder of folderPlaceholders) {
+			if (this.directoryFileMap.has(folderPlaceholder.displayName)) {
+				continue;
+			}
+			try {
+				const beforeContextCount = this.contextManager.getCurrentNoteContext().length;
+				const result = await this.contextManager.includeDirectory(folderPlaceholder.folder);
+				if (result.success) {
+					const afterContext = this.contextManager.getCurrentNoteContext();
+					const newlyAddedFiles = afterContext.slice(beforeContextCount).map(ctx => ({
+						name: ctx.name,
+						path: ctx.filePath
+					}));
+					this.directoryFileMap.set(folderPlaceholder.displayName, newlyAddedFiles);
+				}
+			} catch (error) {
+				Logger.error('Error processing directory placeholder:', error);
+			}
 		}
 	}
 
@@ -1039,7 +1040,8 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			// Position the selector relative to the input box
 			const position = {
 				x: inputRect.left,
-				y: inputRect.top // Use the actual input top position, let selector handle positioning logic
+				y: inputRect.top,
+				yBottom: inputRect.bottom
 			};
 			
 			// Show prompt selector
@@ -1277,6 +1279,23 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	private updateContextDisplay(): void {
 		this.contextDisplay.innerHTML = '';
 		const folderPlaceholders = this.getFolderPlaceholdersFromInput();
+		const hiddenFileNames = new Set<string>();
+		const hiddenFilePaths = new Set<string>();
+		const activeFolderDisplayNames = new Set(folderPlaceholders.map(placeholder => placeholder.displayName));
+		this.directoryFileMap.forEach((entries, displayName) => {
+			if (!activeFolderDisplayNames.has(displayName)) {
+				return;
+			}
+			if (this.expandedDirectoryPlaceholders.has(displayName)) {
+				return;
+			}
+			entries.forEach(entry => {
+				hiddenFileNames.add(entry.name);
+				if (entry.path) {
+					hiddenFilePaths.add(entry.path);
+				}
+			});
+		});
 		
 		// Check if we have any context to display
 		if (!this.contextManager.hasContext() && folderPlaceholders.length === 0) {
@@ -1292,6 +1311,12 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		// Display current note context(s) as inline tags
 		const noteContexts = this.contextManager.getCurrentNoteContext();
 		noteContexts.forEach((noteContext) => {
+			if (noteContext.filePath && hiddenFilePaths.has(noteContext.filePath)) {
+				return;
+			}
+			if (!noteContext.filePath && hiddenFileNames.has(noteContext.name)) {
+				return;
+			}
 			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-clickable' });
 
 			contextTag.onclick = (e) => {
@@ -1420,7 +1445,12 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				if (!folderPlaceholder.path) {
 					return;
 				}
+				if (this.expandedDirectoryPlaceholders.has(folderPlaceholder.displayName)) {
+					return;
+				}
+				this.expandedDirectoryPlaceholders.add(folderPlaceholder.displayName);
 				if (this.directoryFileMap.has(folderPlaceholder.displayName)) {
+					this.updateContextDisplay();
 					return;
 				}
 				try {
@@ -1428,7 +1458,10 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 					const result = await this.contextManager.includeDirectory(folderPlaceholder.folder);
 					if (result.success) {
 						const afterContext = this.contextManager.getCurrentNoteContext();
-						const newlyAddedFiles = afterContext.slice(beforeContextCount).map(ctx => ctx.name);
+						const newlyAddedFiles = afterContext.slice(beforeContextCount).map(ctx => ({
+							name: ctx.name,
+							path: ctx.filePath
+						}));
 						this.directoryFileMap.set(folderPlaceholder.displayName, newlyAddedFiles);
 						this.updateContextDisplay();
 					}
@@ -1511,6 +1544,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	clearPlaceholderMappings(): void {
 		this.placeholderPathMap.clear();
 		this.directoryFileMap.clear();
+		this.expandedDirectoryPlaceholders.clear();
 		Logger.debug('Cleared all placeholder mappings and directory file mappings');
 	}
 
@@ -2463,7 +2497,8 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 
 			// Remove each file from the context
 			let removedCount = 0;
-			addedFiles.forEach(fileName => {
+			addedFiles.forEach(entry => {
+				const fileName = entry.name;
 				const removed = this.contextManager.removeNoteContext(fileName);
 				if (removed) {
 					removedCount++;
@@ -2479,6 +2514,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 
 			// Clean up the directory file mapping
 			this.directoryFileMap.delete(displayName);
+			this.expandedDirectoryPlaceholders.delete(displayName);
 
 			Logger.debug('Directory removal completed:', {
 				directory: displayName,

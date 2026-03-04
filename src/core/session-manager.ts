@@ -204,13 +204,13 @@ export class SessionManager {
 			for (let index = 0; index < sessionsToRender.length; index++) {
 				const session = sessionsToRender[index];
 				const isCurrentSession = session.id === currentSession?.id;
-				
+
 				// Get message count and preview from session
 				const messageCount = session.messages.length;
 				const firstUserMessage = session.messages.find(msg => msg.role === 'user');
-				const previewText = firstUserMessage?.content 
-					? (typeof firstUserMessage.content === 'string' 
-						? firstUserMessage.content 
+				const previewText = firstUserMessage?.content
+					? (typeof firstUserMessage.content === 'string'
+						? firstUserMessage.content
 						: firstUserMessage.content.map((c: any) => c.type === 'text' ? c.text : '[Image]').join(' '))
 					: '';
 
@@ -242,86 +242,68 @@ export class SessionManager {
 					cls: 'llmsider-chat-history-card-main'
 				});
 
-			// Title row (title + metadata)
-			const titleRow = mainContent.createDiv({
-				cls: 'llmsider-chat-history-card-title-row'
-			});
+				// Title row (title + metadata)
+				const titleRow = mainContent.createDiv({
+					cls: 'llmsider-chat-history-card-title-row'
+				});
 
-			// Title
-			titleRow.createEl('h3', {
-				text: session.name || 'Untitled Conversation',
-				cls: 'llmsider-chat-history-card-title'
-			});
+				// Title
+				titleRow.createEl('h3', {
+					text: session.name || 'Untitled Conversation',
+					cls: 'llmsider-chat-history-card-title'
+				});
 
-			// Metadata (message count and date) in title row
-			const cardMeta = titleRow.createDiv({ cls: 'llmsider-chat-history-card-meta' });
+				// Metadata (message count and date) in title row
+				const cardMeta = titleRow.createDiv({ cls: 'llmsider-chat-history-card-meta' });
 
-			// Message count
-			cardMeta.createEl('span', {
-				cls: 'llmsider-chat-history-meta-count',
-				text: `${messageCount} messages`
-			});
+				// Message count
+				cardMeta.createEl('span', {
+					cls: 'llmsider-chat-history-meta-count',
+					text: `${messageCount} messages`
+				});
 
-			// Dot separator
-			cardMeta.createEl('span', {
-				cls: 'llmsider-chat-history-meta-separator',
-				text: '•'
-			});
+				// Dot separator
+				cardMeta.createEl('span', {
+					cls: 'llmsider-chat-history-meta-separator',
+					text: '•'
+				});
 
-			// Updated time
-			const updatedTime = new Date(session.updated);
-			cardMeta.createEl('span', {
-				cls: 'llmsider-chat-history-meta-date',
-				text: updatedTime.toLocaleDateString()
-			});
+				// Updated time
+				const updatedTime = new Date(session.updated);
+				cardMeta.createEl('span', {
+					cls: 'llmsider-chat-history-meta-date',
+					text: updatedTime.toLocaleDateString()
+				});
 
-			// Actions container (right side, hover-revealed)
-			const cardActions = cardContent.createDiv({
-				cls: 'llmsider-chat-history-card-actions'
-			});				// Navigate/Load button
-				if (!isCurrentSession) {
-					const loadBtn = cardActions.createEl('button', {
-						cls: 'llmsider-chat-history-action-btn',
-						attr: { 'aria-label': 'Load conversation', title: 'Load conversation' }
-					});
-					loadBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<polyline points="9 18 15 12 9 6"></polyline>
-					</svg>`;
-					loadBtn.onclick = (e) => {
-						e.stopPropagation();
-						this.loadChatSession(session);
-						modal.remove();
-					};
-				}
-
+				// Actions container (right side, hover-revealed)
+				const cardActions = cardContent.createDiv({
+					cls: 'llmsider-chat-history-card-actions'
+				});
 				// Delete button
-				if (!isCurrentSession) {
-					const deleteBtn = cardActions.createEl('button', {
-						cls: 'llmsider-chat-history-action-btn delete',
-						attr: { 'aria-label': 'Delete conversation', title: 'Delete conversation' }
-					});
-					deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M3 6h18"></path>
-						<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-						<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-					</svg>`;
-					deleteBtn.onclick = async (e) => {
-						e.stopPropagation();
-						const confirmDelete = await this.showDeleteConfirmation(session.name || 'Untitled Conversation');
-						if (confirmDelete) {
-							await this.plugin.deleteChatSession(session.id);
-							new Notice(this.plugin.i18n.t('ui.conversationDeleted'));
-							
-							// Update local sessions and refresh list without closing modal
-							allSessions = this.plugin.settings.chatSessions;
-							if (allSessions.length <= 1) {
-								modal.remove();
-							} else {
-								searchInput.dispatchEvent(new Event('input'));
-							}
-						}
-					};
-				}
+				const deleteBtn = cardActions.createEl('button', {
+					cls: 'llmsider-chat-history-action-btn delete',
+					attr: { 'aria-label': 'Delete conversation', title: 'Delete conversation' }
+				});
+				deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M3 6h18"></path>
+					<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+					<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+				</svg>`;
+				deleteBtn.onclick = async (e) => {
+					e.stopPropagation();
+
+					// Delete directly without secondary confirmation as requested
+					await this.plugin.deleteChatSession(session.id);
+					new Notice(this.plugin.i18n.t('ui.conversationDeleted'));
+
+					// Update local sessions and refresh list without closing modal
+					allSessions = this.plugin.settings.chatSessions;
+					if (allSessions.length <= 1) {
+						modal.remove();
+					} else {
+						searchInput.dispatchEvent(new Event('input'));
+					}
+				};
 
 				// Preview text
 				if (previewText) {
@@ -388,65 +370,6 @@ export class SessionManager {
 		};
 	}
 
-	/**
-	 * Show delete confirmation dialog
-	 */
-	private async showDeleteConfirmation(sessionName: string): Promise<boolean> {
-		return new Promise((resolve) => {
-			const modal = document.body.createDiv({
-				cls: 'llmsider-delete-confirmation-modal'
-			});
-
-			const container = modal.createDiv({
-				cls: 'llmsider-delete-confirmation-container'
-			});
-
-			container.createEl('h3', {
-				text: 'Delete Chat Session',
-				cls: 'llmsider-delete-confirmation-title'
-			});
-
-			container.createEl('p', {
-				text: `Are you sure you want to delete "${sessionName}"? This action cannot be undone.`,
-				cls: 'llmsider-delete-confirmation-text'
-			});
-
-			const actions = container.createDiv({
-				cls: 'llmsider-delete-confirmation-actions'
-			});
-
-			const cancelBtn = actions.createEl('button', {
-				cls: 'llmsider-delete-confirmation-cancel',
-				text: 'Cancel'
-			});
-
-			const deleteBtn = actions.createEl('button', {
-				cls: 'llmsider-delete-confirmation-delete',
-				text: 'Delete'
-			});
-
-			const cleanup = () => {
-				modal.remove();
-			};
-
-			cancelBtn.onclick = () => {
-				cleanup();
-				resolve(false);
-			};
-
-			deleteBtn.onclick = () => {
-				cleanup();
-				resolve(true);
-			};
-
-			modal.onclick = (e) => {
-				if (e.target === modal) {
-					cleanup();
-					resolve(false);
-				}
-			};
-		});
-	}
 
 	/**
 	 * Load thread from Mastra memory and restore to UI
@@ -480,7 +403,7 @@ export class SessionManager {
 
 			// Update current session in plugin state
 			this.plugin.state.currentSession = threadId;
-			
+
 			// Move to front of chatSessions array for backwards compatibility
 			const existingIndex = this.plugin.settings.chatSessions.findIndex(s => s.id === threadId);
 			if (existingIndex >= 0) {

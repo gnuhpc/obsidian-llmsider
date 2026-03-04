@@ -22,6 +22,7 @@
     from {
         opacity: 0;
     }
+
     to {
         opacity: 1;
     }
@@ -47,6 +48,7 @@
         transform: translateY(20px);
         opacity: 0;
     }
+
     to {
         transform: translateY(0);
         opacity: 1;
@@ -213,7 +215,8 @@
     border-color: var(--interactive-accent);
     background: var(--background-primary);
     border-width: 2px;
-    padding: 7px 11px; /* Compensate for thicker border */
+    padding: 7px 11px;
+    /* Compensate for thicker border */
 }
 
 /* Current indicator dot */
@@ -255,7 +258,8 @@
 /* Main content area */
 .llmsider-chat-history-card-main {
     flex: 1;
-    min-width: 0; /* Allow text truncation */
+    min-width: 0;
+    /* Allow text truncation */
     display: flex;
     flex-direction: column;
     gap: 3px;
@@ -288,7 +292,7 @@
 .llmsider-chat-history-card-actions {
     display: flex;
     gap: 4px;
-    opacity: 0;
+    opacity: 1;
     transition: opacity 0.2s ease;
     flex-shrink: 0;
     align-items: flex-start;
@@ -311,14 +315,27 @@
     transition: all 0.15s ease;
 }
 
-.llmsider-chat-history-action-btn:hover {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
+.llmsider-chat-history-action-btn.delete {
+    padding: 2px;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--color-red);
+    opacity: 0.6;
 }
 
 .llmsider-chat-history-action-btn.delete:hover {
-    background: var(--color-red);
-    color: white;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--color-red);
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.llmsider-chat-history-action-btn.delete svg {
+    width: 14px;
+    height: 14px;
 }
 
 .llmsider-chat-history-action-btn svg {
@@ -393,86 +410,6 @@
     margin: 0;
 }
 
-/* ============================================================================
-   Delete Confirmation Modal
-   ============================================================================ */
-
-.llmsider-delete-confirmation-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
-    z-index: 1001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: fadeIn 0.15s ease-out;
-}
-
-.llmsider-delete-confirmation-container {
-    background: var(--background-primary);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 12px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-    width: 90%;
-    max-width: 400px;
-    padding: 24px;
-    animation: slideUp 0.2s ease-out;
-}
-
-.llmsider-delete-confirmation-title {
-    font-size: 18px;
-    font-weight: 600;
-    margin: 0 0 12px 0;
-    color: var(--text-normal);
-}
-
-.llmsider-delete-confirmation-text {
-    font-size: 14px;
-    color: var(--text-muted);
-    margin: 0 0 24px 0;
-    line-height: 1.5;
-}
-
-.llmsider-delete-confirmation-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
-}
-
-.llmsider-delete-confirmation-cancel,
-.llmsider-delete-confirmation-delete {
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-}
-
-.llmsider-delete-confirmation-cancel {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-}
-
-.llmsider-delete-confirmation-cancel:hover {
-    background: var(--background-modifier-border);
-}
-
-.llmsider-delete-confirmation-delete {
-    background: var(--color-red);
-    color: white;
-}
-
-.llmsider-delete-confirmation-delete:hover {
-    background: var(--color-red);
-    opacity: 0.9;
-    transform: scale(1.02);
-}
 
 /* ============================================================================
    Responsive Design

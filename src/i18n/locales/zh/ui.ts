@@ -31,10 +31,6 @@ export const zhUI = {
   selectProvider: '选择模型',
   heroTitle: '有什么可以帮您?',
   heroSubtitle: '选择一个话题开始, 或直接输入您的问题',
-  suggestionPillQuantum: '解释量子计算',
-  suggestionPillBlog: '写一篇博客文章',
-  suggestionPillTranslate: '翻译这段文字',
-  suggestionPillDebug: '对这个笔记进行总结',
   inputHint: '按 Enter 发送, Shift + Enter 换行',
   manageTools: '内置工具',
   manageMCPServers: '管理 MCP 服务器',
@@ -135,7 +131,7 @@ export const zhUI = {
   noMCPServersConfiguredInDropdown: '未配置 MCP 服务器',
   searchMCPServers: '筛选 MCP 服务器...',
   noMatchingServers: '未找到匹配的 MCP 服务器',
-  
+
   // 上下文菜单选项
   currentNoteContent: '当前笔记内容',
   currentNoteContentDesc: '包含当前笔记',
@@ -160,7 +156,7 @@ export const zhUI = {
   epubPageContentFetched: 'Epub 页面内容已添加到上下文',
   epubPageContentFetchFailed: '获取 epub 页面内容失败',
   characters: '字符',
-  
+
   // Smart search modal
   searchNotesPlaceholder: '输入关键词搜索笔记...',
   search: '搜索',
@@ -179,7 +175,8 @@ export const zhUI = {
   failedToAddNotes: '{count} 个笔记添加失败',
   openNote: '打开笔记',
   fileNotFound: '文件未找到',
-  
+  selectAll: '全选',
+
   // Guided mode tool execution
   executingTool: '正在执行工具...',
   toolExecuted: '工具已执行',
@@ -192,7 +189,7 @@ export const zhUI = {
   toolSkippedPrompt: '工具 "{toolName}" 因错误已跳过：{error}。请采用替代方案继续。',
   retrying: '重试中...',
   skipped: '已跳过',
-  
+
   // Tool result and continuation
   toolResultTitle: '工具执行结果',
   continueQuestion: '是否继续引导对话？',
@@ -200,12 +197,12 @@ export const zhUI = {
   endGuidedMode: '结束引导模式',
   guidedModeEnded: '引导模式已结束。您可以正常聊天或随时开始新的引导对话。',
   generationStopped: '已停止生成',
-  
+
   // Guided options UI
   selectOption: '请选择一个选项：',
   selectOptionDesc: '选择以下选项之一以继续',
   submitSelection: '提交选择',
-  
+
   // Tool execution
   toolExecutedSuccessfully: '工具执行成功',
   executingToolProgress: '正在执行工具 {current}/{total}: {name}',
@@ -215,32 +212,32 @@ export const zhUI = {
   hideDetails: '隐藏详细记录',
   noReturnContent: '无返回内容',
   parameters: '参数:',
-  
+
   // Context warnings
   contextAddedWithHistory: '提示：如需对此文本单独操作，建议开始新对话以获得更好效果',
   addModelForComparison: '与其他模型对比',
-  
+
   // Welcome message
   welcomeTitle: '让 AI 激活你的笔记。',
   welcomeSubtitle: '随时提问，智能操作，释放笔记的无限可能。',
   noProvidersWarning: '⚠️ 未配置 AI 提供商。请在设置中配置提供商。',
-  
 
-  
+
+
   // Free Qwen
   freeQwenTitle: 'Free Qwen Provider - 免费通义千问',
-	freeQwenDesc: '此提供商允许你通过浏览器 Cookie 头免费使用通义千问模型。',
-	freeQwenHowToGetToken: '如何获取 Cookie 头：',
-	freeQwenStep1: '1. 访问 https://www.qianwen.com 并登录',
-	freeQwenStep2: '2. 打开浏览器开发者工具（F12）',
-	freeQwenStep3: '3. 切换到 Network（网络）并选择任一对话请求',
-	freeQwenStep4: '4. 在 Headers 中找到 Request Headers > Cookie',
-	freeQwenStep5: '5. 复制完整的 Cookie 头内容',
-	freeQwenStep6: '6. 粘贴到这里（包含 Cookie: 前缀也可）',
-	freeQwenNote: '提示：Cookie 会过期，如果遇到认证错误，请重新获取。',
-	freeQwenApiKeyLabel: 'Cookie（请求头）',
-	freeQwenApiKeyPlaceholder: '粘贴你的 Cookie 头内容',
-  
+  freeQwenDesc: '此提供商允许你通过浏览器 Cookie 头免费使用通义千问模型。',
+  freeQwenHowToGetToken: '如何获取 Cookie 头：',
+  freeQwenStep1: '1. 访问 https://www.qianwen.com 并登录',
+  freeQwenStep2: '2. 打开浏览器开发者工具（F12）',
+  freeQwenStep3: '3. 切换到 Network（网络）并选择任一对话请求',
+  freeQwenStep4: '4. 在 Headers 中找到 Request Headers > Cookie',
+  freeQwenStep5: '5. 复制完整的 Cookie 头内容',
+  freeQwenStep6: '6. 粘贴到这里（包含 Cookie: 前缀也可）',
+  freeQwenNote: '提示：Cookie 会过期，如果遇到认证错误，请重新获取。',
+  freeQwenApiKeyLabel: 'Cookie（请求头）',
+  freeQwenApiKeyPlaceholder: '粘贴你的 Cookie 头内容',
+
   // Free Gemini
   freeGeminiTitle: 'Free Gemini Provider - 免费 Gemini',
   freeGeminiDesc: '此提供商允许你通过浏览器认证 cookies 免费使用 Google Gemini。',
@@ -256,7 +253,7 @@ export const zhUI = {
   freeGeminiApiKeyPlaceholder: '粘贴用 | 分隔的 cookies（例如：cookie1|cookie2）',
   freeGeminiPSIDPlaceholder: '粘贴 __Secure-1PSID cookie 值',
   freeGeminiPSIDTSPlaceholder: '粘贴 __Secure-1PSIDTS cookie 值',
-  
+
   // Free DeepSeek
   freeDeepSeekTitle: 'Free DeepSeek Provider - 免费深度求索',
   freeDeepSeekDesc: '此提供商允许你通过浏览器认证令牌免费使用 DeepSeek 模型。',
@@ -270,7 +267,7 @@ export const zhUI = {
   freeDeepSeekNote: '提示：令牌会过期，如果遇到认证错误，请重新获取。',
   freeDeepSeekApiKeyLabel: '认证令牌 (userToken from localStorage)',
   freeDeepSeekApiKeyPlaceholder: '粘贴你的 DeepSeek userToken',
-  
+
   // Hugging Chat
   huggingChatTitle: 'Hugging Chat - 直接 API 调用',
   huggingChatDesc: '此提供商直接调用 HuggingChat API（逆向工程）。支持 huggingface.co/chat 的所有模型，带流式响应。',
@@ -284,7 +281,7 @@ export const zhUI = {
   huggingChatNote: '重要：必须包含 token、hf-chat 和 aws-waf-token 这三个 cookie。格式："token=...; hf-chat=...; aws-waf-token=..."',
   huggingChatApiKeyLabel: '完整 Cookie 字符串 (from Network tab)',
   huggingChatApiKeyPlaceholder: '粘贴完整的 Cookie 字符串',
-  
+
   // 连接模态框
   editConnection: '编辑连接',
   addNewConnection: '添加新连接',
@@ -307,8 +304,8 @@ export const zhUI = {
   ollamaServerUrlPlaceholder: 'http://localhost:11434/v1',
   ollamaServerUrlNote: '默认：http://localhost:11434/v1',
   opencodeServerUrl: 'OpenCode 服务器地址：',
-		opencodeServerUrlPlaceholder: 'http://localhost:4097',
-		opencodeServerUrlNote: '默认：http://localhost:4097',
+  opencodeServerUrlPlaceholder: 'http://localhost:4097',
+  opencodeServerUrlNote: '默认：http://localhost:4097',
   opencodeTitle: 'OpenCode 连接',
   opencodeDesc: 'OpenCode 是一个无界面 HTTP 服务器，提供免费 AI 模型访问。连接前请确保 OpenCode 服务器正在运行。',
   regionOptional: '区域（可选）：',
@@ -326,7 +323,7 @@ export const zhUI = {
   baseUrlRequired: '{type} 连接需要基础 URL',
   connectionSaved: '连接 "{name}" 保存成功',
   failedToSaveConnection: '保存连接失败',
-  
+
   // 代理设置
   advancedProxySettings: '高级选项：代理设置',
   enableProxy: '启用代理',
@@ -336,13 +333,13 @@ export const zhUI = {
   proxyRequiresAuth: '代理需要认证',
   proxyUsername: '用户名',
   proxyPassword: '密码',
-  
+
   // 模型卡片显示
   model: '模型',
   dimension: '维度',
   temp: '温度',
   maxTokens: '最大令牌数',
-  
+
   // 上下文管理器
   addedToContext: '已添加 {type} "{name}" 到上下文',
   contentTruncated: '（内容已截断）',
@@ -354,17 +351,17 @@ export const zhUI = {
   fileTypeMarkdown: 'Markdown',
   fileTypeImage: '图片',
   fileTypeFile: '文件',
-  
+
   // 笔记创建
   generatingNoteTitle: '正在生成笔记标题...',
   creatingNote: '正在创建笔记...',
   createdNote: '已创建笔记：{title}',
   failedToGenerateNote: '生成新笔记失败：{error}',
   generatedFrom: '由 LLMSider 生成于 {date}',
-  
+
   // 选择
   addedSelectionToContext: '✓ 已添加到上下文（{length} 字符）',
-  
+
   // 相似笔记
   similarNotes: {
     title: '相似笔记',
@@ -382,11 +379,11 @@ export const zhUI = {
     similarity: '相似度',
     refresh: '刷新相似笔记'
   },
-  
+
   // 调试设置
   enableDebugLogging: '开启调试日志',
   enableDebugLoggingDesc: '在控制台启用详细的调试日志输出，用于故障排查。对开发和调试问题很有帮助。',
-  
+
   // 流式生成指示器
   thinking: '思考中',
   contextCompacting: '上下文压缩中',
@@ -394,7 +391,7 @@ export const zhUI = {
   processing: '处理中',
   analyzingTools: '正在分析工具需求...',
   analyzingToolsWithTime: '正在分析工具需求... (已思考 {time}s)',
-  
+
   // 工具执行进度
   preparingTools: '正在准备执行工具...',
   creatingFile: '正在创建文件...',
@@ -403,7 +400,7 @@ export const zhUI = {
   searchingContent: '正在搜索内容...',
   listingFiles: '正在列出文件...',
   movingFile: '正在移动文件...',
-  deletingFile: '正在删除文件...',  waitingForAIResponse: '等待AI响应...',  
+  deletingFile: '正在删除文件...', waitingForAIResponse: '等待AI响应...',
   // Plan-Execute 模式
   planExecuteThinking: '思考',
   planExecuteQuestion: '问题',
@@ -411,10 +408,10 @@ export const zhUI = {
   planExecuteAction: '行动',
   planExecuteObservation: '观察',
   planExecuteFinalAnswer: '最终答案',
-  
+
   // MCP 操作
   toggleAllServers: '所有服务器',
-  
+
   // Provider 限制警告
   freeQwenToolCallWarning: '⚠️ Free Qwen 不支持自动工具调用。在引导模式/智能代理模式下,AI 只能用文本描述工具,无法直接执行。建议使用付费的 Qwen (DashScope) 或切换到普通模式。',
 

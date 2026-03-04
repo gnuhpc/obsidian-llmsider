@@ -74,7 +74,6 @@ export class ChatView extends ItemView {
 	providerSelect!: HTMLSelectElement;
 	contextDisplay!: HTMLElement;
 	heroContainer!: HTMLElement;
-	suggestionPillsContainer!: HTMLElement;
 	inputHint!: HTMLElement;
 
 	// Manager components
@@ -186,7 +185,6 @@ export class ChatView extends ItemView {
 		this.providerSelect = uiComponents.providerSelect;
 		this.contextDisplay = uiComponents.contextDisplay;
 		this.heroContainer = uiComponents.heroContainer;
-		this.suggestionPillsContainer = uiComponents.suggestionPillsContainer;
 		this.inputHint = uiComponents.inputHint;
 
 		// Initialize provider tabs manager (will be inserted dynamically)
@@ -540,15 +538,13 @@ export class ChatView extends ItemView {
 	 * Update hero section visibility based on message count
 	 */
 	private updateHeroVisibility(): void {
-		if (this.heroContainer && this.suggestionPillsContainer && this.inputHint) {
+		if (this.heroContainer && this.inputHint) {
 			const hasMessages = this.currentSession && this.currentSession.messages.length > 0;
 			if (hasMessages) {
 				this.heroContainer.style.display = 'none';
-				this.suggestionPillsContainer.style.display = 'none';
 				this.inputHint.style.display = 'none';
 			} else {
 				this.heroContainer.style.display = 'flex';
-				this.suggestionPillsContainer.style.display = 'flex';
 				this.inputHint.style.display = 'block';
 			}
 		}

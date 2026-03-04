@@ -10,7 +10,7 @@ export class SmartSearchModal extends Modal {
 	private contextManager: ContextManager;
 	private i18n: I18nManager;
 	private onComplete: () => void;
-	
+
 	private searchInput!: HTMLInputElement;
 	private resultsContainer!: HTMLElement;
 	private selectedFiles: Set<string> = new Set();
@@ -42,13 +42,13 @@ export class SmartSearchModal extends Modal {
 			if (closeButton) {
 				(closeButton as HTMLElement).style.display = 'none';
 			}
-			
+
 			// Hide the modal title and header
 			const modalTitle = modalEl.querySelector('.modal-title');
 			if (modalTitle) {
 				(modalTitle as HTMLElement).style.display = 'none';
 			}
-			
+
 			const modalHeader = modalEl.querySelector('.modal-header');
 			if (modalHeader) {
 				(modalHeader as HTMLElement).style.display = 'none';
@@ -61,7 +61,7 @@ export class SmartSearchModal extends Modal {
 
 		// Search input wrapper (similar to quick chat input wrapper)
 		const searchWrapper = contentEl.createDiv({ cls: 'llmsider-search-wrapper' });
-		
+
 		this.searchInput = searchWrapper.createEl('input', {
 			type: 'text',
 			placeholder: this.i18n.t('ui.searchNotesPlaceholder') || '输入关键词搜索笔记...',
@@ -75,7 +75,7 @@ export class SmartSearchModal extends Modal {
 		searchIconBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>`;
 
 		searchIconBtn.onclick = () => this.performSearch();
-		
+
 		// Allow Enter key to search
 		this.searchInput.addEventListener('keypress', (e) => {
 			if (e.key === 'Enter') {
@@ -90,12 +90,12 @@ export class SmartSearchModal extends Modal {
 		// Button container (hidden initially, shown after search results)
 		const buttonContainer = contentEl.createDiv({ cls: 'llmsider-modal-buttons' });
 		buttonContainer.style.display = 'none'; // Hidden by default
-		
+
 		const addBtn = buttonContainer.createEl('button', {
 			text: this.i18n.t('ui.addToContext') || '添加到对话',
 			cls: 'mod-cta'
 		});
-		
+
 		const cancelBtn = buttonContainer.createEl('button', {
 			text: this.i18n.t('ui.cancel') || '取消'
 		});
@@ -118,7 +118,7 @@ export class SmartSearchModal extends Modal {
 
 	private async performSearch() {
 		const query = this.searchInput.value.trim();
-		
+
 		if (!query) {
 			new Notice(this.i18n.t('ui.pleaseEnterSearchQuery') || '请输入搜索关键词');
 			return;
@@ -141,6 +141,9 @@ export class SmartSearchModal extends Modal {
 
 			// Perform search
 			this.searchResults = await this.vectorDBManager.search(query, 20);
+
+			// Clear previous selections for new search results
+			this.selectedFiles.clear();
 
 			// Display results
 			this.displayResults();
@@ -175,6 +178,7 @@ export class SmartSearchModal extends Modal {
 			buttonContainer.style.display = 'flex';
 		}
 
+
 		// Group results by file
 		const fileGroups = new Map<string, DocItem[]>();
 		this.searchResults.forEach(item => {
@@ -184,28 +188,61 @@ export class SmartSearchModal extends Modal {
 			fileGroups.get(item.filePath)!.push(item);
 		});
 
+		// Create Select All container
+		const selectAllContainer = this.resultsContainer.createDiv({ cls: 'llmsider-search-select-all-container' });
+		const selectAllCheckbox = selectAllContainer.createEl('input', {
+			type: 'checkbox',
+			cls: 'llmsider-search-checkbox'
+		});
+		selectAllContainer.createSpan({
+			cls: 'llmsider-search-select-all-text',
+			text: this.i18n.t('ui.selectAll') || '全选'
+		});
+
+		const checkboxes: HTMLInputElement[] = [];
+
+		selectAllCheckbox.onchange = () => {
+			const checked = selectAllCheckbox.checked;
+			checkboxes.forEach(cb => {
+				if (cb.checked !== checked) {
+					cb.checked = checked;
+					cb.dispatchEvent(new Event('change'));
+				}
+			});
+		};
+
 		// Create result items for each file
 		fileGroups.forEach((items, filePath) => {
 			const resultItem = this.resultsContainer.createDiv({ cls: 'llmsider-search-result-item' });
-			
+
 			// Checkbox
 			const checkbox = resultItem.createEl('input', {
 				type: 'checkbox',
 				cls: 'llmsider-search-checkbox'
 			});
-			
+
 			checkbox.checked = this.selectedFiles.has(filePath);
+			checkboxes.push(checkbox);
+
 			checkbox.onchange = () => {
 				if (checkbox.checked) {
 					this.selectedFiles.add(filePath);
 				} else {
 					this.selectedFiles.delete(filePath);
+					if (selectAllCheckbox.checked) {
+						(selectAllCheckbox as HTMLInputElement).checked = false;
+					}
+				}
+
+				// If all are checked, check the select all box
+				if (checkbox.checked && checkboxes.every(cb => cb.checked)) {
+					(selectAllCheckbox as HTMLInputElement).checked = true;
 				}
 			};
 
 			// File info container
 			const fileInfo = resultItem.createDiv({ cls: 'llmsider-search-file-info' });
-			
+
 			// Open note icon button (positioned on the right)
 			const openBtn = resultItem.createEl('button', {
 				cls: 'llmsider-search-open-btn',
@@ -219,7 +256,7 @@ export class SmartSearchModal extends Modal {
 				<polyline points="15 3 21 3 21 9"></polyline>
 				<line x1="10" y1="14" x2="21" y2="3"></line>
 			</svg>`;
-			
+
 			openBtn.onclick = async (e) => {
 				e.stopPropagation(); // Prevent triggering the item click
 				const file = this.app.vault.getAbstractFileByPath(filePath);
@@ -230,13 +267,13 @@ export class SmartSearchModal extends Modal {
 					new Notice(this.i18n.t('ui.fileNotFound') || '文件未找到');
 				}
 			};
-			
+
 			// Best matching chunk for score calculation
-			const bestMatch = items.reduce((best, current) => 
+			const bestMatch = items.reduce((best, current) =>
 				current.score > best.score ? current : best
 			);
 			const scorePercent = Math.round(bestMatch.score * 100);
-			
+
 			// File path with score (header line)
 			const headerLine = fileInfo.createDiv({ cls: 'llmsider-search-header-line' });
 			headerLine.createSpan({
@@ -265,9 +302,9 @@ export class SmartSearchModal extends Modal {
 		});
 
 		// Show count
-		const countText = this.i18n.t('ui.searchResultCount')?.replace('{count}', fileGroups.size.toString()) 
+		const countText = this.i18n.t('ui.searchResultCount')?.replace('{count}', fileGroups.size.toString())
 			|| `找到 ${fileGroups.size} 个相关笔记`;
-		
+
 		this.resultsContainer.prepend(
 			this.resultsContainer.createDiv({
 				cls: 'llmsider-search-count',
@@ -309,7 +346,7 @@ export class SmartSearchModal extends Modal {
 			const message = this.i18n.t('ui.addedNotesToContext')?.replace('{count}', successCount.toString())
 				|| `已添加 ${successCount} 个笔记到对话`;
 			new Notice(message);
-			
+
 			// Call completion callback to update UI
 			this.onComplete();
 		}

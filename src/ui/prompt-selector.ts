@@ -41,7 +41,10 @@ export class PromptSelector {
     /**
      * Show prompt selector with query
      */
-    async show(query: string = '', position: { x: number; y: number }): Promise<void> {
+	async show(
+		query: string = '',
+		position: { x: number; y: number; yBottom?: number }
+	): Promise<void> {
         this.currentQuery = query;
         this.selectedIndex = 0;
         this.isVisibleState = true;
@@ -171,7 +174,7 @@ export class PromptSelector {
     /**
      * Render the prompt selector UI
      */
-    private renderSelector(position: { x: number; y: number }): void {
+	private renderSelector(position: { x: number; y: number; yBottom?: number }): void {
         // Remove existing selector
         if (this.selectorEl) {
             this.selectorEl.remove();
@@ -187,15 +190,35 @@ export class PromptSelector {
             cls: 'llmsider-prompt-selector llmsider-prompt-selector-modern'
         });
 
-        // Use fixed positioning for reliable placement
-        const maxHeight = 250; // Match CSS max-height
-        const selectorHeight = Math.min(maxHeight, this.suggestions.length * 35 + 80); // Dynamic height based on suggestions, reduced padding
+		// Use fixed positioning for reliable placement
+		const maxHeight = 250; // Match CSS max-height
+		const selectorHeight = Math.min(maxHeight, this.suggestions.length * 35 + 80); // Dynamic height based on suggestions, reduced padding
+		const selectorWidth = 350;
+		const margin = 8;
+		const viewportWidth = window.innerWidth;
+		const viewportHeight = window.innerHeight;
+		const preferredTop = position.y - selectorHeight - margin;
+		const fallbackTop =
+			typeof position.yBottom === 'number'
+				? position.yBottom + margin
+				: position.y + margin;
+		const top =
+			preferredTop >= margin
+				? preferredTop
+				: Math.min(
+					Math.max(fallbackTop, margin),
+					viewportHeight - selectorHeight - margin
+				);
+		const left = Math.min(
+			Math.max(position.x, margin),
+			viewportWidth - selectorWidth - margin
+		);
 
-        this.selectorEl.style.position = 'fixed';
-        this.selectorEl.style.left = '50%';
-        this.selectorEl.style.top = '50%';
-        this.selectorEl.style.transform = 'translate(-50%, -50%)';
-        this.selectorEl.style.width = '350px';
+		this.selectorEl.style.position = 'fixed';
+		this.selectorEl.style.left = `${left}px`;
+		this.selectorEl.style.top = `${top}px`;
+		this.selectorEl.style.transform = 'none';
+		this.selectorEl.style.width = `${selectorWidth}px`;
         this.selectorEl.style.maxHeight = maxHeight + 'px';
         this.selectorEl.style.zIndex = '10000';
         this.selectorEl.style.backgroundColor = 'var(--background-primary)';

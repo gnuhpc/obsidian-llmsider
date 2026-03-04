@@ -31,10 +31,6 @@ export const enUI = {
   selectProvider: 'Select Model',
   heroTitle: 'How can I help you today?',
   heroSubtitle: 'Choose a topic to start, or type your question below.',
-  suggestionPillQuantum: 'Explain quantum computing',
-  suggestionPillBlog: 'Write a blog post',
-  suggestionPillTranslate: 'Translate this text',
-  suggestionPillDebug: 'Debug my code',
   inputHint: 'Press Enter to send, Shift + Enter for a new line',
   manageTools: 'Built-in Tools',
   manageMCPServers: 'Manage MCP Servers',
@@ -135,7 +131,7 @@ export const enUI = {
   noMCPServersConfiguredInDropdown: 'No MCP servers configured',
   searchMCPServers: 'Filter MCP servers...',
   noMatchingServers: 'No matching MCP servers found',
-  
+
   // Context menu options
   currentNoteContent: 'Current Note Content',
   currentNoteContentDesc: 'Include current note',
@@ -160,7 +156,7 @@ export const enUI = {
   epubPageContentFetched: 'Epub page content added to context',
   epubPageContentFetchFailed: 'Failed to fetch epub page content',
   characters: 'characters',
-  
+
   // Smart search modal
   searchNotesPlaceholder: 'Enter keywords to search notes...',
   search: 'Search',
@@ -179,7 +175,8 @@ export const enUI = {
   failedToAddNotes: 'Failed to add {count} notes',
   openNote: 'Open Note',
   fileNotFound: 'File not found',
-  
+  selectAll: 'Select All',
+
   // Guided mode tool execution
   executingTool: 'Executing tool...',
   toolExecuted: 'Tool executed',
@@ -192,7 +189,7 @@ export const enUI = {
   toolSkippedPrompt: 'Tool "{toolName}" was skipped due to error: {error}. Please continue with an alternative approach.',
   retrying: 'Retrying...',
   skipped: 'Skipped',
-  
+
   // Tool result and continuation
   toolResultTitle: 'Tool Execution Result',
   continueQuestion: 'Continue guided conversation?',
@@ -200,12 +197,12 @@ export const enUI = {
   endGuidedMode: 'End guided mode',
   guidedModeEnded: 'Guided mode ended. You can chat normally or start a new guided conversation anytime.',
   generationStopped: 'Generation stopped',
-  
+
   // Guided options UI
   selectOption: 'Please select an option:',
   selectOptionDesc: 'Choose one of the following options to continue',
   submitSelection: 'Submit Selection',
-  
+
   // Tool execution
   toolExecutedSuccessfully: 'Tool executed successfully',
   executingToolProgress: 'Executing tool {current}/{total}: {name}',
@@ -215,32 +212,32 @@ export const enUI = {
   hideDetails: 'Hide Details',
   noReturnContent: 'No return content',
   parameters: 'Parameters:',
-  
+
   // Context warnings
   contextAddedWithHistory: 'Tip: For isolated operation on this text, consider starting a new conversation for better results',
   addModelForComparison: 'Compare with Other Models',
-  
+
   // Welcome message
   welcomeTitle: 'Activate your notes with AI.',
   welcomeSubtitle: 'Ask questions, perform intelligent operations, unleash the infinite possibilities of your notes.',
   noProvidersWarning: '⚠️ No AI provider configured. Please configure a provider in settings.',
-  
 
-  
+
+
   // Free Qwen
   freeQwenTitle: 'Free Qwen Provider',
-	freeQwenDesc: 'This provider allows you to use Qwen models for free by using your browser Cookie header.',
-	freeQwenHowToGetToken: 'How to get Cookie header:',
-	freeQwenStep1: '1. Visit https://www.qianwen.com and login',
-	freeQwenStep2: '2. Open browser DevTools (F12)',
-	freeQwenStep3: '3. Go to Network tab and pick a chat request',
-	freeQwenStep4: '4. In Headers, find Request Headers > Cookie',
-	freeQwenStep5: '5. Copy the entire Cookie header value',
-	freeQwenStep6: '6. Paste it here (Cookie: prefix is OK)',
-	freeQwenNote: 'Note: Cookies expire. If you get authentication errors, obtain a new Cookie header.',
-	freeQwenApiKeyLabel: 'Cookie (Request Header)',
-	freeQwenApiKeyPlaceholder: 'Paste your Cookie header value',
-  
+  freeQwenDesc: 'This provider allows you to use Qwen models for free by using your browser Cookie header.',
+  freeQwenHowToGetToken: 'How to get Cookie header:',
+  freeQwenStep1: '1. Visit https://www.qianwen.com and login',
+  freeQwenStep2: '2. Open browser DevTools (F12)',
+  freeQwenStep3: '3. Go to Network tab and pick a chat request',
+  freeQwenStep4: '4. In Headers, find Request Headers > Cookie',
+  freeQwenStep5: '5. Copy the entire Cookie header value',
+  freeQwenStep6: '6. Paste it here (Cookie: prefix is OK)',
+  freeQwenNote: 'Note: Cookies expire. If you get authentication errors, obtain a new Cookie header.',
+  freeQwenApiKeyLabel: 'Cookie (Request Header)',
+  freeQwenApiKeyPlaceholder: 'Paste your Cookie header value',
+
   // Free Gemini
   freeGeminiTitle: 'Free Gemini Provider',
   freeGeminiDesc: 'This provider allows you to use Google Gemini for free by using your browser authentication cookies.',
@@ -256,7 +253,7 @@ export const enUI = {
   freeGeminiApiKeyPlaceholder: 'Paste your cookies separated by | (e.g., cookie1|cookie2)',
   freeGeminiPSIDPlaceholder: 'Paste __Secure-1PSID cookie value',
   freeGeminiPSIDTSPlaceholder: 'Paste __Secure-1PSIDTS cookie value',
-  
+
   // Free DeepSeek
   freeDeepSeekTitle: 'Free DeepSeek Provider',
   freeDeepSeekDesc: 'This provider allows you to use DeepSeek models for free by using your browser authentication token.',
@@ -270,7 +267,7 @@ export const enUI = {
   freeDeepSeekNote: 'Note: Token expires. If you get authentication errors, obtain a new token.',
   freeDeepSeekApiKeyLabel: 'Authentication Token (userToken from localStorage)',
   freeDeepSeekApiKeyPlaceholder: 'Paste your DeepSeek userToken',
-  
+
   // Hugging Chat
   huggingChatTitle: 'Hugging Chat - Direct API',
   huggingChatDesc: 'This provider directly calls HuggingChat API (reverse-engineered). Supports all models from huggingface.co/chat with streaming responses.',
@@ -284,7 +281,7 @@ export const enUI = {
   huggingChatNote: 'Important: Must include token, hf-chat, and aws-waf-token cookies. Format: "token=...; hf-chat=...; aws-waf-token=..."',
   huggingChatApiKeyLabel: 'Full Cookie String (from Network tab)',
   huggingChatApiKeyPlaceholder: 'Paste your full Cookie string',
-  
+
   // Connection Modal
   editConnection: 'Edit Connection',
   addNewConnection: 'Add New Connection',
@@ -307,8 +304,8 @@ export const enUI = {
   ollamaServerUrlPlaceholder: 'http://localhost:11434/v1',
   ollamaServerUrlNote: 'Default: http://localhost:11434/v1',
   opencodeServerUrl: 'OpenCode Server URL:',
-		opencodeServerUrlPlaceholder: 'http://localhost:4097',
-		opencodeServerUrlNote: 'Default: http://localhost:4097',
+  opencodeServerUrlPlaceholder: 'http://localhost:4097',
+  opencodeServerUrlNote: 'Default: http://localhost:4097',
   opencodeTitle: 'OpenCode Connection',
   opencodeDesc: 'OpenCode is a headless HTTP server that provides access to free AI models. Make sure the OpenCode server is running before connecting.',
   regionOptional: 'Region (Optional):',
@@ -326,7 +323,7 @@ export const enUI = {
   baseUrlRequired: 'Base URL is required for {type} connections',
   connectionSaved: 'Connection "{name}" saved successfully',
   failedToSaveConnection: 'Failed to save connection',
-  
+
   // Proxy Settings
   advancedProxySettings: 'Advanced: Proxy Settings',
   enableProxy: 'Enable Proxy',
@@ -336,13 +333,13 @@ export const enUI = {
   proxyRequiresAuth: 'Proxy requires authentication',
   proxyUsername: 'Username',
   proxyPassword: 'Password',
-  
+
   // Model Card Display
   model: 'Model',
   dimension: 'Dimension',
   temp: 'Temp',
   maxTokens: 'Max Tokens',
-  
+
   // Context Manager
   addedToContext: 'Added {type} "{name}" to context',
   contentTruncated: ' (content truncated)',
@@ -354,17 +351,17 @@ export const enUI = {
   fileTypeMarkdown: 'Markdown',
   fileTypeImage: 'Image',
   fileTypeFile: 'File',
-  
+
   // Note Creation
   generatingNoteTitle: 'Generating note title...',
   creatingNote: 'Creating note...',
   createdNote: 'Created note: {title}',
   failedToGenerateNote: 'Failed to generate new note: {error}',
   generatedFrom: 'Generated from LLMSider on {date}',
-  
+
   // Selection
   addedSelectionToContext: '✓ Added to context ({length} chars)',
-  
+
   // Similar Notes
   similarNotes: {
     title: 'Similar Notes',
@@ -382,11 +379,11 @@ export const enUI = {
     similarity: 'Similarity',
     refresh: 'Refresh similar notes'
   },
-  
+
   // Debug Settings
   enableDebugLogging: 'Enable Debug Logging',
   enableDebugLoggingDesc: 'Enable detailed debug logging to the console for troubleshooting. Useful for development and debugging issues.',
-  
+
   // Streaming indicators
   thinking: 'Thinking',
   contextCompacting: 'Compacting context',
@@ -394,7 +391,7 @@ export const enUI = {
   processing: 'Processing',
   analyzingTools: 'Analyzing tool requirements...',
   analyzingToolsWithTime: 'Analyzing tool requirements... (thinking for {time}s)',
-  
+
   // Tool execution progress
   preparingTools: 'Preparing to execute tools...',
   creatingFile: 'Creating file...',
@@ -405,7 +402,7 @@ export const enUI = {
   movingFile: 'Moving file...',
   deletingFile: 'Deleting file...',
   waitingForAIResponse: 'Waiting for AI response...',
-  
+
   // Plan-Execute mode
   planExecuteThinking: 'Thinking',
   planExecuteQuestion: 'Question',
@@ -413,10 +410,10 @@ export const enUI = {
   planExecuteAction: 'Action',
   planExecuteObservation: 'Observation',
   planExecuteFinalAnswer: 'Final Answer',
-  
+
   // MCP Actions
   toggleAllServers: 'All Servers',
-  
+
   // Provider limitation warnings
   freeQwenToolCallWarning: '⚠️ Free Qwen does not support automatic tool calling. In Guided/Agent mode, AI can only describe tools in text but cannot execute them directly. Consider using paid Qwen (DashScope) or switch to Normal mode.',
 
