@@ -26,7 +26,7 @@ export class InputHandler {
 	private promptManager: PromptManager;
 	private promptSelector: PromptSelector;
 	private chatView?: ChatViewContextModalHost; // Reference to parent ChatView
-	
+
 	// UI elements
 	private inputElement: HTMLTextAreaElement;
 	private sendButton: HTMLElement;
@@ -34,7 +34,7 @@ export class InputHandler {
 	private contextDisplay: HTMLElement;
 	private inputContainer: HTMLElement;
 	private viewContainer?: HTMLElement;
-	
+
 	// State
 	private currentMode: ChatMode;
 	private selectedPrompt?: PromptTemplate;
@@ -47,6 +47,7 @@ export class InputHandler {
 	// Track which files were added by which directory placeholder
 	private directoryFileMap: Map<string, Array<{ name: string; path?: string }>> = new Map();
 	private expandedDirectoryPlaceholders: Set<string> = new Set();
+	private expandedSourceGroups: Set<string> = new Set();
 
 	// Store dragged folder path from global drag events
 	private draggedFolderPath: string | null = null;
@@ -62,8 +63,8 @@ export class InputHandler {
 	private persistentSourceHighlightView: { dispatch: (transaction: unknown) => void } | null = null;
 
 	constructor(
-		app: App, 
-		plugin: LLMSiderPlugin, 
+		app: App,
+		plugin: LLMSiderPlugin,
 		contextManager: ContextManager,
 		inputElement: HTMLTextAreaElement,
 		sendButton: HTMLElement,
@@ -94,7 +95,7 @@ export class InputHandler {
 		// Initialize prompt manager and selector
 		this.promptManager = new PromptManager(app, plugin);
 		this.promptSelector = new PromptSelector(app, this.promptManager, inputContainer);
-		
+
 		// Setup prompt selector callbacks
 		this.promptSelector.setCallbacks(
 			(template) => this.handlePromptSelected(template),
@@ -202,37 +203,37 @@ export class InputHandler {
 				this.providerSelect.value = this.plugin.settings.activeProvider || '';
 				return;
 			}
-			
+
 			const selectedProviderId = this.providerSelect.value;
-			
+
 			// Skip if empty or no providers configured
 			if (!selectedProviderId) {
 				return;
 			}
-			
+
 			// Parse connection and model IDs from provider ID (connectionId::modelId format)
 			if (selectedProviderId.includes('::')) {
 				const [connectionId, modelId] = selectedProviderId.split('::');
 				Logger.debug('[InputHandler] Provider change requested:', { selectedProviderId, connectionId, modelId });
-				
+
 				// Check if the connection/model combination is valid
 				const connection = this.plugin.settings.connections.find(c => c.id === connectionId);
 				const model = this.plugin.settings.models.find(m => m.id === modelId);
-				
+
 				Logger.debug('[InputHandler] Validation result:', {
 					connectionFound: !!connection,
 					modelFound: !!model,
 					connectionEnabled: connection?.enabled,
 					modelEnabled: model?.enabled
 				});
-				
+
 				if (!connection) {
 					Logger.error('[InputHandler] Connection not found:', connectionId);
 					new Notice(this.plugin.i18n.t('ui.connectionNotFound'));
 					this.providerSelect.value = this.plugin.settings.activeProvider || '';
 					return;
 				}
-				
+
 				if (!model) {
 					Logger.error('[InputHandler] Model not found:', modelId);
 					Logger.error('[InputHandler] Available models:', this.plugin.settings.models.map(m => ({ id: m.id, name: m.name, enabled: m.enabled })));
@@ -240,14 +241,14 @@ export class InputHandler {
 					this.providerSelect.value = this.plugin.settings.activeProvider || '';
 					return;
 				}
-				
+
 				if (!connection.enabled || !model.enabled) {
 					Logger.warn('[InputHandler] Connection or model is disabled:', { connectionEnabled: connection.enabled, modelEnabled: model.enabled });
 					new Notice(this.plugin.i18n.t('ui.connectionOrModelDisabled'));
 					this.providerSelect.value = this.plugin.settings.activeProvider || '';
 					return;
 				}
-				
+
 				// Set the active connection and model - this will initialize the provider if needed
 				Logger.debug('[InputHandler] Calling setActiveConnectionAndModel...');
 				await this.plugin.setActiveConnectionAndModel(connectionId, modelId);
@@ -259,7 +260,7 @@ export class InputHandler {
 				this.providerSelect.value = this.plugin.settings.activeProvider || '';
 				return;
 			}
-			
+
 			this.updateSendButton();
 		});
 	}
@@ -269,21 +270,21 @@ export class InputHandler {
 	 */
 	private setupKeyboardEvents(): void {
 		let isComposing = false;
-		
+
 		// Track composition events for IME (Chinese input method)
 		this.inputElement.addEventListener('compositionstart', () => {
 			isComposing = true;
 		});
-		
+
 		this.inputElement.addEventListener('compositionend', () => {
 			isComposing = false;
 		});
-		
+
 		// Handle input changes for prompt selector
 		this.inputElement.addEventListener('input', () => {
 			this.handleInputChange();
 		});
-		
+
 		this.inputElement.addEventListener('keydown', (event: KeyboardEvent) => {
 			// Handle prompt selector navigation first
 			if (this.promptSelector.isVisible()) {
@@ -328,7 +329,7 @@ export class InputHandler {
 				if (isComposing) {
 					return; // Let IME handle the Enter key
 				}
-				
+
 				if (event.shiftKey) {
 					// Shift+Enter: Allow new line
 					return;
@@ -351,10 +352,10 @@ export class InputHandler {
 		document.addEventListener('dragstart', (event: DragEvent) => {
 			// Reset previous drag path
 			this.draggedFolderPath = null;
-			
+
 			// Try to get the dragged element
 			const draggedElement = event.target as HTMLElement;
-			
+
 			if (draggedElement) {
 				// Try to find path from the element or its parents
 				let currentEl: HTMLElement | null = draggedElement;
@@ -394,13 +395,13 @@ export class InputHandler {
 		target.addEventListener('dragleave', (event: DragEvent) => {
 			event.preventDefault();
 			event.stopPropagation();
-			
+
 			// If we have a view container, check if we're actually leaving it
-			if (this.viewContainer && event.relatedTarget && 
+			if (this.viewContainer && event.relatedTarget &&
 				this.viewContainer.contains(event.relatedTarget as Node)) {
 				return;
 			}
-			
+
 			this.inputElement.classList.remove('llmsider-input-dragover');
 		});
 
@@ -415,7 +416,7 @@ export class InputHandler {
 
 			// Try to get Obsidian-specific drag data first
 			let obsidianDragData = '';
-			
+
 			// Try all available data types
 			for (const type of dragData.types) {
 				const data = dragData.getData(type);
@@ -423,7 +424,7 @@ export class InputHandler {
 					obsidianDragData = data;
 				}
 			}
-			
+
 			// Check if there's a file object in the drag event (Obsidian internal drag)
 			// @ts-ignore - Check for Obsidian-specific properties
 			if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
@@ -434,27 +435,27 @@ export class InputHandler {
 					obsidianDragData = file.path;
 				}
 			}
-			
+
 			if (!obsidianDragData) {
 				obsidianDragData = dragData.getData('text/plain');
 			}
-			
+
 			// If we captured a folder path from dragstart event, use it as priority
 			if (this.draggedFolderPath) {
 				obsidianDragData = this.draggedFolderPath;
 			}
-			
+
 			if (obsidianDragData) {
 				try {
 					// Check for multiple lines first (multiple files dragged)
 					const lines = obsidianDragData.split(/\r?\n/).filter(line => line.trim().length > 0);
-					
+
 					if (lines.length > 1) {
 						let successCount = 0;
-						
+
 						for (const line of lines) {
 							let filePath = line.trim();
-							
+
 							// Handle Obsidian URI format for each line
 							if (filePath.startsWith('obsidian://')) {
 								try {
@@ -471,13 +472,13 @@ export class InputHandler {
 							else if (filePath.startsWith('[[') && filePath.endsWith(']]')) {
 								filePath = filePath.slice(2, -2);
 							}
-							
+
 							// Try to handle as file/folder path
 							if (await this.handleDroppedPath(filePath)) {
 								successCount++;
 							}
 						}
-						
+
 						if (successCount > 0) {
 							return;
 						}
@@ -487,7 +488,7 @@ export class InputHandler {
 					if (obsidianDragData.startsWith('obsidian://')) {
 						const url = new URL(obsidianDragData);
 						const fileParam = url.searchParams.get('file');
-						
+
 						if (fileParam) {
 							// Decode the file path
 							const filePath = decodeURIComponent(fileParam);
@@ -495,7 +496,7 @@ export class InputHandler {
 							return;
 						}
 					}
-					
+
 					// Handle wiki link format
 					let filePath = obsidianDragData;
 					if (filePath.startsWith('[[') && filePath.endsWith(']]')) {
@@ -503,15 +504,15 @@ export class InputHandler {
 						await this.handleDroppedPath(filePath);
 						return;
 					}
-					
+
 					// Try to handle as file/folder path
 					const isFilePath = await this.handleDroppedPath(filePath);
-					
+
 					// If not a file path, treat as selected text
 					if (!isFilePath) {
 						await this.handleDroppedText(obsidianDragData);
 					}
-					
+
 				} catch (error) {
 					Logger.error('Error processing drop:', error);
 					const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -535,13 +536,13 @@ export class InputHandler {
 			if (clipboardData.files && clipboardData.files.length > 0) {
 				Logger.debug('Paste event contains files:', clipboardData.files.length);
 				event.preventDefault();
-				
+
 				for (let i = 0; i < clipboardData.files.length; i++) {
 					const file = clipboardData.files[i];
 					// In Electron/Obsidian, the File object usually has a 'path' property
 					// @ts-ignore - 'path' property exists in Electron environment
 					const filePath = file.path;
-					
+
 					if (filePath) {
 						Logger.debug('Processing pasted file path:', filePath);
 						await this.handleDroppedPath(filePath);
@@ -566,7 +567,7 @@ export class InputHandler {
 		});
 
 		const result = await this.contextManager.addTextToContext(text);
-		
+
 		if (result.success) {
 			new Notice(result.message);
 			this.updateContextDisplay();
@@ -582,13 +583,13 @@ export class InputHandler {
 	private async handleDroppedPath(filePath: string): Promise<boolean> {
 		// Try direct path first
 		let abstractFile = this.app.vault.getAbstractFileByPath(filePath);
-		
+
 		// If not found and doesn't have extension, try adding .md
 		if (!abstractFile && !filePath.includes('.')) {
 			const mdPath = filePath + '.md';
 			abstractFile = this.app.vault.getAbstractFileByPath(mdPath);
 		}
-		
+
 		if (abstractFile) {
 			if (abstractFile instanceof TFolder) {
 				// It's a folder
@@ -605,11 +606,11 @@ export class InputHandler {
 			if (externalFileHandled) {
 				return true;
 			}
-			
+
 			// Not a file/folder path, return false so it can be treated as text
 			return false;
 		}
-		
+
 		return false;
 	}
 
@@ -633,7 +634,7 @@ export class InputHandler {
 
 			const fileName = path.basename(filePath);
 			const ext = path.extname(filePath).toLowerCase();
-			
+
 			Logger.debug('Processing external file:', { filePath, fileName, ext });
 
 			// For image files, copy to vault
@@ -672,7 +673,7 @@ export class InputHandler {
 
 			// Get attachments folder from settings or use default
 			const attachmentFolder = (this.app.vault as any).getConfig('attachmentFolderPath') || 'attachments';
-			
+
 			// Ensure attachment folder exists
 			if (!await this.app.vault.adapter.exists(attachmentFolder)) {
 				await this.app.vault.createFolder(attachmentFolder);
@@ -692,7 +693,7 @@ export class InputHandler {
 
 			// Write file to vault
 			await this.app.vault.adapter.writeBinary(targetPath, arrayBuffer);
-			
+
 			// Get the created file
 			const vaultFile = this.app.vault.getAbstractFileByPath(targetPath);
 			if (vaultFile instanceof TFile) {
@@ -713,7 +714,7 @@ export class InputHandler {
 	private async handleExternalTextFile(filePath: string, fileName: string): Promise<void> {
 		try {
 			const content = fs.readFileSync(filePath, 'utf-8');
-			
+
 			Logger.debug('Read external text file:', {
 				fileName,
 				size: content.length
@@ -721,7 +722,7 @@ export class InputHandler {
 
 			// Add to context with file name as title
 			const result = await this.contextManager.addTextToContext(content, fileName);
-			
+
 			if (result.success) {
 				new Notice(result.message);
 				this.updateContextDisplay();
@@ -741,35 +742,35 @@ export class InputHandler {
 	private async handleFileDropped(file: TFile): Promise<void> {
 		// Get cursor position
 		const cursorPos = this.inputElement.selectionStart || this.inputElement.value.length;
-		
+
 		// Create file placeholder
 		const displayName = file.extension === 'md' ? file.basename : `${file.basename}.${file.extension}`;
 		const filePlaceholder = `@[${displayName}] `;
-		
+
 		// Insert placeholder at cursor position
 		const currentValue = this.inputElement.value;
 		const newValue = currentValue.slice(0, cursorPos) + filePlaceholder + currentValue.slice(cursorPos);
 		this.inputElement.value = newValue;
-		
+
 		// Move cursor after the placeholder
 		const newCursorPos = cursorPos + filePlaceholder.length;
 		this.inputElement.setSelectionRange(newCursorPos, newCursorPos);
-		
+
 		// Store placeholder mapping
 		this.addPlaceholderMapping(displayName, file.path);
-		
+
 		// Add file to context with current provider information
 		// Get provider type from connection settings
 		const currentProviderValue = this.providerSelect.value;
 		let providerType: string | undefined = undefined;
-		
+
 		if (currentProviderValue && currentProviderValue.includes('::')) {
 			const [connectionId] = currentProviderValue.split('::');
 			const connection = this.plugin.settings.connections.find(c => c.id === connectionId);
-			
+
 			if (connection) {
 				providerType = connection.type; // e.g., 'free-deepseek', 'free-qwen', 'openai', etc.
-				
+
 				Logger.debug('File upload - connection type:', {
 					connectionId: connectionId,
 					connectionName: connection.name,
@@ -777,7 +778,7 @@ export class InputHandler {
 				});
 			}
 		}
-		
+
 		const result = await this.contextManager.addFileToContext(file, undefined, providerType);
 		if (result.success) {
 			const i18n = this.plugin.getI18nManager();
@@ -785,12 +786,12 @@ export class InputHandler {
 		} else {
 			new Notice(result.message);
 		}
-		
+
 		// Update UI
 		this.autoResizeTextarea();
 		this.updateSendButton();
 		this.updateContextDisplay();
-		
+
 		// Focus back on input
 		this.inputElement.focus();
 	}
@@ -801,28 +802,28 @@ export class InputHandler {
 	private async handleFolderDropped(folder: TFolder): Promise<void> {
 		// Get cursor position
 		const cursorPos = this.inputElement.selectionStart || this.inputElement.value.length;
-		
+
 		// Create folder placeholder
 		const displayName = folder.name || 'Root';
 		const folderPlaceholder = `@[📁${displayName}] `;
-		
+
 		// Insert placeholder at cursor position
 		const currentValue = this.inputElement.value;
 		const newValue = currentValue.slice(0, cursorPos) + folderPlaceholder + currentValue.slice(cursorPos);
 		this.inputElement.value = newValue;
-		
+
 		// Move cursor after the placeholder
 		const newCursorPos = cursorPos + folderPlaceholder.length;
 		this.inputElement.setSelectionRange(newCursorPos, newCursorPos);
-		
+
 		// Store placeholder mapping
 		this.addPlaceholderMapping(`📁${displayName}`, folder.path);
-		
+
 		// Update UI
 		this.autoResizeTextarea();
 		this.updateSendButton();
 		this.updateContextDisplay();
-		
+
 		// Focus back on input
 		this.inputElement.focus();
 	}
@@ -876,12 +877,12 @@ export class InputHandler {
 		}
 	}
 
-	private async ensureFolderContextsLoaded(): Promise<void> {
+	public async ensureFolderContextsLoaded(): Promise<void> {
 		const folderPlaceholders = this.getFolderPlaceholdersFromInput();
 		if (folderPlaceholders.length === 0) {
 			return;
 		}
-		
+
 		for (const folderPlaceholder of folderPlaceholders) {
 			if (this.directoryFileMap.has(folderPlaceholder.displayName)) {
 				continue;
@@ -912,9 +913,9 @@ export class InputHandler {
 		}
 		this.isOptimizingPrompt = true;
 		const optimizeStatus = this.inputContainer.querySelector('.llmsider-optimize-status') as HTMLElement | null;
-		
+
 		const currentPrompt = this.inputElement.value.trim();
-		
+
 		// Check if there's a prompt to optimize
 		if (!currentPrompt) {
 			new Notice(this.plugin.i18n.t('ui.noPromptToOptimize') || 'Please enter a prompt first');
@@ -926,27 +927,27 @@ export class InputHandler {
 			optimizeStatus.textContent = this.plugin.i18n.t('ui.optimizingPrompt') || 'Optimizing prompt...';
 			optimizeStatus.style.display = 'inline-flex';
 		}
-		
+
 		// Check if provider is available
 		const availableProviders = this.plugin.getAvailableProviders();
 		if (availableProviders.length === 0) {
 			new Notice(this.plugin.i18n.t('ui.noProvidersConfigured') || 'No providers configured');
 			return;
 		}
-		
+
 		try {
 			// Get active provider
 			const activeProvider = this.plugin.settings.activeProvider;
 			if (!activeProvider) {
 				throw new Error('No active provider');
 			}
-			
+
 			// Call LLM to optimize
 			const provider = this.plugin.getProvider(activeProvider);
 			if (!provider) {
 				throw new Error('Provider not found');
 			}
-			
+
 			// Build optimization prompt with clear instructions
 			const systemMessage = `You are a prompt optimization expert. Your task is to enhance user prompts to make them clearer, more specific, and more effective for AI models to understand and respond to.
 
@@ -958,7 +959,7 @@ Rules:
 5. Use clear and concise language
 6. Return ONLY the optimized prompt without any explanation or additional text
 7. Maintain the same language as the original prompt (Chinese/English)`;
-			
+
 			// Prepare messages for the LLM
 			const messages = [
 				{
@@ -970,31 +971,31 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 					timestamp: Date.now()
 				}
 			];
-			
+
 			// Call provider using sendMessage (non-streaming for simplicity)
 			const response = await provider.sendMessage(messages, undefined, systemMessage);
-			
+
 			// Extract optimized prompt from response
 			const optimizedPrompt = response.content.trim();
-			
+
 			if (!optimizedPrompt) {
 				throw new Error('Empty response from LLM');
 			}
-			
+
 			// Update input with optimized prompt
 			this.inputElement.value = optimizedPrompt;
 			this.autoResizeTextarea();
 			this.updateSendButton();
-			
+
 			// Show success notice
 			new Notice(this.plugin.i18n.t('ui.promptOptimized') || 'Prompt optimized', 3000);
-			
+
 			// Focus back on input
 			this.inputElement.focus();
-			
+
 		} catch (error) {
 			Logger.error('[OptimizePrompt] Failed to optimize prompt:', error);
-			
+
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			new Notice(this.plugin.i18n.t('ui.promptOptimizationFailed') || 'Failed to optimize prompt: ' + errorMessage, 5000);
 		} finally {
@@ -1013,37 +1014,37 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		if (this.inputChangeTimeout) {
 			clearTimeout(this.inputChangeTimeout);
 		}
-		
+
 		// Debounce the input change handling
 		this.inputChangeTimeout = window.setTimeout(() => {
 			this.processInputChange();
 		}, 150); // 150ms debounce delay
 	}
-	
+
 	/**
 	 * Process input changes - actual logic
 	 */
 	private processInputChange(): void {
 		const content = this.inputElement.value;
 		const cursorPosition = this.inputElement.selectionStart;
-		
+
 		// Check if user typed # at the beginning or after whitespace
 		const beforeCursor = content.substring(0, cursorPosition);
 		const match = beforeCursor.match(/(^|\s)#([^#\s]*)$/);
-		
+
 		if (match) {
 			const query = match[2]; // The text after #
-			
+
 			// Calculate position for prompt selector - position above input box
 			const inputRect = this.inputElement.getBoundingClientRect();
-			
+
 			// Position the selector relative to the input box
 			const position = {
 				x: inputRect.left,
 				y: inputRect.top,
 				yBottom: inputRect.bottom
 			};
-			
+
 			// Show prompt selector
 			this.promptSelector.show(query, position);
 		} else if (this.promptSelector.isVisible()) {
@@ -1057,13 +1058,13 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 */
 	private handlePromptSelected(template: PromptTemplate): void {
 		Logger.debug('Prompt selected:', template.title);
-		
+
 		// Remove the # trigger from input
 		const content = this.inputElement.value;
 		const cursorPosition = this.inputElement.selectionStart;
 		const beforeCursor = content.substring(0, cursorPosition);
 		const afterCursor = content.substring(cursorPosition);
-		
+
 		// Find and remove the # trigger
 		const match = beforeCursor.match(/(^|\s)#([^#\s]*)$/);
 		if (match) {
@@ -1071,11 +1072,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			this.inputElement.value = newBefore + afterCursor;
 			this.inputElement.setSelectionRange(newBefore.length, newBefore.length);
 		}
-		
+
 		// Store selected prompt
 		this.selectedPrompt = template;
 		this.updatePromptIndicator();
-		
+
 		// Focus back to input
 		this.inputElement.focus();
 	}
@@ -1104,31 +1105,31 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			const indicator = this.inputContainer.createDiv({
 				cls: 'llmsider-prompt-indicator'
 			});
-			
+
 			// Move indicator to the beginning (above input)
 			this.inputContainer.insertBefore(indicator, this.inputContainer.firstChild);
-			
+
 			const icon = indicator.createSpan({
 				cls: 'llmsider-prompt-indicator-icon',
 				text: '💡'
 			});
-			
+
 			const text = indicator.createSpan({
 				cls: 'llmsider-prompt-indicator-text',
 				text: `Using: ${this.selectedPrompt.title}`
 			});
-			
+
 			// Add hint about direct sending
 			const hint = indicator.createSpan({
 				cls: 'llmsider-prompt-indicator-hint',
 				text: '(Press Enter to send directly)'
 			});
-			
+
 			const closeBtn = indicator.createSpan({
 				cls: 'llmsider-prompt-indicator-close',
 				text: '✕'
 			});
-			
+
 			closeBtn.onclick = () => {
 				this.selectedPrompt = undefined;
 				this.updatePromptIndicator();
@@ -1177,7 +1178,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		const canSend = (hasContent || hasSelectedPrompt) && hasProvider;
 
 		this.sendButton.innerHTML = '▶';
-		
+
 		// Update title based on state
 		if (hasSelectedPrompt && !hasContent && this.selectedPrompt) {
 			this.sendButton.title = `Send with prompt: ${this.selectedPrompt.title}`;
@@ -1196,13 +1197,13 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 */
 	updateProviderSelect(): void {
 		this.providerSelect.innerHTML = '';
-		
+
 		// Get providers with names (Connection + Model architecture)
 		const providers = this.plugin.getAvailableProvidersWithNames();
 		const providerList = providers.length > 0
 			? providers
 			: this.plugin.getConfiguredProvidersWithNames();
-		
+
 		if (providerList.length === 0) {
 			const option = this.providerSelect.createEl('option', { text: this.plugin.i18n.t('ui.noProvidersConfigured') });
 			option.disabled = true;
@@ -1239,14 +1240,14 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 						value: provider.id,
 						text: `  ${provider.name}`
 					});
-					
+
 					if (provider.id === this.plugin.settings.activeProvider) {
 						option.selected = true;
 					}
 				});
 			});
 		}
-		
+
 		// If no active provider is set, auto-select the first available one
 		if (!this.plugin.settings.activeProvider && providerList.length > 0) {
 			this.plugin.setActiveProvider(providerList[0].id);
@@ -1262,13 +1263,13 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	private updateUI(): void {
 		// Update placeholder
 		this.inputElement.placeholder = this.getInputPlaceholder();
-		
+
 		// Update context display
 		this.updateContextDisplay();
-		
+
 		// Update provider select
 		this.updateProviderSelect();
-		
+
 		// Update send button
 		this.updateSendButton();
 	}
@@ -1296,7 +1297,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				}
 			});
 		});
-		
+
 		// Check if we have any context to display
 		if (!this.contextManager.hasContext() && folderPlaceholders.length === 0) {
 			this.contextDisplay.style.display = 'none';
@@ -1307,88 +1308,24 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 
 		// Create a single container for all context items to display them inline
 		const contextContainer = this.contextDisplay.createDiv({ cls: 'llmsider-context-container' });
-		
+
 		// Display current note context(s) as inline tags
 		const noteContexts = this.contextManager.getCurrentNoteContext();
-		noteContexts.forEach((noteContext) => {
+		const manualNotes = noteContexts.filter(ctx => ctx.source === 'manual' || !ctx.source);
+		const searchNotes = noteContexts.filter(ctx => ctx.source === 'search');
+
+		// Handle active search notes with grouping
+		this.renderGroupedNotes(contextContainer, searchNotes, 'search', '🔍');
+
+		// Handle manual notes individually
+		manualNotes.forEach((noteContext) => {
 			if (noteContext.filePath && hiddenFilePaths.has(noteContext.filePath)) {
 				return;
 			}
 			if (!noteContext.filePath && hiddenFileNames.has(noteContext.name)) {
 				return;
 			}
-			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-clickable' });
-
-			contextTag.onclick = (e) => {
-				// Ignore clicks on the remove button
-				if ((e.target as HTMLElement).closest('.llmsider-context-remove')) return;
-
-				e.preventDefault();
-				e.stopPropagation();
-				this.chatView?.showContextModal(noteContext.name, noteContext.content, noteContext.type);
-			};
-			
-			// Use different icon based on file type
-			let iconSVG = '';
-			if (noteContext.type === 'image') {
-				iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-					<circle cx="8.5" cy="8.5" r="1.5"></circle>
-					<polyline points="21 15 16 10 5 21"></polyline>
-				</svg>`;
-			} else if (noteContext.type === 'document') {
-				iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-					<polyline points="14 2 14 8 20 8"></polyline>
-					<line x1="16" y1="13" x2="8" y2="13"></line>
-					<line x1="16" y1="17" x2="8" y2="17"></line>
-					<line x1="16" y1="9" x2="8" y2="9"></line>
-				</svg>`;
-			} else if (noteContext.type === 'spreadsheet') {
-				iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M3 3v18h18"></path>
-					<path d="M18 17V9"></path>
-					<path d="M13 17V5"></path>
-					<path d="M8 17v-3"></path>
-				</svg>`;
-			} else if (noteContext.type === 'presentation') {
-				iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-					<line x1="8" y1="21" x2="16" y2="21"></line>
-					<line x1="12" y1="17" x2="12" y2="21"></line>
-				</svg>`;
-			} else {
-				// Default file icon
-				iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-					<polyline points="14 2 14 8 20 8"></polyline>
-				</svg>`;
-			}
-			
-			const iconEl = contextTag.createEl('span', { cls: 'llmsider-context-icon' });
-			iconEl.innerHTML = iconSVG;
-
-			contextTag.createEl('span', { 
-				cls: 'llmsider-context-name',
-				text: noteContext.name
-			});
-
-			const removeBtn = contextTag.createEl('button', { 
-				cls: 'llmsider-context-remove',
-				text: '×',
-				title: 'Remove note context'
-			});
-
-			removeBtn.onclick = (e) => {
-				e.stopPropagation();
-				// Remove from context manager
-				this.contextManager.removeNoteContext(noteContext.name);
-				
-				// Remove placeholder from input box
-				this.removePlaceholderFromInput(noteContext.name);
-				
-				this.updateContextDisplay();
-			};
+			this.renderNoteTag(contextContainer, noteContext);
 		});
 
 		// Display selected text context as inline tag
@@ -1402,19 +1339,19 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				e.stopPropagation();
 				this.chatView?.showContextModal('选中文本', selectedTextContext.text, 'text');
 			};
-			
-			contextTag.createEl('span', { 
+
+			contextTag.createEl('span', {
 				cls: 'llmsider-context-icon',
 				text: '✂️'
 			});
 
-			contextTag.createEl('span', { 
+			contextTag.createEl('span', {
 				cls: 'llmsider-context-name',
 				text: selectedTextContext.preview,
 				title: selectedTextContext.text // Show full text on hover
 			});
 
-			const removeBtn = contextTag.createEl('button', { 
+			const removeBtn = contextTag.createEl('button', {
 				cls: 'llmsider-context-remove',
 				text: 'x',
 				title: 'Remove selected text'
@@ -1428,62 +1365,210 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		}
 
 		folderPlaceholders.forEach((folderPlaceholder) => {
-			const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-clickable' });
-			const iconEl = contextTag.createEl('span', { cls: 'llmsider-context-icon' });
-			iconEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-			</svg>`;
+			const isExpanded = this.expandedDirectoryPlaceholders.has(folderPlaceholder.displayName);
+			const loadedFiles = this.directoryFileMap.get(folderPlaceholder.displayName);
 
-			contextTag.createEl('span', {
+			if (isExpanded && loadedFiles && loadedFiles.length > 0) {
+				const expandedContainer = contextContainer.createDiv({ cls: 'llmsider-context-group-expanded' });
+
+				// Find these files in the context manager
+				const allFolderNotes = this.contextManager.getCurrentNoteContext().filter(ctx => ctx.source === 'folder');
+
+				loadedFiles.forEach(fileMeta => {
+					// Match by full name and path
+					const fullNote = allFolderNotes.find(ctx => ctx.name === fileMeta.name && ctx.filePath === fileMeta.path);
+					if (fullNote) {
+						this.renderNoteTag(expandedContainer, fullNote);
+					}
+				});
+
+				// Add collapse button for the expanded list
+				const collapseTag = expandedContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-collapse' });
+				collapseTag.setText('收起');
+				collapseTag.onclick = () => {
+					this.expandedDirectoryPlaceholders.delete(folderPlaceholder.displayName);
+					this.updateContextDisplay();
+				};
+			} else {
+				const contextTag = contextContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-clickable llmsider-context-group' });
+				const iconEl = contextTag.createEl('span', { cls: 'llmsider-context-icon', text: '📂' });
+
+				const countText = (loadedFiles && loadedFiles.length > 0) ? ` 等 ${loadedFiles.length} 个文件` : '';
+
+				contextTag.createEl('span', {
+					cls: 'llmsider-context-name',
+					text: folderPlaceholder.name + countText
+				});
+
+				contextTag.onclick = async (e) => {
+					if ((e.target as HTMLElement).closest('.llmsider-context-remove')) return;
+					e.preventDefault();
+					e.stopPropagation();
+					if (!folderPlaceholder.path) {
+						return;
+					}
+
+					if (loadedFiles) {
+						this.expandedDirectoryPlaceholders.add(folderPlaceholder.displayName);
+						this.updateContextDisplay();
+						return;
+					}
+
+					try {
+						const beforeContextCount = this.contextManager.getCurrentNoteContext().length;
+						const result = await this.contextManager.includeDirectory(folderPlaceholder.folder);
+						if (result.success) {
+							const afterContext = this.contextManager.getCurrentNoteContext();
+							const newlyAddedFiles = afterContext.slice(beforeContextCount).map(ctx => ({
+								name: ctx.name,
+								path: ctx.filePath
+							}));
+							this.directoryFileMap.set(folderPlaceholder.displayName, newlyAddedFiles);
+							this.expandedDirectoryPlaceholders.add(folderPlaceholder.displayName);
+							this.updateContextDisplay();
+						}
+					} catch (error) {
+						Logger.error('Error expanding folder placeholder:', error);
+					}
+				};
+
+				const removeBtn = contextTag.createEl('button', {
+					cls: 'llmsider-context-remove',
+					text: '×',
+					title: 'Remove folder context'
+				});
+
+				removeBtn.onclick = (e) => {
+					e.stopPropagation();
+					this.removePlaceholderFromInput(folderPlaceholder.name);
+					this.removePlaceholderMapping(folderPlaceholder.displayName);
+					this.handleDirectoryPlaceholderDeletion(folderPlaceholder.displayName);
+					this.updateContextDisplay();
+				};
+			}
+		});
+	}
+
+	private renderGroupedNotes(container: HTMLElement, notes: any[], source: 'search' | 'folder', icon: string) {
+		if (notes.length === 0) return;
+
+		if (notes.length === 1) {
+			this.renderNoteTag(container, notes[0]);
+			return;
+		}
+
+		const isExpanded = this.expandedSourceGroups.has(source);
+		const count = notes.length;
+		const firstNote = notes[0];
+
+		if (isExpanded) {
+			const expandedContainer = container.createDiv({ cls: 'llmsider-context-group-expanded' });
+
+			// Render individual tags
+			notes.forEach(note => this.renderNoteTag(expandedContainer, note));
+
+			// Add a "collapse" tag at the end
+			const collapseTag = expandedContainer.createEl('span', { cls: 'llmsider-context-tag llmsider-context-collapse' });
+			collapseTag.setText('收起');
+			collapseTag.onclick = () => {
+				this.expandedSourceGroups.delete(source);
+				this.updateContextDisplay();
+			};
+		} else {
+			// Render grouping tag: "FirstFileName etc. Y files"
+			const contextTag = container.createEl('span', { cls: 'llmsider-context-tag llmsider-context-group llmsider-context-clickable' });
+
+			const iconEl = contextTag.createEl('span', { cls: 'llmsider-context-icon', text: icon });
+
+			const nameEl = contextTag.createEl('span', {
 				cls: 'llmsider-context-name',
-				text: folderPlaceholder.name
+				text: `${firstNote.name} 等 ${count} 个文件`
 			});
 
-			contextTag.ondblclick = async (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				if (!folderPlaceholder.path) {
-					return;
-				}
-				if (this.expandedDirectoryPlaceholders.has(folderPlaceholder.displayName)) {
-					return;
-				}
-				this.expandedDirectoryPlaceholders.add(folderPlaceholder.displayName);
-				if (this.directoryFileMap.has(folderPlaceholder.displayName)) {
-					this.updateContextDisplay();
-					return;
-				}
-				try {
-					const beforeContextCount = this.contextManager.getCurrentNoteContext().length;
-					const result = await this.contextManager.includeDirectory(folderPlaceholder.folder);
-					if (result.success) {
-						const afterContext = this.contextManager.getCurrentNoteContext();
-						const newlyAddedFiles = afterContext.slice(beforeContextCount).map(ctx => ({
-							name: ctx.name,
-							path: ctx.filePath
-						}));
-						this.directoryFileMap.set(folderPlaceholder.displayName, newlyAddedFiles);
-						this.updateContextDisplay();
-					}
-				} catch (error) {
-					Logger.error('Error expanding folder placeholder:', error);
-				}
+			contextTag.onclick = (e) => {
+				if ((e.target as HTMLElement).closest('.llmsider-context-remove')) return;
+				this.expandedSourceGroups.add(source);
+				this.updateContextDisplay();
 			};
 
 			const removeBtn = contextTag.createEl('button', {
 				cls: 'llmsider-context-remove',
 				text: '×',
-				title: 'Remove folder context'
+				title: `Remove all ${source} files`
 			});
 
 			removeBtn.onclick = (e) => {
 				e.stopPropagation();
-				this.removePlaceholderFromInput(folderPlaceholder.name);
-				this.removePlaceholderMapping(folderPlaceholder.displayName);
-				this.handleDirectoryPlaceholderDeletion(folderPlaceholder.displayName);
+				this.contextManager.removeNoteContextBySource(source);
 				this.updateContextDisplay();
 			};
+		}
+	}
+
+	private renderNoteTag(container: HTMLElement, noteContext: any) {
+		const contextTag = container.createEl('span', { cls: 'llmsider-context-tag llmsider-context-clickable' });
+
+		contextTag.onclick = (e) => {
+			if ((e.target as HTMLElement).closest('.llmsider-context-remove')) return;
+			e.preventDefault();
+			e.stopPropagation();
+			this.chatView?.showContextModal(noteContext.name, noteContext.content, noteContext.type);
+		};
+
+		let iconSVG = '';
+		if (noteContext.type === 'image') {
+			iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+				<circle cx="8.5" cy="8.5" r="1.5"></circle>
+				<polyline points="21 15 16 10 5 21"></polyline>
+			</svg>`;
+		} else if (noteContext.type === 'document') {
+			iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+				<polyline points="14 2 14 8 20 8"></polyline>
+				<line x1="16" y1="13" x2="8" y2="13"></line>
+				<line x1="16" y1="17" x2="8" y2="17"></line>
+				<line x1="16" y1="9" x2="8" y2="9"></line>
+			</svg>`;
+		} else if (noteContext.type === 'spreadsheet') {
+			iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M3 3v18h18"></path>
+				<path d="M18 17V9"></path>
+				<path d="M13 17V5"></path>
+				<path d="M8 17v-3"></path>
+			</svg>`;
+		} else if (noteContext.type === 'presentation') {
+			iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+				<line x1="8" y1="21" x2="16" y2="21"></line>
+				<line x1="12" y1="17" x2="12" y2="21"></line>
+			</svg>`;
+		} else {
+			iconSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+				<polyline points="14 2 14 8 20 8"></polyline>
+			</svg>`;
+		}
+
+		const iconEl = contextTag.createEl('span', { cls: 'llmsider-context-icon' });
+		iconEl.innerHTML = iconSVG;
+
+		contextTag.createEl('span', {
+			cls: 'llmsider-context-name',
+			text: noteContext.name
 		});
+
+		const removeBtn = contextTag.createEl('button', {
+			cls: 'llmsider-context-remove',
+			text: '×'
+		});
+
+		removeBtn.onclick = (e) => {
+			e.stopPropagation();
+			this.contextManager.removeNoteContext(noteContext.name);
+			this.removePlaceholderFromInput(noteContext.name);
+			this.updateContextDisplay();
+		};
 	}
 
 	private getFolderPlaceholdersFromInput(): Array<{ name: string; displayName: string; path?: string; folder: TFolder }> {
@@ -1553,27 +1638,27 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 */
 	private removePlaceholderFromInput(fileName: string): void {
 		const currentValue = this.inputElement.value;
-		
+
 		// Try different possible placeholder formats
 		const possiblePlaceholders = [
 			`@[${fileName}]`,  // Exact filename
 			`@[${fileName.replace(/\.[^/.]+$/, '')}]`,  // Without extension
 			`@[📁${fileName}]`,  // Directory with emoji
 		];
-		
+
 		// Also check the placeholder mapping for reverse lookup
 		for (const [displayName, fullPath] of this.placeholderPathMap.entries()) {
 			const pathFileName = fullPath.split('/').pop() || '';
 			const pathBaseName = pathFileName.replace(/\.[^/.]+$/, '');
-			
+
 			// Check if this mapping matches the file we're trying to remove
-			if (pathFileName === fileName || 
-				pathBaseName === fileName || 
+			if (pathFileName === fileName ||
+				pathBaseName === fileName ||
 				displayName.includes(fileName)) {
 				possiblePlaceholders.push(`@[${displayName}]`);
 			}
 		}
-		
+
 		// Try to remove each possible placeholder
 		let newValue = currentValue;
 		for (const placeholder of possiblePlaceholders) {
@@ -1584,7 +1669,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				break;
 			}
 		}
-		
+
 		// Update input if changed
 		if (newValue !== currentValue) {
 			this.inputElement.value = newValue;
@@ -1869,7 +1954,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	showContextOptions(): void {
 		// Remove existing context menu if any
 		document.querySelectorAll('.llmsider-context-menu').forEach(el => el.remove());
-		
+
 		// Close all other menus (mutual exclusion)
 		document.querySelectorAll('.llmsider-mode-dropdown').forEach(el => el.remove());
 		document.querySelectorAll('.llmsider-tools-dropdown').forEach(el => el.remove());
@@ -1887,10 +1972,10 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		const menu = document.createElement('div');
 		menu.className = 'llmsider-context-menu';
 		Logger.debug('Created menu element:', menu);
-		
+
 		// Get i18n instance
 		const i18n = this.plugin.getI18nManager();
-		
+
 		// Create context options with SVG icons (matching mode selector style)
 		const options = [
 			{
@@ -1958,13 +2043,13 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		options.forEach(option => {
 			const optionEl = menu.createDiv({ cls: 'llmsider-context-option' });
 			optionEl.dataset.action = option.action;
-			
+
 			Logger.debug('Created context option:', option.action);
-			
+
 			// Create structure matching mode selector
 			const iconDiv = optionEl.createDiv({ cls: 'context-icon' });
 			iconDiv.innerHTML = option.iconSvg;
-			
+
 			const infoDiv = optionEl.createDiv({ cls: 'context-info' });
 			infoDiv.createDiv({ cls: 'context-label', text: option.label });
 			infoDiv.createDiv({ cls: 'context-description', text: option.description });
@@ -1975,7 +2060,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		// Position the menu ABOVE the attach button
 		const attachBtn = this.sendButton.closest('.llmsider-input-container')?.querySelector('.llmsider-input-btn') as HTMLElement;
 		Logger.debug('Attach button found:', attachBtn);
-		
+
 		if (attachBtn) {
 			const rect = attachBtn.getBoundingClientRect();
 			menu.style.position = 'fixed';
@@ -1991,39 +2076,39 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		menu.addEventListener('click', async (e) => {
 			const target = e.target as HTMLElement;
 			Logger.debug('Menu clicked, target:', target);
-			
+
 			const optionEl = target.closest('.llmsider-context-option') as HTMLElement;
 			Logger.debug('Option element found:', optionEl);
-			
+
 			if (!optionEl) return;
-			
+
 			const action = optionEl.dataset.action;
 			Logger.debug('Action selected:', action);
-			
+
 			if (action === 'current-note') {
 				await this.includeCurrentNote();
 			} else if (action === 'selection') {
 				await this.includeSelectedTextWithCaptured();
 			} else if (action === 'smart-search') {
-					// Close menu and open smart search modal
-					menu.remove();
-					this.capturedSelection = null;
-					this.capturedSelectionFilePath = null;
-					this.openSmartSearchModal();
+				// Close menu and open smart search modal
+				menu.remove();
+				this.capturedSelection = null;
+				this.capturedSelectionFilePath = null;
+				this.openSmartSearchModal();
 				return; // Early return to skip the menu.remove() below
 			} else if (action === 'file-directory') {
 				// Trigger file/folder selector by simulating @ input
 				Logger.debug('File&Directory button clicked, triggering file selector');
 				this.triggerFileFolderSelector();
-				} else if (action === 'webpage-content') {
-					// Close menu immediately to prevent UI blocking
-					menu.remove();
-					this.capturedSelection = null;
-					this.capturedSelectionFilePath = null;
-				
+			} else if (action === 'webpage-content') {
+				// Close menu immediately to prevent UI blocking
+				menu.remove();
+				this.capturedSelection = null;
+				this.capturedSelectionFilePath = null;
+
 				// Show loading notice and fetch content asynchronously
 				const loadingNotice = new Notice(this.plugin.i18n.t('ui.fetchingWebpageContent'), 0);
-				
+
 				// Use setTimeout to ensure UI updates before starting fetch
 				setTimeout(async () => {
 					try {
@@ -2032,17 +2117,17 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 						loadingNotice.hide();
 					}
 				}, 10);
-				
+
 				return; // Early return to skip the menu.remove() below
-				} else if (action === 'epub-page') {
-					// Close menu immediately to prevent UI blocking
-					menu.remove();
-					this.capturedSelection = null;
-					this.capturedSelectionFilePath = null;
-				
+			} else if (action === 'epub-page') {
+				// Close menu immediately to prevent UI blocking
+				menu.remove();
+				this.capturedSelection = null;
+				this.capturedSelectionFilePath = null;
+
 				// Show loading notice and fetch content asynchronously
 				const loadingNotice = new Notice(this.plugin.i18n.t('ui.fetchingEpubPageContent') || 'Fetching epub page content...', 0);
-				
+
 				// Use setTimeout to ensure UI updates before starting fetch
 				setTimeout(async () => {
 					try {
@@ -2051,10 +2136,10 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 						loadingNotice.hide();
 					}
 				}, 10);
-				
+
 				return; // Early return to skip the menu.remove() below
 			}
-			
+
 			// Clear captured selection after use
 			this.capturedSelection = null;
 			this.capturedSelectionFilePath = null;
@@ -2071,11 +2156,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 
 		// Close dropdown when clicking outside
 		const closeHandler = (e: MouseEvent) => {
-				if (!menu.contains(e.target as Node) && !attachBtn?.contains(e.target as Node)) {
-					menu.remove();
-					// Clear captured selection if menu is cancelled
-					this.capturedSelection = null;
-					this.capturedSelectionFilePath = null;
+			if (!menu.contains(e.target as Node) && !attachBtn?.contains(e.target as Node)) {
+				menu.remove();
+				// Clear captured selection if menu is cancelled
+				this.capturedSelection = null;
+				this.capturedSelectionFilePath = null;
 				document.removeEventListener('click', closeHandler);
 			}
 		};
@@ -2092,10 +2177,10 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		Logger.debug('triggerFileFolderSelector called');
 		Logger.debug('fileSuggestions instance:', this.fileSuggestions);
 		Logger.debug('fileSuggestions.triggerSuggestions:', typeof this.fileSuggestions?.triggerSuggestions);
-		
+
 		// Directly trigger the file suggestions display
 		this.fileSuggestions.triggerSuggestions();
-		
+
 		Logger.debug('triggerSuggestions method called');
 	}
 
@@ -2110,13 +2195,13 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				new Notice(i18n?.t('notifications.ui.noDirectorySelected') || 'No directory selected');
 				return;
 			}
-			
+
 			const i18n = this.plugin.getI18nManager();
 			new Notice(i18n?.t('notifications.ui.processingDirectory', { name: folder.name }) || `Processing directory "${folder.name}"...`);
-			
+
 			try {
 				const result = await this.contextManager.includeDirectory(folder);
-				
+
 				if (result.success) {
 					new Notice(result.message);
 					this.updateContextDisplay();
@@ -2129,7 +2214,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				new Notice(i18n?.t('notifications.ui.failedToProcessDirectory', { error: error instanceof Error ? error.message : 'Unknown error' }) || `Failed to process directory: ${error instanceof Error ? error.message : 'Unknown error'}`);
 			}
 		});
-		
+
 		folderModal.open();
 	}
 
@@ -2138,9 +2223,9 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 */
 	private async includeCurrentNote(): Promise<void> {
 		const result = await this.contextManager.includeCurrentNote();
-		
+
 		new Notice(result.message);
-		
+
 		if (result.success) {
 			this.updateContextDisplay();
 		}
@@ -2152,7 +2237,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	private captureCurrentSelection(): string | null {
 		const sourceFilePath = this.app.workspace.getActiveFile()?.path || null;
 		let selectedText = '';
-		
+
 		// Method 1: Try from active markdown view editor (highest priority for editor selection)
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView) {
@@ -2166,7 +2251,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				}
 			}
 		}
-		
+
 		// Method 2: Try from global window selection (for any text)
 		if (!selectedText) {
 			const selection = window.getSelection();
@@ -2179,7 +2264,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				}
 			}
 		}
-		
+
 		// Method 3: Try from document selection
 		if (!selectedText) {
 			if (document.getSelection) {
@@ -2194,7 +2279,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				}
 			}
 		}
-		 
+
 		Logger.debug('No text selection found during capture');
 		this.capturedSelectionFilePath = null;
 		return null;
@@ -2206,25 +2291,25 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	private async includeSelectedTextWithCaptured(): Promise<void> {
 		// Use captured selection if available, otherwise fall back to real-time selection
 		let textToAdd = '';
-		
+
 		// Check if current session has existing conversation history
 		const currentSession = this.plugin.settings.chatSessions[0];
 		const hasHistory = currentSession && currentSession.messages.length > 0;
-		
+
 		if (this.capturedSelection && this.capturedSelection.trim()) {
 			textToAdd = this.capturedSelection.trim();
 			Logger.debug('Using captured selection:', {
 				length: textToAdd.length,
 				preview: textToAdd.substring(0, 50) + (textToAdd.length > 50 ? '...' : '')
 			});
-			
+
 			// Use the context manager's addTextToContext method directly
 			const sourceFile = this.capturedSelectionFilePath
 				? this.app.vault.getAbstractFileByPath(this.capturedSelectionFilePath)
 				: null;
 			const resolvedSourceFile = sourceFile instanceof TFile ? sourceFile : null;
 			const result = await this.contextManager.addTextToContext(textToAdd, undefined, resolvedSourceFile);
-			
+
 			if (result.success) {
 				let noticeMessage = `Added selected text to context: ${result.context?.preview || 'Added'}`;
 				if (hasHistory) {
@@ -2247,11 +2332,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 */
 	private async includeSelectedText(): Promise<void> {
 		const result = await this.contextManager.includeSelectedText();
-		
+
 		// Check if current session has existing conversation history
 		const currentSession = this.plugin.settings.chatSessions[0];
 		const hasHistory = currentSession && currentSession.messages.length > 0;
-		
+
 		if (result.success) {
 			// Show appropriate notice based on conversation history
 			if (hasHistory) {
@@ -2271,11 +2356,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	private async includeWebpageContent(): Promise<void> {
 		try {
 			const result = await this.contextManager.includeWebpageContent();
-			
+
 			// Check if current session has existing conversation history
 			const currentSession = this.plugin.settings.chatSessions[0];
 			const hasHistory = currentSession && currentSession.messages.length > 0;
-			
+
 			if (result.success) {
 				// Format message with i18n
 				let message = '';
@@ -2286,7 +2371,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 					// Only URL reference added
 					message = `${this.plugin.i18n.t('ui.webpageUrlAdded')}: ${result.url}`;
 				}
-				
+
 				// Show appropriate notice based on conversation history
 				if (hasHistory) {
 					new Notice(message + ' - ' + this.plugin.i18n.t('ui.contextAddedWithHistory'), 6000);
@@ -2313,11 +2398,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	private async includeEpubPageContent(): Promise<void> {
 		try {
 			const result = await this.contextManager.includeEpubPageContent();
-			
+
 			// Check if current session has existing conversation history
 			const currentSession = this.plugin.settings.chatSessions[0];
 			const hasHistory = currentSession && currentSession.messages.length > 0;
-			
+
 			if (result.success) {
 				// Format message with i18n
 				let message = '';
@@ -2326,7 +2411,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				} else {
 					message = this.plugin.i18n.t('ui.epubPageContentFetched');
 				}
-				
+
 				// Show appropriate notice based on conversation history
 				if (hasHistory) {
 					new Notice(message + ' - ' + this.plugin.i18n.t('ui.contextAddedWithHistory'), 6000);
@@ -2352,12 +2437,12 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 */
 	private openSmartSearchModal(): void {
 		const vectorDBManager = this.plugin.getVectorDBManager();
-		
+
 		if (!vectorDBManager) {
 			new Notice(this.plugin.i18n.t('ui.vectorDBNotInitialized'));
 			return;
 		}
-		
+
 		const modal = new SmartSearchModal(
 			this.app,
 			vectorDBManager,
@@ -2368,7 +2453,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				this.updateContextDisplay();
 			}
 		);
-		
+
 		modal.open();
 	}
 
@@ -2669,9 +2754,9 @@ class FolderSelectionModal extends Modal {
 
 		this.folders.forEach(folder => {
 			const folderItem = folderList.createDiv({ cls: 'llmsider-folder-item' });
-			
+
 			// Folder icon and name
-			const folderButton = folderItem.createEl('button', { 
+			const folderButton = folderItem.createEl('button', {
 				cls: 'llmsider-folder-button',
 				text: `📁 ${folder.path || 'Root'}`
 			});
@@ -2679,8 +2764,8 @@ class FolderSelectionModal extends Modal {
 			// File count info
 			const fileCount = this.getFileCountInFolder(folder);
 			const supportedCount = this.getSupportedFileCountInFolder(folder);
-			
-			const infoSpan = folderItem.createEl('span', { 
+
+			const infoSpan = folderItem.createEl('span', {
 				cls: 'llmsider-folder-info',
 				text: ` (${supportedCount}/${fileCount} supported files)`
 			});
@@ -2704,7 +2789,7 @@ class FolderSelectionModal extends Modal {
 
 	private getAllFolders(): TFolder[] {
 		const folders: TFolder[] = [];
-		
+
 		const processFolder = (folder: TFolder) => {
 			folders.push(folder);
 			folder.children.forEach(child => {
@@ -2723,7 +2808,7 @@ class FolderSelectionModal extends Modal {
 
 	private getFileCountInFolder(folder: TFolder): number {
 		let count = 0;
-		
+
 		const processFolder = (currentFolder: TFolder) => {
 			currentFolder.children.forEach(child => {
 				if (child instanceof TFile) {
@@ -2733,14 +2818,14 @@ class FolderSelectionModal extends Modal {
 				}
 			});
 		};
-		
+
 		processFolder(folder);
 		return count;
 	}
 
 	private getSupportedFileCountInFolder(folder: TFolder): number {
 		let count = 0;
-		
+
 		const processFolder = (currentFolder: TFolder) => {
 			currentFolder.children.forEach(child => {
 				if (child instanceof TFile) {
@@ -2752,7 +2837,7 @@ class FolderSelectionModal extends Modal {
 				}
 			});
 		};
-		
+
 		processFolder(folder);
 		return count;
 	}

@@ -1,5 +1,4 @@
 import { App, Modal, Notice, TFile } from 'obsidian';
-import { Logger } from './../utils/logger';
 import { VectorDBManager } from '../vector/vectorDBManager';
 import { DocItem } from '../vector/types';
 import { ContextManager } from '../core/context-manager';
@@ -35,31 +34,14 @@ export class SmartSearchModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('llmsider-smart-search-modal');
 
-		// Hide the default close button and title area
-		const modalEl = (this as unknown).modalEl as HTMLElement;
+		// Hide modal title and header if found in parent
+		const modalEl = contentEl.parentElement?.parentElement;
 		if (modalEl) {
-			const closeButton = modalEl.querySelector('.modal-close-button');
-			if (closeButton) {
-				(closeButton as HTMLElement).style.display = 'none';
-			}
-
-			// Hide the modal title and header
-			const modalTitle = modalEl.querySelector('.modal-title');
-			if (modalTitle) {
-				(modalTitle as HTMLElement).style.display = 'none';
-			}
-
-			const modalHeader = modalEl.querySelector('.modal-header');
-			if (modalHeader) {
-				(modalHeader as HTMLElement).style.display = 'none';
-			}
+			modalEl.querySelector('.modal-title')?.addClass('llmsider-hidden');
+			modalEl.querySelector('.modal-header')?.addClass('llmsider-hidden');
+			modalEl.querySelector('.modal-close-button')?.addClass('llmsider-hidden');
 		}
 
-		// Remove any default styling from contentEl
-		contentEl.style.paddingTop = '0';
-		contentEl.style.borderTop = 'none';
-
-		// Search input wrapper (similar to quick chat input wrapper)
 		const searchWrapper = contentEl.createDiv({ cls: 'llmsider-search-wrapper' });
 
 		this.searchInput = searchWrapper.createEl('input', {
@@ -68,7 +50,6 @@ export class SmartSearchModal extends Modal {
 			cls: 'llmsider-search-input'
 		});
 
-		// Search icon button (similar to send button)
 		const searchIconBtn = searchWrapper.createEl('button', {
 			cls: 'llmsider-search-icon-btn'
 		});
@@ -76,20 +57,17 @@ export class SmartSearchModal extends Modal {
 
 		searchIconBtn.onclick = () => this.performSearch();
 
-		// Allow Enter key to search
 		this.searchInput.addEventListener('keypress', (e) => {
 			if (e.key === 'Enter') {
 				this.performSearch();
 			}
 		});
 
-		// Results container (below the search input)
 		this.resultsContainer = contentEl.createDiv({ cls: 'llmsider-search-results' });
-		this.resultsContainer.style.display = 'none'; // Initially hidden
+		this.resultsContainer.style.display = 'none';
 
-		// Button container (hidden initially, shown after search results)
 		const buttonContainer = contentEl.createDiv({ cls: 'llmsider-modal-buttons' });
-		buttonContainer.style.display = 'none'; // Hidden by default
+		buttonContainer.style.display = 'none';
 
 		const addBtn = buttonContainer.createEl('button', {
 			text: this.i18n.t('ui.addToContext') || '添加到对话',
@@ -109,10 +87,7 @@ export class SmartSearchModal extends Modal {
 			this.close();
 		};
 
-		// Store reference to button container for later use
-		(this as unknown).buttonContainer = buttonContainer;
-
-		// Focus on search input
+		(this as any).buttonContainer = buttonContainer;
 		this.searchInput.focus();
 	}
 
@@ -124,237 +99,128 @@ export class SmartSearchModal extends Modal {
 			return;
 		}
 
-		// Check if vector DB is initialized
 		if (!this.vectorDBManager.isSystemInitialized()) {
 			new Notice(this.i18n.t('ui.vectorDBNotInitialized') || '搜索增强功能未初始化，请先在设置中构建向量数据库');
 			return;
 		}
 
 		try {
-			// Show results container and loading state
 			this.resultsContainer.style.display = 'block';
 			this.resultsContainer.empty();
-			this.resultsContainer.createDiv({
-				cls: 'llmsider-search-loading',
-				text: this.i18n.t('ui.searching') || '搜索中...'
-			});
+			this.resultsContainer.createDiv({ text: this.i18n.t('ui.searching') || '正在搜索...', cls: 'search-loading' });
 
-			// Perform search
-			this.searchResults = await this.vectorDBManager.search(query, 20);
-
-			// Clear previous selections for new search results
-			this.selectedFiles.clear();
-
-			// Display results
-			this.displayResults();
+			const results = await this.vectorDBManager.search(query, 10);
+			this.searchResults = results;
+			this.displayResults(results);
 		} catch (error) {
-			Logger.error('Search error:', error);
-			new Notice(this.i18n.t('ui.searchError') || '搜索失败，请重试');
+			console.error('LLMSider: Vector search failed:', error);
+			new Notice(this.i18n.t('ui.searchError'));
 			this.resultsContainer.empty();
-			this.resultsContainer.style.display = 'none';
 		}
 	}
 
-	private displayResults() {
+	private displayResults(results: DocItem[]) {
 		this.resultsContainer.empty();
-		this.resultsContainer.style.display = 'block';
+		this.selectedFiles.clear();
 
-		if (this.searchResults.length === 0) {
-			this.resultsContainer.createDiv({
-				cls: 'llmsider-search-no-results',
-				text: this.i18n.t('ui.noSearchResults') || '未找到相关笔记'
-			});
-			// Hide buttons when no results
-			const buttonContainer = (this as unknown).buttonContainer as HTMLElement;
-			if (buttonContainer) {
-				buttonContainer.style.display = 'none';
-			}
+		if (results.length === 0) {
+			this.resultsContainer.createDiv({ text: this.i18n.t('ui.noSearchResults'), cls: 'no-results' });
+			if ((this as any).buttonContainer) (this as any).buttonContainer.style.display = 'none';
 			return;
 		}
 
-		// Show buttons when there are results
-		const buttonContainer = (this as unknown).buttonContainer as HTMLElement;
-		if (buttonContainer) {
-			buttonContainer.style.display = 'flex';
-		}
+		// Result header with Select All (Left) and Count (Right)
+		const headerRow = this.resultsContainer.createDiv({ cls: 'llmsider-search-results-header' });
 
+		const selectAllContainer = headerRow.createDiv({ cls: 'llmsider-search-select-all' });
+		const selectAllCheckbox = selectAllContainer.createEl('input', { type: 'checkbox' });
+		selectAllContainer.createSpan({ text: '全选' });
 
-		// Group results by file
-		const fileGroups = new Map<string, DocItem[]>();
-		this.searchResults.forEach(item => {
-			if (!fileGroups.has(item.filePath)) {
-				fileGroups.set(item.filePath, []);
-			}
-			fileGroups.get(item.filePath)!.push(item);
+		headerRow.createDiv({
+			cls: 'llmsider-search-count',
+			text: this.i18n.t('ui.searchResultCount', { count: results.length })
 		});
 
-		// Create Select All container
-		const selectAllContainer = this.resultsContainer.createDiv({ cls: 'llmsider-search-select-all-container' });
-		const selectAllCheckbox = selectAllContainer.createEl('input', {
-			type: 'checkbox',
-			cls: 'llmsider-search-checkbox'
-		});
-		selectAllContainer.createSpan({
-			cls: 'llmsider-search-select-all-text',
-			text: this.i18n.t('ui.selectAll') || '全选'
-		});
-
-		const checkboxes: HTMLInputElement[] = [];
+		const resultCheckboxes: HTMLInputElement[] = [];
 
 		selectAllCheckbox.onchange = () => {
-			const checked = selectAllCheckbox.checked;
-			checkboxes.forEach(cb => {
-				if (cb.checked !== checked) {
-					cb.checked = checked;
-					cb.dispatchEvent(new Event('change'));
-				}
+			const isChecked = selectAllCheckbox.checked;
+			resultCheckboxes.forEach(cb => {
+				cb.checked = isChecked;
+				cb.dispatchEvent(new Event('change'));
 			});
 		};
 
-		// Create result items for each file
-		fileGroups.forEach((items, filePath) => {
+		results.forEach((item, index) => {
 			const resultItem = this.resultsContainer.createDiv({ cls: 'llmsider-search-result-item' });
 
-			// Checkbox
 			const checkbox = resultItem.createEl('input', {
 				type: 'checkbox',
 				cls: 'llmsider-search-checkbox'
 			});
+			resultCheckboxes.push(checkbox);
 
-			checkbox.checked = this.selectedFiles.has(filePath);
-			checkboxes.push(checkbox);
+			resultItem.createDiv({
+				cls: 'llmsider-search-result-name',
+				text: item.filePath.split('/').pop() || item.filePath
+			});
 
-			checkbox.onchange = () => {
+			checkbox.onchange = (e) => {
+				const filePath = item.filePath;
 				if (checkbox.checked) {
 					this.selectedFiles.add(filePath);
 				} else {
 					this.selectedFiles.delete(filePath);
+					// If manually unchecking, and Select All was checked, uncheck it
 					if (selectAllCheckbox.checked) {
-						(selectAllCheckbox as HTMLInputElement).checked = false;
+						selectAllCheckbox.checked = false;
 					}
 				}
-
-				// If all are checked, check the select all box
-				if (checkbox.checked && checkboxes.every(cb => cb.checked)) {
-					(selectAllCheckbox as HTMLInputElement).checked = true;
-				}
+				this.updateButtonVisibility();
 			};
 
-			// File info container
-			const fileInfo = resultItem.createDiv({ cls: 'llmsider-search-file-info' });
-
-			// Open note icon button (positioned on the right)
-			const openBtn = resultItem.createEl('button', {
-				cls: 'llmsider-search-open-btn',
-				attr: {
-					'aria-label': this.i18n.t('ui.openNote') || '打开笔记',
-					'title': this.i18n.t('ui.openNote') || '打开笔记'
-				}
-			});
-			openBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-				<polyline points="15 3 21 3 21 9"></polyline>
-				<line x1="10" y1="14" x2="21" y2="3"></line>
-			</svg>`;
-
-			openBtn.onclick = async (e) => {
-				e.stopPropagation(); // Prevent triggering the item click
-				const file = this.app.vault.getAbstractFileByPath(filePath);
-				if (file && file instanceof TFile) {
-					await this.app.workspace.getLeaf(false).openFile(file);
-					this.close(); // Close the modal after opening the note
-				} else {
-					new Notice(this.i18n.t('ui.fileNotFound') || '文件未找到');
-				}
-			};
-
-			// Best matching chunk for score calculation
-			const bestMatch = items.reduce((best, current) =>
-				current.score > best.score ? current : best
-			);
-			const scorePercent = Math.round(bestMatch.score * 100);
-
-			// File path with score (header line)
-			const headerLine = fileInfo.createDiv({ cls: 'llmsider-search-header-line' });
-			headerLine.createSpan({
-				cls: 'llmsider-search-file-path',
-				text: filePath
-			});
-			headerLine.createSpan({
-				cls: 'llmsider-search-score',
-				text: `${this.i18n.t('ui.relevance') || '相关度'}: ${scorePercent}%`
-			});
-
-			// Preview
-			const preview = bestMatch.content.substring(0, 150);
-			fileInfo.createDiv({
-				cls: 'llmsider-search-preview',
-				text: preview + (bestMatch.content.length > 150 ? '...' : '')
-			});
-
-			// Make the whole item clickable to toggle checkbox
 			resultItem.onclick = (e) => {
 				if (e.target !== checkbox) {
 					checkbox.checked = !checkbox.checked;
-					checkbox.onchange!(new Event('change'));
+					checkbox.dispatchEvent(new Event('change'));
 				}
 			};
 		});
 
-		// Show count
-		const countText = this.i18n.t('ui.searchResultCount')?.replace('{count}', fileGroups.size.toString())
-			|| `找到 ${fileGroups.size} 个相关笔记`;
+		this.updateButtonVisibility();
+	}
 
-		this.resultsContainer.prepend(
-			this.resultsContainer.createDiv({
-				cls: 'llmsider-search-count',
-				text: countText
-			})
-		);
+	private updateButtonVisibility() {
+		const buttonContainer = (this as any).buttonContainer;
+		if (buttonContainer) {
+			buttonContainer.style.display = this.selectedFiles.size > 0 ? 'flex' : 'none';
+		}
 	}
 
 	private async addSelectedToContext() {
-		if (this.selectedFiles.size === 0) {
-			new Notice(this.i18n.t('ui.pleaseSelectNotes') || '请选择要添加的笔记');
-			return;
-		}
-
 		let successCount = 0;
-		let failCount = 0;
-
 		for (const filePath of this.selectedFiles) {
 			try {
 				const file = this.app.vault.getAbstractFileByPath(filePath);
 				if (file && file instanceof TFile) {
-					const result = await this.contextManager.addFileToContext(file);
+					const result = await this.contextManager.addFileToContext(file, undefined, undefined, 'search');
 					if (result.success) {
 						successCount++;
 					} else {
-						failCount++;
+						new Notice(this.i18n.t('ui.failedToAddNotes', { count: 1 }));
 					}
-				} else {
-					failCount++;
 				}
 			} catch (error) {
-				Logger.error('Error adding file to context:', error);
-				failCount++;
+				console.error('LLMSider: Failed to add file to context:', error);
 			}
 		}
 
-		// Show result notice
 		if (successCount > 0) {
-			const message = this.i18n.t('ui.addedNotesToContext')?.replace('{count}', successCount.toString())
-				|| `已添加 ${successCount} 个笔记到对话`;
-			new Notice(message);
-
-			// Call completion callback to update UI
-			this.onComplete();
+			new Notice(this.i18n.t('ui.addedNotesToContext', { count: successCount }));
 		}
 
-		if (failCount > 0) {
-			const message = this.i18n.t('ui.failedToAddNotes')?.replace('{count}', failCount.toString())
-				|| `${failCount} 个笔记添加失败`;
-			new Notice(message);
+		if (this.onComplete) {
+			this.onComplete();
 		}
 	}
 

@@ -4,6 +4,7 @@ import { FileParser } from '../utils/file-parser';
 import { TokenManager } from '../utils/token-manager';
 import { MCPManager } from '../mcp/mcp-manager';
 import type { I18nManager } from '../i18n/i18n-manager';
+import LLMSiderPlugin from '../main';
 
 /**
  * Extract video ID from various YouTube URL formats
@@ -12,7 +13,7 @@ function extractVideoId(url: string | undefined): string | null {
 	if (!url || typeof url !== 'string' || url.trim() === '') {
 		return null;
 	}
-	
+
 	const patterns = [
 		/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})(?:[?&#]|$)/,
 		/^([a-zA-Z0-9_-]{11})$/ // Direct video ID
@@ -31,9 +32,9 @@ function extractVideoId(url: string | undefined): string | null {
 /**
  * Parse XML subtitle format to extract text segments
  */
-function parseSubtitleXml(xmlContent: string): Array<{text: string; start?: number; duration?: number}> {
-	const segments: Array<{text: string; start?: number; duration?: number}> = [];
-	
+function parseSubtitleXml(xmlContent: string): Array<{ text: string; start?: number; duration?: number }> {
+	const segments: Array<{ text: string; start?: number; duration?: number }> = [];
+
 	const textPattern = /<text[^>]*start="([^"]*)"[^>]*dur="([^"]*)"[^>]*>(.*?)<\/text>/g;
 	let match;
 
@@ -71,6 +72,7 @@ export interface NoteContext {
 	content: string;
 	filePath?: string; // Add file path to track the file for live content updates
 	type?: 'markdown' | 'document' | 'spreadsheet' | 'presentation' | 'text' | 'image' | 'other';
+	source?: 'manual' | 'search' | 'folder'; // Track how the file was added for grouping in UI
 	metadata?: {
 		originalLength?: number;
 		truncated?: boolean;
@@ -86,22 +88,24 @@ export interface NoteContext {
 }
 
 export interface SelectedTextContext {
-    text: string;
-    preview: string;
-    rawText?: string;
-    filePath?: string;
-    fileName?: string;
+	text: string;
+	preview: string;
+	rawText?: string;
+	filePath?: string;
+	fileName?: string;
 }
 
 export class ContextManager {
 	private app: App;
 	private currentNoteContext: NoteContext[] = [];
 	private selectedTextContexts: SelectedTextContext[] = []; // 改为数组支持多个选中文本
+	private plugin: LLMSiderPlugin | null = null;
 	private mcpManager: MCPManager | null = null;
 	private i18n: I18nManager | null = null;
 
-	constructor(app: App, mcpManager?: MCPManager, i18n?: I18nManager) {
+	constructor(app: App, plugin?: LLMSiderPlugin, mcpManager?: MCPManager, i18n?: I18nManager) {
 		this.app = app;
+		this.plugin = plugin || null;
 		this.mcpManager = mcpManager || null;
 		this.i18n = i18n || null;
 	}
@@ -156,23 +160,23 @@ export class ContextManager {
 	async includeCurrentNote(): Promise<{ success: boolean; message: string; note?: NoteContext }> {
 		// Try multiple methods to get the active file
 		let activeFile: TFile | null = null;
-		
+
 		// Method 1: Try to get from active markdown view
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView && activeView.file) {
 			activeFile = activeView.file;
 		}
-		
+
 		// Method 2: Try to get from workspace active file
 		if (!activeFile) {
 			activeFile = this.app.workspace.getActiveFile();
 		}
-		
+
 		// Method 3: Try to get from active leaf
 		if (!activeFile) {
 			const activeLeaf = this.app.workspace.getLeaf();
-			if (activeLeaf && activeLeaf.view && (activeLeaf.view as unknown).file) {
-				activeFile = (activeLeaf.view as unknown).file;
+			if (activeLeaf && activeLeaf.view && (activeLeaf.view as any).file) {
+				activeFile = (activeLeaf.view as any).file;
 			}
 		}
 
@@ -206,10 +210,10 @@ export class ContextManager {
 		const trimmedText = selectedText.trim();
 		if (selectedText && trimmedText) {
 			// Create preview (first 50 characters)
-			const preview = trimmedText.length > 50 
-				? trimmedText.substring(0, 50) + '...' 
+			const preview = trimmedText.length > 50
+				? trimmedText.substring(0, 50) + '...'
 				: trimmedText;
-			
+
 			const context: SelectedTextContext = {
 				text: trimmedText,
 				preview: preview,
@@ -219,13 +223,13 @@ export class ContextManager {
 			};
 
 			this.selectedTextContexts.push(context);
-			
+
 			Logger.debug('Added selected text to context:', {
 				length: selectedText.length,
 				preview: preview,
 				totalSelections: this.selectedTextContexts.length
 			});
-			
+
 			return {
 				success: true,
 				message: `Added ${selectedText.length} characters of selected text to context`,
@@ -252,12 +256,12 @@ export class ContextManager {
 		}
 
 		const trimmedText = text.trim();
-		
+
 		// Create preview (use title if provided, otherwise first 50 characters)
-		const preview = title || (trimmedText.length > 50 
-			? trimmedText.substring(0, 50) + '...' 
+		const preview = title || (trimmedText.length > 50
+			? trimmedText.substring(0, 50) + '...'
 			: trimmedText);
-		
+
 		const context: SelectedTextContext = {
 			text: trimmedText,
 			preview: preview,
@@ -270,7 +274,7 @@ export class ContextManager {
 		}
 
 		this.selectedTextContexts.push(context);
-		
+
 		Logger.debug('Added specific text to context:', {
 			length: trimmedText.length,
 			preview: preview,
@@ -278,10 +282,10 @@ export class ContextManager {
 			file: sourceFile?.path,
 			totalSelections: this.selectedTextContexts.length
 		});
-		
+
 		return {
 			success: true,
-			message: title 
+			message: title
 				? `Added ${title} (${trimmedText.length} characters) to context`
 				: `Added ${trimmedText.length} characters to context`,
 			context: context
@@ -294,10 +298,10 @@ export class ContextManager {
 	async includeDirectory(folder: TFolder): Promise<{ success: boolean; message: string; filesAdded: number }> {
 		try {
 			Logger.debug('Starting directory inclusion:', folder.path);
-			
+
 			const files = this.getAllFilesInFolder(folder);
 			const supportedFiles = files.filter(file => FileParser.isSupportedFile(file.name));
-			
+
 			if (supportedFiles.length === 0) {
 				return {
 					success: false,
@@ -305,18 +309,18 @@ export class ContextManager {
 					filesAdded: 0
 				};
 			}
-			
+
 			let addedCount = 0;
 			const errors: string[] = [];
-			
+
 			// Process files in batches to avoid overwhelming the UI
 			const batchSize = 5;
 			for (let i = 0; i < supportedFiles.length; i += batchSize) {
 				const batch = supportedFiles.slice(i, i + batchSize);
-				
+
 				await Promise.all(batch.map(async (file) => {
 					try {
-						const result = await this.addFileToContext(file);
+						const result = await this.addFileToContext(file, undefined, undefined, 'folder');
 						if (result.success) {
 							addedCount++;
 						} else {
@@ -326,19 +330,19 @@ export class ContextManager {
 						errors.push(`${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
 					}
 				}));
-				
+
 				// Small delay between batches to prevent UI freezing
 				if (i + batchSize < supportedFiles.length) {
 					await new Promise(resolve => setTimeout(resolve, 100));
 				}
 			}
-			
+
 			let message = `Added ${addedCount} files from directory "${folder.name}"`;
 			if (errors.length > 0) {
 				message += ` (${errors.length} files failed to load)`;
 				Logger.warn('Directory inclusion errors:', errors);
 			}
-			
+
 			Logger.debug('Directory inclusion completed:', {
 				folder: folder.path,
 				totalFiles: files.length,
@@ -346,13 +350,13 @@ export class ContextManager {
 				addedCount,
 				errors: errors.length
 			});
-			
+
 			return {
 				success: addedCount > 0,
 				message,
 				filesAdded: addedCount
 			};
-			
+
 		} catch (error) {
 			Logger.error('Failed to include directory:', error);
 			return {
@@ -368,7 +372,7 @@ export class ContextManager {
 	 */
 	private getAllFilesInFolder(folder: TFolder): TFile[] {
 		const files: TFile[] = [];
-		
+
 		const processFolder = (currentFolder: TFolder) => {
 			currentFolder.children.forEach(child => {
 				if (child instanceof TFile) {
@@ -378,16 +382,16 @@ export class ContextManager {
 				}
 			});
 		};
-		
+
 		processFolder(folder);
 		return files;
 	}
 
 	/**
 	 * Add file to context by TFile
-	 * @param providerName - Optional provider name to determine if local parsing is needed
+	 * @param source - Optional source ('manual', 'search', 'folder')
 	 */
-	async addFileToContext(file: TFile, modelName?: string, providerName?: string): Promise<{ success: boolean; message: string; note?: NoteContext }> {
+	async addFileToContext(file: TFile, modelName?: string, providerName?: string, source: 'manual' | 'search' | 'folder' = 'manual'): Promise<{ success: boolean; message: string; note?: NoteContext }> {
 		try {
 			let content: string;
 			let type: 'markdown' | 'document' | 'spreadsheet' | 'presentation' | 'text' | 'image' | 'other' = 'other';
@@ -398,7 +402,7 @@ export class ContextManager {
 				try {
 					// Read file as ArrayBuffer for extract-text
 					const arrayBuffer = await this.app.vault.readBinary(file);
-					
+
 					// Check if it's an image file
 					const ext = file.name.toLowerCase().split('.').pop() || '';
 					if (FileParser.isImageFile(ext)) {
@@ -410,10 +414,10 @@ export class ContextManager {
 								message: `GIF files are not supported by AI models. Please use JPEG, PNG, or WebP instead.`
 							};
 						}
-						
+
 						// Handle image file
 						Logger.debug('Processing image file:', file.name);
-						
+
 						const imageData = FileParser.extractImageData(arrayBuffer, file.name);
 						content = `[IMAGE: ${file.name}] - This image will be sent to the AI for visual understanding.`;
 						type = 'image';
@@ -428,7 +432,7 @@ export class ContextManager {
 							},
 							buffer: arrayBuffer
 						};
-						
+
 						Logger.debug('Image data prepared:', {
 							filename: file.name,
 							mediaType: imageData.mediaType,
@@ -438,21 +442,21 @@ export class ContextManager {
 					} else if (file.extension === 'md') {
 						// Handle markdown files with image extraction
 						Logger.debug('Processing markdown file:', file.name);
-						
+
 						const textContent = await this.app.vault.read(file);
 						content = textContent;
 						type = 'markdown';
-						
+
 						// Extract images from markdown content
 						const extractedImages = await this.extractImagesFromMarkdown(textContent, file);
-						
+
 						metadata = {
 							originalLength: textContent.length,
 							truncated: false,
 							fileType: 'markdown',
 							extractedImages: extractedImages
 						};
-						
+
 						Logger.debug('EXTRACTED MARKDOWN CONTENT AND IMAGES:', {
 							filename: file.name,
 							contentLength: textContent.length,
@@ -460,96 +464,96 @@ export class ContextManager {
 							imageFiles: extractedImages.map((img: ExtractedImage) => img.filename),
 							extractedImages: extractedImages
 						});
-				} else {
-					// For non-image files, decide between local parsing and base64 upload
-					// free-deepseek and free-qwen: upload base64 directly (no local parsing)
-					// Other providers: parse locally for better token efficiency
-					
-					Logger.debug('File processing decision:', {
-						filename: file.name,
-						providerName: providerName,
-						hasProvider: !!providerName,
-						includesFreeDeepseek: providerName?.includes('free-deepseek'),
-						includesFreeQwen: providerName?.includes('free-qwen')
-					});
-					
-					const shouldUploadDirectly = providerName && 
-						(providerName.includes('free-deepseek') || providerName.includes('free-qwen'));
-					
-					if (shouldUploadDirectly) {
-						// Upload as base64 for providers that support file upload
-						const uint8Array = new Uint8Array(arrayBuffer);
-						let binaryString = '';
-						
-						// Process in chunks to avoid stack overflow
-						const chunkSize = 8192; // 8KB chunks
-						for (let i = 0; i < uint8Array.length; i += chunkSize) {
-							const chunk = uint8Array.slice(i, i + chunkSize);
-							binaryString += String.fromCharCode.apply(null, Array.from(chunk));
-						}
-						
-						const base64Data = btoa(binaryString);
-						
-					// Determine media type based on extension
-					const ext = file.name.toLowerCase().split('.').pop() || '';
-					let mediaType = 'application/octet-stream';
-					if (ext === 'pdf') mediaType = 'application/pdf';
-					else if (ext === 'doc') mediaType = 'application/msword';
-					else if (ext === 'docx') mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-					else if (ext === 'xls') mediaType = 'application/vnd.ms-excel';
-					else if (ext === 'xlsx') mediaType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-					else if (ext === 'ppt') mediaType = 'application/vnd.ms-powerpoint';
-					else if (ext === 'pptx') mediaType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';						content = `[FILE: ${file.name}]`;
-						type = 'image'; // Use 'image' type to trigger multimodal handling
-						metadata = {
-							originalLength: arrayBuffer.byteLength,
-							truncated: false,
-							fileType: 'document',
-							isImage: false,
-							imageData: {
-								base64: base64Data,
-								mediaType: mediaType
-							},
-							buffer: arrayBuffer
-						};
-						
-						Logger.debug('File prepared for direct upload:', {
-							provider: providerName,
-							filename: file.name,
-							size: arrayBuffer.byteLength,
-							base64Length: base64Data.length,
-							mediaType: mediaType
-						});
 					} else {
-						// Parse locally for other providers
-						const characterLimit = modelName 
-							? TokenManager.getModelCharacterLimit(modelName)
-							: TokenManager.tokenLimitToCharacterLimit(TokenManager.MAX_CONTEXT_TOKENS);
-						
-						const result = await FileParser.extractTextWithLimit(arrayBuffer, file.name, characterLimit);
-						
-						content = result.text;
-						type = result.fileType as any;
-						metadata = {
-							originalLength: result.originalLength,
-							truncated: result.truncated,
-							fileType: result.fileType
-						};
-						
-						Logger.debug('File parsed locally:', {
-							provider: providerName || 'default',
+						// For non-image files, decide between local parsing and base64 upload
+						// free-deepseek and free-qwen: upload base64 directly (no local parsing)
+						// Other providers: parse locally for better token efficiency
+
+						Logger.debug('File processing decision:', {
 							filename: file.name,
-							fileType: result.fileType,
-							originalLength: result.originalLength,
-							extractedLength: content.length,
-							truncated: result.truncated,
-							characterLimit: characterLimit
+							providerName: providerName,
+							hasProvider: !!providerName,
+							includesFreeDeepseek: providerName?.includes('free-deepseek'),
+							includesFreeQwen: providerName?.includes('free-qwen')
 						});
+
+						const shouldUploadDirectly = providerName &&
+							(providerName.includes('free-deepseek') || providerName.includes('free-qwen'));
+
+						if (shouldUploadDirectly) {
+							// Upload as base64 for providers that support file upload
+							const uint8Array = new Uint8Array(arrayBuffer);
+							let binaryString = '';
+
+							// Process in chunks to avoid stack overflow
+							const chunkSize = 8192; // 8KB chunks
+							for (let i = 0; i < uint8Array.length; i += chunkSize) {
+								const chunk = uint8Array.slice(i, i + chunkSize);
+								binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+							}
+
+							const base64Data = btoa(binaryString);
+
+							// Determine media type based on extension
+							const ext = file.name.toLowerCase().split('.').pop() || '';
+							let mediaType = 'application/octet-stream';
+							if (ext === 'pdf') mediaType = 'application/pdf';
+							else if (ext === 'doc') mediaType = 'application/msword';
+							else if (ext === 'docx') mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+							else if (ext === 'xls') mediaType = 'application/vnd.ms-excel';
+							else if (ext === 'xlsx') mediaType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+							else if (ext === 'ppt') mediaType = 'application/vnd.ms-powerpoint';
+							else if (ext === 'pptx') mediaType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'; content = `[FILE: ${file.name}]`;
+							type = 'image'; // Use 'image' type to trigger multimodal handling
+							metadata = {
+								originalLength: arrayBuffer.byteLength,
+								truncated: false,
+								fileType: 'document',
+								isImage: false,
+								imageData: {
+									base64: base64Data,
+									mediaType: mediaType
+								},
+								buffer: arrayBuffer
+							};
+
+							Logger.debug('File prepared for direct upload:', {
+								provider: providerName,
+								filename: file.name,
+								size: arrayBuffer.byteLength,
+								base64Length: base64Data.length,
+								mediaType: mediaType
+							});
+						} else {
+							// Parse locally for other providers
+							const characterLimit = modelName
+								? TokenManager.getModelCharacterLimit(modelName)
+								: TokenManager.tokenLimitToCharacterLimit(TokenManager.MAX_CONTEXT_TOKENS);
+
+							const result = await FileParser.extractTextWithLimit(arrayBuffer, file.name, characterLimit);
+
+							content = result.text;
+							type = result.fileType as any;
+							metadata = {
+								originalLength: result.originalLength,
+								truncated: result.truncated,
+								fileType: result.fileType
+							};
+
+							Logger.debug('File parsed locally:', {
+								provider: providerName || 'default',
+								filename: file.name,
+								fileType: result.fileType,
+								originalLength: result.originalLength,
+								extractedLength: content.length,
+								truncated: result.truncated,
+								characterLimit: characterLimit
+							});
+						}
 					}
-				}
-			} catch (extractError) {
+				} catch (extractError) {
 					Logger.warn('Failed to extract text from file, trying as text file:', extractError);
-					
+
 					// Fallback: try to read as regular text file
 					try {
 						content = await this.app.vault.read(file);
@@ -575,32 +579,33 @@ export class ContextManager {
 					};
 				}
 			}
-			
-		// Check if this file is already in context
-		const existingIndex = this.currentNoteContext.findIndex(ctx => ctx.name === file.name);
-		
-		const noteContext: NoteContext = {
-			name: file.name,  // Use file.name to include extension for proper MIME type detection
-			content: content,
-			filePath: file.path, // Store file path for live content updates
-			type: type,
-			metadata: metadata
-		};			if (existingIndex >= 0) {
+
+			// Check if this file is already in context
+			const existingIndex = this.currentNoteContext.findIndex(ctx => ctx.name === file.name);
+
+			const noteContext: NoteContext = {
+				name: file.name,  // Use file.name to include extension for proper MIME type detection
+				content: content,
+				filePath: file.path, // Store file path for live content updates
+				type: type,
+				metadata: metadata,
+				source: source
+			}; if (existingIndex >= 0) {
 				// Update existing file content
 				this.currentNoteContext[existingIndex] = noteContext;
-				
+
 				const typeLabel = this.getFileTypeLabel(type);
 				return {
 					success: true,
-					message: `Updated ${typeLabel} "${file.basename}" in context${metadata.truncated ? ' (content truncated)' : ''}`,
+					message: `Updated ${typeLabel} "${file.basename}" in context${(metadata as any).truncated ? ' (content truncated)' : ''}`,
 					note: noteContext
 				};
 			} else {
 				// Add new file to context
 				this.currentNoteContext.push(noteContext);
-				
+
 				const typeLabel = this.getFileTypeLabel(type);
-				const truncatedText = metadata.truncated ? (this.i18n?.t('ui.contentTruncated') || ' (content truncated)') : '';
+				const truncatedText = (metadata as any).truncated ? (this.i18n?.t('ui.contentTruncated') || ' (content truncated)') : '';
 				const message = this.i18n?.t('ui.addedToContext', { type: typeLabel, name: file.basename }) || `Added ${typeLabel} "${file.basename}" to context`;
 				return {
 					success: true,
@@ -624,7 +629,7 @@ export class ContextManager {
 	 */
 	private getFileTypeLabel(type: string): string {
 		const t = this.i18n?.t.bind(this.i18n);
-		
+
 		if (!t) {
 			// Fallback to English if i18n is not available
 			switch (type) {
@@ -637,7 +642,7 @@ export class ContextManager {
 				default: return 'File';
 			}
 		}
-		
+
 		switch (type) {
 			case 'document': return t('common.contextPrompt.document') || 'Document';
 			case 'spreadsheet': return t('common.contextPrompt.spreadsheet') || 'Spreadsheet';
@@ -660,6 +665,13 @@ export class ContextManager {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Remove all notes from context by source ('search' or 'folder')
+	 */
+	removeNoteContextBySource(source: 'search' | 'folder'): void {
+		this.currentNoteContext = this.currentNoteContext.filter(ctx => ctx.source !== source);
 	}
 
 	/**
@@ -715,7 +727,7 @@ export class ContextManager {
 			const tokenFormatted = TokenManager.formatTokenUsage(tokenCount);
 
 			const warningIcon = warningLevel === 'critical' ? '🔴' :
-							   warningLevel === 'warning' ? '🟡' : '🟢';
+				warningLevel === 'warning' ? '🟡' : '🟢';
 
 			return `${baseSummary} (${warningIcon} ${tokenFormatted})`;
 		}
@@ -731,14 +743,14 @@ export class ContextManager {
 	 */
 	async refreshReferencedFilesContent(modelName?: string, providerName?: string): Promise<void> {
 		Logger.debug('Refreshing referenced files content...', { provider: providerName });
-		
+
 		const refreshPromises = this.currentNoteContext.map(async (noteContext) => {
 			// Only refresh if we have a file path stored
 			if (!noteContext.filePath) {
 				Logger.debug('No file path for context:', noteContext.name);
 				return;
 			}
-			
+
 			try {
 				// Get the file by path
 				const abstractFile = this.app.vault.getAbstractFileByPath(noteContext.filePath);
@@ -747,17 +759,17 @@ export class ContextManager {
 					return;
 				}
 				const file = abstractFile;
-				
+
 				// Re-read the file content
 				let content: string;
 				let metadata: unknown = noteContext.metadata || {};
-				
+
 				// Handle different file types
 				if (noteContext.metadata?.isImage) {
 					// For images, re-read the binary data
 					const arrayBuffer = await this.app.vault.readBinary(file);
 					const imageData = FileParser.extractImageData(arrayBuffer, file.name);
-					
+
 					content = `[IMAGE: ${file.name}] - This image will be sent to the AI for visual understanding.`;
 					metadata = {
 						...metadata,
@@ -767,16 +779,16 @@ export class ContextManager {
 						},
 						buffer: arrayBuffer
 					};
-					
+
 					Logger.debug('Refreshed image:', file.name);
 				} else if (file.extension === 'md') {
 					// Handle markdown files with image extraction
 					const textContent = await this.app.vault.read(file);
 					content = textContent;
-					
+
 					// Re-extract images from markdown content
 					const extractedImages = await this.extractImagesFromMarkdown(textContent, file);
-					
+
 					metadata = {
 						...metadata,
 						originalLength: textContent.length,
@@ -784,7 +796,7 @@ export class ContextManager {
 						fileType: 'markdown',
 						extractedImages: extractedImages
 					};
-					
+
 					Logger.debug('Refreshed markdown with images:', {
 						filename: file.name,
 						contentLength: textContent.length,
@@ -794,7 +806,7 @@ export class ContextManager {
 					// Handle other supported files (Office docs, PDFs, etc.)
 					const arrayBuffer = await this.app.vault.readBinary(file);
 					const ext = file.name.toLowerCase().split('.').pop() || '';
-					
+
 					// Check if this is an image file type
 					if (FileParser.isImageFile(ext)) {
 						// Shouldn't reach here as images are handled above, but just in case
@@ -812,9 +824,9 @@ export class ContextManager {
 						Logger.debug('Refreshed image:', file.name);
 					} else {
 						// Decide between base64 upload and local parsing based on provider
-						const shouldUploadDirectly = providerName && 
+						const shouldUploadDirectly = providerName &&
 							(providerName.includes('free-deepseek') || providerName.includes('free-qwen'));
-						
+
 						if (shouldUploadDirectly) {
 							// For free-deepseek/free-qwen: keep base64 for provider upload
 							const uint8Array = new Uint8Array(arrayBuffer);
@@ -825,14 +837,14 @@ export class ContextManager {
 								binaryString += String.fromCharCode.apply(null, Array.from(chunk));
 							}
 							const base64Data = btoa(binaryString);
-							
+
 							// Determine media type
 							let mediaType = 'application/octet-stream';
 							if (ext === 'pdf') mediaType = 'application/pdf';
 							else if (ext === 'doc' || ext === 'docx') mediaType = 'application/msword';
 							else if (ext === 'xls' || ext === 'xlsx') mediaType = 'application/vnd.ms-excel';
 							else if (ext === 'ppt' || ext === 'pptx') mediaType = 'application/vnd.ms-powerpoint';
-							
+
 							content = `[FILE: ${file.name}]`;
 							metadata = {
 								originalLength: arrayBuffer.byteLength,
@@ -845,7 +857,7 @@ export class ContextManager {
 								},
 								buffer: arrayBuffer
 							};
-							
+
 							Logger.debug('Refreshed document (as base64 for direct upload):', {
 								provider: providerName,
 								filename: file.name,
@@ -854,12 +866,12 @@ export class ContextManager {
 							});
 						} else {
 							// For other providers: parse locally
-							const characterLimit = modelName 
+							const characterLimit = modelName
 								? TokenManager.getModelCharacterLimit(modelName)
 								: TokenManager.tokenLimitToCharacterLimit(TokenManager.MAX_CONTEXT_TOKENS);
-							
+
 							const result = await FileParser.extractTextWithLimit(arrayBuffer, file.name, characterLimit);
-							
+
 							content = result.text;
 							metadata = {
 								...metadata,
@@ -867,7 +879,7 @@ export class ContextManager {
 								truncated: result.truncated,
 								fileType: result.fileType
 							};
-							
+
 							Logger.debug('Refreshed document (parsed locally):', {
 								provider: providerName || 'default',
 								filename: file.name,
@@ -882,17 +894,17 @@ export class ContextManager {
 					content = await this.app.vault.read(file);
 					Logger.debug('Refreshed text file:', file.name);
 				}
-				
+
 				// Update the note context with fresh content
 				noteContext.content = content;
 				noteContext.metadata = metadata;
-				
+
 				Logger.debug('Successfully refreshed:', noteContext.name);
 			} catch (error) {
 				Logger.error('Failed to refresh file:', noteContext.filePath, error);
 			}
 		});
-		
+
 		await Promise.all(refreshPromises);
 		Logger.debug('All referenced files refreshed');
 	}
@@ -900,9 +912,9 @@ export class ContextManager {
 	/**
 	 * Get image data from context for multimodal messages
 	 */
-	getImageDataForMultimodal(): Array<{filename: string; base64: string; mediaType: string}> {
-		const imageData: Array<{filename: string; base64: string; mediaType: string}> = [];
-		
+	getImageDataForMultimodal(): Array<{ filename: string; base64: string; mediaType: string }> {
+		const imageData: Array<{ filename: string; base64: string; mediaType: string }> = [];
+
 		this.currentNoteContext.forEach((noteContext) => {
 			// Direct image files
 			if (noteContext.metadata?.isImage && noteContext.metadata?.imageData) {
@@ -917,7 +929,7 @@ export class ContextManager {
 					base64Length: noteContext.metadata.imageData.base64.length
 				});
 			}
-			
+
 			// Images extracted from markdown files
 			if (noteContext.metadata?.extractedImages && noteContext.metadata.extractedImages.length > 0) {
 				noteContext.metadata.extractedImages.forEach((extractedImage: ExtractedImage) => {
@@ -935,7 +947,7 @@ export class ContextManager {
 				});
 			}
 		});
-		
+
 		return imageData;
 	}
 
@@ -944,7 +956,7 @@ export class ContextManager {
 	 */
 	clearImageData(): void {
 		Logger.info('Clearing image data from context manager');
-		
+
 		// Remove direct image files
 		this.currentNoteContext = this.currentNoteContext.filter((noteContext) => {
 			if (noteContext.metadata?.isImage) {
@@ -953,7 +965,7 @@ export class ContextManager {
 			}
 			return true;
 		});
-		
+
 		// Remove extracted images from markdown files
 		this.currentNoteContext.forEach((noteContext) => {
 			if (noteContext.metadata?.extractedImages) {
@@ -964,7 +976,7 @@ export class ContextManager {
 				}
 			}
 		});
-		
+
 		Logger.info('Image data cleared from context');
 	}
 
@@ -972,15 +984,30 @@ export class ContextManager {
 	 * Get file data for providers that handle parsing remotely (e.g., Free Qwen)
 	 * Returns file metadata and buffer without local text extraction
 	 */
-	async getFileDataForRemoteParsing(): Promise<Array<{filename: string, buffer: ArrayBuffer, mimeType: string}>> {
-		const fileData: Array<{filename: string, buffer: ArrayBuffer, mimeType: string}> = [];
-		
+	async getFileDataForRemoteParsing(): Promise<Array<{ filename: string, buffer: ArrayBuffer, mimeType: string }>> {
+		const fileData: Array<{ filename: string, buffer: ArrayBuffer, mimeType: string }> = [];
+
 		for (const ctx of this.currentNoteContext) {
-			if (ctx.metadata?.buffer) {
+			let buffer = ctx.metadata?.buffer as ArrayBuffer | undefined;
+
+			// If buffer is missing but we have a filePath, read it from the vault
+			if (!buffer && ctx.filePath) {
+				try {
+					const file = this.app.vault.getAbstractFileByPath(ctx.filePath);
+					if (file instanceof TFile) {
+						buffer = await this.app.vault.readBinary(file);
+						Logger.debug(`Read binary data for remote parsing: ${ctx.name}`);
+					}
+				} catch (error) {
+					Logger.error(`Failed to read binary data for ${ctx.name}:`, error);
+				}
+			}
+
+			if (buffer) {
 				// 获取文件的 MIME 类型
 				const ext = ctx.name.toLowerCase().split('.').pop() || '';
 				let mimeType = 'application/octet-stream';
-				
+
 				// 根据扩展名确定 MIME 类型
 				if (ext === 'pdf') mimeType = 'application/pdf';
 				else if (ext === 'docx') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -988,26 +1015,29 @@ export class ContextManager {
 				else if (ext === 'pptx') mimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 				else if (ext === 'txt') mimeType = 'text/plain';
 				else if (ext === 'md') mimeType = 'text/markdown';
-				
+
 				fileData.push({
 					filename: ctx.name,
-					buffer: ctx.metadata.buffer as ArrayBuffer,
+					buffer: buffer,
 					mimeType: mimeType
 				});
 			}
 		}
-		
+
 		return fileData;
 	}
 
 	async generateContextPrompt(maxTokens?: number, modelName?: string, skipFileContent = false, providerName?: string): Promise<string> {
 		// Refresh referenced files to get the latest content
 		await this.refreshReferencedFilesContent(modelName, providerName);
-		
+
 		let contextPrompt = '';
 		const t = this.i18n?.t.bind(this.i18n);
 
-		// Add note context (skip images as they will be in user message)
+		// Group notes by directory
+		const directoryGroups: Map<string, NoteContext[]> = new Map();
+		const rootNotes: NoteContext[] = [];
+
 		this.currentNoteContext.forEach((noteContext) => {
 			// Skip image files as they will be included in multimodal user message
 			if (noteContext.metadata?.isImage) {
@@ -1015,47 +1045,74 @@ export class ContextManager {
 				return;
 			}
 
-			const fileTypeLabel = this.getFileTypeLabel(noteContext.type || 'other');
-
-			let contextHeader = `\n\n${t?.('common.contextPrompt.contextLabel') || 'CONTEXT'} - ${fileTypeLabel} "${noteContext.name}":`;
-
-			// Add metadata for extracted files
-			if (noteContext.metadata && noteContext.metadata.fileType && noteContext.metadata.fileType !== 'markdown') {
-				const meta = noteContext.metadata;
-				const fileInfoLabel = t?.('common.contextPrompt.fileInfo') || 'File Info';
-				const typeLabel = t?.('common.contextPrompt.fileType') || 'Type';
-				const lengthLabel = t?.('common.contextPrompt.originalLength') || 'Original length';
-				const truncatedLabel = t?.('common.contextPrompt.contentTruncated') || 'Content truncated for context';
-				
-				contextHeader += `\n[${fileInfoLabel}: ${typeLabel}: ${meta.fileType}, ${lengthLabel}: ${meta.originalLength} chars${meta.truncated ? ', ' + truncatedLabel : ''}]`;
+			if (noteContext.filePath && noteContext.filePath.includes('/')) {
+				const parts = noteContext.filePath.split('/');
+				const directory = parts.slice(0, -1).join('/');
+				if (!directoryGroups.has(directory)) {
+					directoryGroups.set(directory, []);
+				}
+				directoryGroups.get(directory)!.push(noteContext);
+			} else {
+				rootNotes.push(noteContext);
 			}
+		});
 
-			// Add information about extracted images if any
-			if (noteContext.metadata?.extractedImages && noteContext.metadata.extractedImages.length > 0) {
-				const imageList = noteContext.metadata.extractedImages.map((img: ExtractedImage) => img.filename).join(', ');
-				const imagesLabel = t?.('common.contextPrompt.imagesInMarkdown') || 'Images in this markdown';
-				const analysisNote = t?.('common.contextPrompt.imagesIncludedForAnalysis') || 'These images are included in the user message. Please analyze both the text content above and these images together. Do not ignore either unless explicitly instructed.';
-				
-				contextHeader += `\n[${imagesLabel}: ${imageList} - ${analysisNote}]`;
-			}
+		// Add directory structure summary
+		if (directoryGroups.size > 0) {
+			contextPrompt += `\n\n### Directory Structure Summary\nThe following files are organized by directory:`;
+			directoryGroups.forEach((notes, directory) => {
+				const fileList = notes.map(n => n.name).join(', ');
+				contextPrompt += `\n- **${directory}/**: ${fileList}`;
+			});
+			contextPrompt += `\n\n---`;
+		}
 
-			contextPrompt += `${contextHeader}\n---\n${noteContext.content}\n---`;
+		// Add grouped note content
+		directoryGroups.forEach((notes, directory) => {
+			contextPrompt += `\n\n## Directory: ${directory}/`;
+			notes.forEach((noteContext) => {
+				const fileTypeLabel = this.getFileTypeLabel(noteContext.type || 'other');
+				let contextHeader = `\n### ${fileTypeLabel} "${noteContext.name}" (in ${directory}/):`;
 
-			Logger.debug('Including file context in system prompt:', {
-				noteName: noteContext.name,
-				type: noteContext.type,
-				contentLength: noteContext.content.length,
-				metadata: noteContext.metadata,
-				extractedImages: noteContext.metadata?.extractedImages?.length || 0
+				if (noteContext.metadata && noteContext.metadata.fileType && noteContext.metadata.fileType !== 'markdown') {
+					const meta = noteContext.metadata;
+					contextHeader += `\n[File Info: Type: ${meta.fileType}, Original length: ${meta.originalLength} chars${meta.truncated ? ', Content truncated' : ''}]`;
+				}
+
+				if (noteContext.metadata?.extractedImages && noteContext.metadata.extractedImages.length > 0) {
+					const imageList = noteContext.metadata.extractedImages.map((img: ExtractedImage) => img.filename).join(', ');
+					contextHeader += `\n[Images in this markdown: ${imageList}]`;
+				}
+
+				contextPrompt += `${contextHeader}\n---\n${noteContext.content}\n---`;
 			});
 		});
+
+		// Add root notes
+		if (rootNotes.length > 0) {
+			if (directoryGroups.size > 0) {
+				contextPrompt += `\n\n## Files in Root Directory`;
+			}
+			rootNotes.forEach((noteContext) => {
+				const fileTypeLabel = this.getFileTypeLabel(noteContext.type || 'other');
+				let contextHeader = `\n\n${t?.('common.contextPrompt.contextLabel') || 'CONTEXT'} - ${fileTypeLabel} "${noteContext.name}":`;
+
+				if (noteContext.metadata && noteContext.metadata.fileType && noteContext.metadata.fileType !== 'markdown') {
+					const meta = noteContext.metadata;
+					contextHeader += `\n[File Info: Type: ${meta.fileType}, Original length: ${meta.originalLength} chars${meta.truncated ? ', Content truncated' : ''}]`;
+				}
+
+				contextPrompt += `${contextHeader}\n---\n${noteContext.content}\n---`;
+			});
+		}
+
 
 		// Add selected text contexts
 		this.selectedTextContexts.forEach((selectedTextContext, index) => {
 			const contextLabel = t?.('common.contextPrompt.contextLabel') || 'CONTEXT';
 			const selectedTextLabel = t?.('common.contextPrompt.selectedText') || 'Selected Text';
 			const selectedTextMultiple = t?.('common.contextPrompt.selectedTextMultiple')?.replace('{index}', String(index + 1)) || `Selected Text ${index + 1}`;
-			
+
 			const label = this.selectedTextContexts.length > 1 ? selectedTextMultiple : selectedTextLabel;
 			contextPrompt += `\n\n${contextLabel} - ${label}:\n---\n${selectedTextContext.text}\n---`;
 
@@ -1079,7 +1136,8 @@ export class ContextManager {
 				const truncatedPrompt = TokenManager.truncateContextPrompt(contextPrompt, maxTokens);
 
 				// Show notice to user
-				new Notice(this.plugin.getI18nManager()?.t('notifications.context.filesToolarge') || 'Context files are too large and have been truncated to fit token limits.', 4000);
+				const i18n = this.i18n || this.plugin?.getI18nManager();
+				new Notice(i18n?.t('notifications.context.filesToolarge') || 'Context files are too large and have been truncated to fit token limits.', 4000);
 
 				return truncatedPrompt;
 			}
@@ -1100,14 +1158,14 @@ export class ContextManager {
 	 */
 	private async extractImagesFromMarkdown(markdownContent: string, sourceFile: TFile): Promise<ExtractedImage[]> {
 		const extractedImages: ExtractedImage[] = [];
-		let skippedImages: {path: string, reason: string}[] = [];
-		
+		let skippedImages: { path: string, reason: string }[] = [];
+
 		Logger.debug('Starting image extraction from markdown:', {
 			sourceFile: sourceFile.path,
 			contentLength: markdownContent.length,
 			hasImages: /!\[.*?\]\(.*?\)|!\[\[.*?\]\]|<img.*?src\s*=/.test(markdownContent)
 		});
-		
+
 		// Regular expressions for different markdown image syntaxes
 		const imagePatterns = [
 			// Standard markdown: ![alt](path) or ![alt](path "title")
@@ -1117,18 +1175,18 @@ export class ContextManager {
 			// HTML img tags: <img src="path" ... >
 			/<img[^>]+src\s*=\s*["']([^"']+)["'][^>]*>/gi
 		];
-		
+
 		for (const pattern of imagePatterns) {
 			let match;
 			while ((match = pattern.exec(markdownContent)) !== null) {
 				let imagePath = '';
-				
+
 				Logger.debug('Found image pattern match:', {
 					pattern: pattern.source,
 					match: match[0],
 					groups: match
 				});
-				
+
 				// Extract path based on pattern type
 				if (pattern.source.includes('!\\[\\[')) {
 					// Wiki-style link: ![[image.png]]
@@ -1140,9 +1198,9 @@ export class ContextManager {
 					// Standard markdown: ![alt](path)
 					imagePath = match[2];
 				}
-				
+
 				Logger.debug('Extracted image path:', imagePath);
-				
+
 				// Handle different types of image sources
 				if (imagePath.match(/^(https?:|data:|ftp:)/i)) {
 					// External URLs - download and process them
@@ -1159,19 +1217,19 @@ export class ContextManager {
 							});
 						} else {
 							// Image conversion failed or unsupported
-							skippedImages.push({path: imagePath, reason: 'Conversion failed or unsupported format'});
+							skippedImages.push({ path: imagePath, reason: 'Conversion failed or unsupported format' });
 						}
 					} catch (error) {
 						Logger.warn('Failed to download external image:', imagePath, error);
-						skippedImages.push({path: imagePath, reason: 'Download error'});
+						skippedImages.push({ path: imagePath, reason: 'Download error' });
 					}
 					continue;
 				} else if (imagePath.match(/^mailto:/i)) {
 					Logger.debug('Skipping mailto URL:', imagePath);
-					skippedImages.push({path: imagePath, reason: 'mailto URL'});
+					skippedImages.push({ path: imagePath, reason: 'mailto URL' });
 					continue;
 				}
-				
+
 				try {
 					// Resolve the image file
 					const imageFile = await this.resolveImageFile(imagePath, sourceFile);
@@ -1179,30 +1237,30 @@ export class ContextManager {
 						Logger.warn('Could not resolve image file:', imagePath);
 						continue;
 					}
-					
+
 					// Check if it's actually an image file
 					const ext = imageFile.extension.toLowerCase();
 					if (!FileParser.isImageFile(ext)) {
 						Logger.warn('File is not an image:', imageFile.path);
-						skippedImages.push({path: imagePath, reason: 'Not an image file'});
+						skippedImages.push({ path: imagePath, reason: 'Not an image file' });
 						continue;
 					}
-					
+
 					// Filter out GIF files - not supported by LLMs and causes errors
 					if (ext === 'gif') {
 						Logger.debug('Filtering out GIF file (not supported by LLMs):', imageFile.path);
-						skippedImages.push({path: imagePath, reason: 'GIF format not supported by AI models'});
+						skippedImages.push({ path: imagePath, reason: 'GIF format not supported by AI models' });
 						continue;
 					}
-					
+
 					// Check if the image format is supported by LLMs
 					if (!this.isSupportedLocalImageFormat(ext)) {
 						Logger.debug('Converting unsupported local image format:', ext, imageFile.path);
-						
+
 						// Try to convert the image
 						const arrayBuffer = await this.app.vault.readBinary(imageFile);
 						const convertedData = await this.convertImageToSupportedFormat(arrayBuffer, imageFile.name, `image/${ext}`);
-						
+
 						if (convertedData) {
 							extractedImages.push({
 								filename: convertedData.filename,
@@ -1210,7 +1268,7 @@ export class ContextManager {
 								mediaType: convertedData.mediaType,
 								relativePath: imageFile.path
 							});
-							
+
 							Logger.debug('Successfully converted local image:', {
 								originalPath: imageFile.path,
 								originalFormat: ext,
@@ -1218,22 +1276,22 @@ export class ContextManager {
 								newFormat: convertedData.mediaType
 							});
 						} else {
-							skippedImages.push({path: imagePath, reason: `Conversion failed: .${ext}`});
+							skippedImages.push({ path: imagePath, reason: `Conversion failed: .${ext}` });
 						}
 						continue;
 					}
-					
+
 					// Avoid duplicates
 					if (extractedImages.some(img => img.relativePath === imageFile.path)) {
 						continue;
 					}
-					
+
 					// Read and encode the image
 					const arrayBuffer = await this.app.vault.readBinary(imageFile);
-					
+
 					// Use FileParser but validate the media type
 					const imageData = FileParser.extractImageData(arrayBuffer, imageFile.name);
-					
+
 					// For supported local formats, ensure correct media type
 					const expectedMediaType = this.getMediaTypeFromExtension(ext);
 					if (expectedMediaType && imageData.mediaType !== expectedMediaType) {
@@ -1244,14 +1302,14 @@ export class ContextManager {
 							extension: ext
 						});
 					}
-					
+
 					extractedImages.push({
 						filename: imageFile.name,
 						base64: imageData.base64Data,
 						mediaType: expectedMediaType || imageData.mediaType,
 						relativePath: imageFile.path
 					});
-					
+
 					Logger.debug('Extracted image from markdown:', {
 						sourceFile: sourceFile.path,
 						imagePath: imagePath,
@@ -1259,13 +1317,13 @@ export class ContextManager {
 						filename: imageFile.name,
 						mediaType: imageData.mediaType
 					});
-					
+
 				} catch (error) {
 					Logger.warn('Failed to extract image:', imagePath, error);
 				}
 			}
 		}
-		
+
 		// Log summary with special mention of GIF files
 		const gifFiles = skippedImages.filter(img => img.reason.includes('GIF format'));
 		Logger.debug('Image extraction completed:', {
@@ -1276,13 +1334,13 @@ export class ContextManager {
 			extractedImages: extractedImages.map(img => img.filename),
 			skippedImages: skippedImages
 		});
-		
+
 		// Add user notification if GIF files were skipped
 		if (gifFiles.length > 0) {
-			Logger.warn('Note: Skipped GIF files as they are not supported by AI models:', 
+			Logger.warn('Note: Skipped GIF files as they are not supported by AI models:',
 				gifFiles.map(gif => gif.path));
 		}
-		
+
 		return extractedImages;
 	}
 
@@ -1292,7 +1350,7 @@ export class ContextManager {
 	private async resolveImageFile(imagePath: string, sourceFile: TFile): Promise<TFile | null> {
 		// Remove any leading/trailing whitespace and quotes
 		imagePath = imagePath.trim().replace(/^["']|["']$/g, '');
-		
+
 		// Try different resolution strategies
 		const strategies = [
 			// 1. Direct path from vault root
@@ -1300,7 +1358,7 @@ export class ContextManager {
 				const abstractFile = this.app.vault.getAbstractFileByPath(imagePath);
 				return (abstractFile instanceof TFile) ? abstractFile : null;
 			},
-			
+
 			// 2. Relative to source file's directory
 			() => {
 				const sourceDir = sourceFile.parent?.path || '';
@@ -1308,14 +1366,14 @@ export class ContextManager {
 				const abstractFile = this.app.vault.getAbstractFileByPath(fullPath);
 				return (abstractFile instanceof TFile) ? abstractFile : null;
 			},
-			
+
 			// 3. Search by filename only (for wiki-style links)
 			() => {
 				const filename = imagePath.split('/').pop() || imagePath;
 				const files = this.app.vault.getFiles();
 				return files.find(file => file.name === filename || file.basename === filename) || null;
 			},
-			
+
 			// 4. Obsidian's built-in link resolution
 			() => {
 				const linkCache = this.app.metadataCache.getFileCache(sourceFile);
@@ -1328,7 +1386,7 @@ export class ContextManager {
 				return null;
 			}
 		];
-		
+
 		for (const strategy of strategies) {
 			try {
 				const file = strategy();
@@ -1339,7 +1397,7 @@ export class ContextManager {
 				// Continue to next strategy
 			}
 		}
-		
+
 		return null;
 	}
 
@@ -1349,7 +1407,7 @@ export class ContextManager {
 	private async downloadExternalImage(imageUrl: string): Promise<ExtractedImage | null> {
 		try {
 			Logger.debug('Downloading external image:', imageUrl);
-			
+
 			// Use requestUrl to download the image
 			const response = await requestUrl({
 				url: imageUrl,
@@ -1358,35 +1416,35 @@ export class ContextManager {
 			if (response.status !== 200) {
 				throw new Error(`HTTP ${response.status}`);
 			}
-			
+
 			// Check content type - reject GIFs early
 			const contentType = response.headers['content-type'] || '';
 			if (!contentType.startsWith('image/')) {
 				throw new Error(`Not an image: ${contentType}`);
 			}
-			
+
 			// Special handling for GIF - don't try to convert, just skip
 			if (contentType.toLowerCase() === 'image/gif') {
 				Logger.debug('Skipping GIF format from external URL (not supported by AI models):', imageUrl);
 				return null;
 			}
-			
+
 			// Get the image data as array buffer
-			const arrayBuffer = await response.arrayBuffer();
-			
+			const arrayBuffer = await (response as any).arrayBuffer();
+
 			// Extract filename from URL
 			const url = new URL(imageUrl);
 			let filename = url.pathname.split('/').pop() || 'image';
-			
+
 			// Remove query parameters from filename
 			filename = filename.split('?')[0];
-			
+
 			// If no extension, try to guess from content type
 			if (!filename.includes('.')) {
 				const extension = this.getExtensionFromContentType(contentType);
 				filename = `${filename}.${extension}`;
 			}
-			
+
 			// Check if we need to convert the image format
 			if (!this.isSupportedImageFormat(contentType)) {
 				Logger.debug('Converting unsupported format to PNG:', contentType, imageUrl);
@@ -1403,10 +1461,10 @@ export class ContextManager {
 					return null;
 				}
 			}
-			
+
 			// For supported formats, use FileParser but validate the media type
 			const imageData = FileParser.extractImageData(arrayBuffer, filename);
-			
+
 			// Double-check media type matches what we expect
 			const expectedMediaType = this.getMediaTypeFromContentType(contentType);
 			if (expectedMediaType && imageData.mediaType !== expectedMediaType) {
@@ -1417,14 +1475,14 @@ export class ContextManager {
 					contentType
 				});
 			}
-			
+
 			return {
 				filename: filename,
 				base64: imageData.base64Data,
 				mediaType: expectedMediaType || imageData.mediaType,
 				relativePath: imageUrl // Use original URL as relative path for external images
 			};
-			
+
 		} catch (error) {
 			Logger.error('Failed to download external image:', imageUrl, error);
 			return null;
@@ -1435,59 +1493,59 @@ export class ContextManager {
 	 * Convert image to supported format using Canvas API
 	 */
 	private async convertImageToSupportedFormat(
-		arrayBuffer: ArrayBuffer, 
-		originalFilename: string, 
+		arrayBuffer: ArrayBuffer,
+		originalFilename: string,
 		originalContentType: string
-	): Promise<{filename: string, base64Data: string, mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'} | null> {
+	): Promise<{ filename: string, base64Data: string, mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' } | null> {
 		try {
 			Logger.debug('Starting image conversion:', {
 				originalFilename,
 				originalContentType,
 				bufferSize: arrayBuffer.byteLength
 			});
-			
+
 			// Create a Blob from the ArrayBuffer
 			const blob = new Blob([arrayBuffer], { type: originalContentType });
 			const imageUrl = URL.createObjectURL(blob);
-			
+
 			try {
 				// Create an Image element
 				const img = new Image();
-				
+
 				// Wait for image to load
 				await new Promise<void>((resolve, reject) => {
 					img.onload = () => resolve();
 					img.onerror = () => reject(new Error('Failed to load image'));
 					img.src = imageUrl;
 				});
-				
+
 				// Create canvas and draw the image
 				const canvas = document.createElement('canvas');
 				const ctx = canvas.getContext('2d');
-				
+
 				if (!ctx) {
 					throw new Error('Could not get canvas context');
 				}
-				
+
 				// Set canvas size to image size
 				canvas.width = img.width;
 				canvas.height = img.height;
-				
+
 				// Draw the image on canvas
 				ctx.drawImage(img, 0, 0);
-				
+
 				// Convert to PNG (widely supported)
 				const targetFormat = 'image/png';
 				const quality = 0.9; // High quality
-				
+
 				// Get the converted image as base64
 				const dataUrl = canvas.toDataURL(targetFormat, quality);
 				const base64Data = dataUrl.split(',')[1]; // Remove data:image/png;base64, prefix
-				
+
 				// Generate new filename
 				const baseName = originalFilename.replace(/\.[^/.]+$/, ''); // Remove extension
 				const newFilename = `${baseName}_converted.png`;
-				
+
 				Logger.debug('Image conversion successful:', {
 					originalFormat: originalContentType,
 					newFormat: targetFormat,
@@ -1496,19 +1554,19 @@ export class ContextManager {
 					dimensions: `${img.width}x${img.height}`,
 					newFilename
 				});
-				
+
 				// Return with correct PNG media type
 				return {
 					filename: newFilename,
 					base64Data: base64Data,
 					mediaType: 'image/png' // Ensure this matches the actual converted format
 				};
-				
+
 			} finally {
 				// Clean up the object URL
 				URL.revokeObjectURL(imageUrl);
 			}
-			
+
 		} catch (error) {
 			Logger.error('Image conversion failed:', error);
 			return null;
@@ -1517,12 +1575,12 @@ export class ContextManager {
 	private isSupportedImageFormat(contentType: string): boolean {
 		const supportedFormats = [
 			'image/jpeg',
-			'image/jpg', 
+			'image/jpg',
 			'image/png',
 			'image/webp'
 			// Note: GIF, BMP, SVG are not supported by most LLM APIs
 		];
-		
+
 		return supportedFormats.includes(contentType.toLowerCase());
 	}
 
@@ -1532,12 +1590,12 @@ export class ContextManager {
 	private isSupportedLocalImageFormat(extension: string): boolean {
 		const supportedExtensions = [
 			'jpg',
-			'jpeg', 
+			'jpeg',
 			'png',
 			'webp'
 			// Note: gif, bmp, svg are not supported by most LLM APIs
 		];
-		
+
 		return supportedExtensions.includes(extension.toLowerCase());
 	}
 
@@ -1607,32 +1665,32 @@ export class ContextManager {
 	 */
 	async debugImageExtraction(filePath: string): Promise<void> {
 		Logger.debug('DEBUG: Manual image extraction test for:', filePath);
-		
+
 		const abstractFile = this.app.vault.getAbstractFileByPath(filePath);
 		if (!abstractFile || !(abstractFile instanceof TFile)) {
 			Logger.error('DEBUG: File not found:', filePath);
 			return;
 		}
 		const file = abstractFile;
-		
+
 		if (file.extension !== 'md') {
 			Logger.error('DEBUG: Not a markdown file:', filePath);
 			return;
 		}
-		
+
 		const content = await this.app.vault.read(file);
 		Logger.debug('DEBUG: Markdown content preview:', content.substring(0, 500));
-		
+
 		const extractedImages = await this.extractImagesFromMarkdown(content, file);
 		Logger.debug('DEBUG: Extraction result:', {
 			imageCount: extractedImages.length,
 			images: extractedImages
 		});
-		
+
 		// Test adding to context
 		const result = await this.addFileToContext(file);
 		Logger.debug('DEBUG: Add to context result:', result);
-		
+
 		// Test multimodal data
 		const imageData = this.getImageDataForMultimodal();
 		Logger.debug('DEBUG: Multimodal data:', imageData);
@@ -1644,7 +1702,7 @@ export class ContextManager {
 	private async getSelectedText(): Promise<string> {
 		// Try multiple methods to get selected text
 		let selectedText = '';
-		
+
 		// Method 1: Try from active markdown view editor
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView) {
@@ -1654,7 +1712,7 @@ export class ContextManager {
 				Logger.debug('From MarkdownView editor:', selectedText.length);
 			}
 		}
-		
+
 		// Method 2: Try from PDF viewer in the active view
 		if (!selectedText) {
 			const activeLeaf = this.app.workspace.getLeaf();
@@ -1682,7 +1740,7 @@ export class ContextManager {
 				}
 			}
 		}
-		
+
 		// Method 3: Try from epub reader iframes in the active view
 		if (!selectedText) {
 			const activeLeaf = this.app.workspace.getLeaf();
@@ -1696,7 +1754,7 @@ export class ContextManager {
 							try {
 								const iframeWindow = (iframe as HTMLIFrameElement).contentWindow;
 								const iframeDoc = (iframe as HTMLIFrameElement).contentDocument || iframeWindow?.document;
-								
+
 								if (iframeDoc) {
 									const iframeSelection = iframeDoc.getSelection();
 									if (iframeSelection && iframeSelection.toString().trim()) {
@@ -1716,7 +1774,7 @@ export class ContextManager {
 				}
 			}
 		}
-		
+
 		// Method 3: Try from global window selection (for any text)
 		if (!selectedText) {
 			const selection = window.getSelection();
@@ -1725,7 +1783,7 @@ export class ContextManager {
 				Logger.debug('From window selection:', selectedText.length);
 			}
 		}
-		
+
 		// Method 4: Try from document selection
 		if (!selectedText) {
 			if (document.getSelection) {
@@ -1736,14 +1794,14 @@ export class ContextManager {
 				}
 			}
 		}
-		
+
 		Logger.debug('Final selected text:', {
 			length: selectedText.length,
 			preview: selectedText.substring(0, 100) + (selectedText.length > 100 ? '...' : ''),
 			activeView: !!activeView,
 			hasEditor: !!(activeView && (activeView as unknown).editor)
 		});
-		
+
 		return selectedText;
 	}
 
@@ -1753,11 +1811,11 @@ export class ContextManager {
 	private async getYouTubeVideoData(videoId: string): Promise<string | null> {
 		try {
 			Logger.debug(`[ContextManager] Starting YouTube video fetch for ID: ${videoId}`);
-			
+
 			// Fetch video page to extract API key
 			const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}`;
 			Logger.debug(`[ContextManager] Fetching video page: ${videoPageUrl}`);
-			
+
 			const pageResponse = await requestUrl({
 				url: videoPageUrl,
 				method: 'GET',
@@ -1774,10 +1832,10 @@ export class ContextManager {
 			}
 
 			Logger.debug(`[ContextManager] Video page fetched successfully, size: ${pageResponse.text.length} bytes`);
-			
+
 			const html = pageResponse.text;
 			const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":\s*"([a-zA-Z0-9_-]+)"/);
-			
+
 			if (!apiKeyMatch) {
 				Logger.error('[ContextManager] Could not extract YouTube API key from page');
 				throw new Error('Could not extract YouTube API key');
@@ -1785,11 +1843,11 @@ export class ContextManager {
 
 			const apiKey = apiKeyMatch[1];
 			Logger.debug(`[ContextManager] Extracted API key: ${apiKey.substring(0, 10)}...`);
-			
+
 			// Call InnerTube API
 			const innertubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
 			Logger.debug(`[ContextManager] Calling InnerTube API: ${innertubeUrl}`);
-			
+
 			const innertubeResponse = await requestUrl({
 				url: innertubeUrl,
 				method: 'POST',
@@ -1815,9 +1873,9 @@ export class ContextManager {
 			}
 
 			Logger.debug('[ContextManager] InnerTube API response received');
-			
+
 			const innertubeData = innertubeResponse.json;
-			
+
 			// Extract video metadata
 			const videoDetails = innertubeData.videoDetails;
 			Logger.debug('[ContextManager] Video metadata:', {
@@ -1828,7 +1886,7 @@ export class ContextManager {
 				channelId: videoDetails?.channelId,
 				shortDescription: videoDetails?.shortDescription?.substring(0, 100) + '...'
 			});
-			
+
 			// Extract microformat metadata (additional info)
 			const microformat = innertubeData.microformat?.playerMicroformatRenderer;
 			Logger.debug('[ContextManager] Microformat metadata:', {
@@ -1837,29 +1895,29 @@ export class ContextManager {
 				category: microformat?.category,
 				isUnlisted: microformat?.isUnlisted
 			});
-			
+
 			const captionsData = innertubeData.captions?.playerCaptionsTracklistRenderer;
-			
+
 			if (!captionsData || !captionsData.captionTracks || captionsData.captionTracks.length === 0) {
 				Logger.warn('[ContextManager] No captions available for this video');
-				
+
 				// Return metadata without transcript
 				return this.formatVideoMetadata(videoDetails, microformat, null);
 			}
 
 			const captionTracks = captionsData.captionTracks;
-			Logger.debug(`[ContextManager] Found ${captionTracks.length} caption tracks:`, 
+			Logger.debug(`[ContextManager] Found ${captionTracks.length} caption tracks:`,
 				captionTracks.map((t: any) => ({
 					lang: t.languageCode,
 					name: t.name?.simpleText || t.name?.runs?.[0]?.text,
 					kind: t.kind
 				}))
 			);
-			
+
 			// Select caption track: prioritize Chinese > English > first available
-			let selectedTrack = captionTracks.find((track: any) => 
+			let selectedTrack = captionTracks.find((track: any) =>
 				track.languageCode.startsWith('zh')
-			) || captionTracks.find((track: any) => 
+			) || captionTracks.find((track: any) =>
 				track.languageCode === 'en' || track.languageCode.startsWith('en')
 			) || captionTracks[0];
 
@@ -1868,16 +1926,16 @@ export class ContextManager {
 				return this.formatVideoMetadata(videoDetails, microformat, null);
 			}
 
-			const trackName = selectedTrack.name?.simpleText || 
-						 selectedTrack.name?.runs?.[0]?.text || 
-						 selectedTrack.languageCode;
+			const trackName = selectedTrack.name?.simpleText ||
+				selectedTrack.name?.runs?.[0]?.text ||
+				selectedTrack.languageCode;
 			const isAutoGenerated = selectedTrack.kind === 'asr';
-			
+
 			Logger.debug(`[ContextManager] Selected caption: ${trackName} [${selectedTrack.languageCode}] ${isAutoGenerated ? '(auto-generated)' : '(manual)'}`);
 
 			let captionUrl = selectedTrack.baseUrl.replace(/&fmt=srv3/g, '');
 			Logger.debug(`[ContextManager] Fetching caption from: ${captionUrl.substring(0, 100)}...`);
-			
+
 			// Download caption data
 			const captionResponse = await requestUrl({
 				url: captionUrl,
@@ -1894,7 +1952,7 @@ export class ContextManager {
 			}
 
 			Logger.debug(`[ContextManager] Caption XML fetched, size: ${captionResponse.text.length} bytes`);
-			
+
 			const captionXml = captionResponse.text;
 			const segments = parseSubtitleXml(captionXml);
 
@@ -1905,10 +1963,10 @@ export class ContextManager {
 
 			// Format as plain text
 			const transcript = segments.map(s => s.text).join(' ');
-			
+
 			Logger.debug(`[ContextManager] Transcript processed: ${segments.length} segments, ${transcript.length} characters`);
 			Logger.debug(`[ContextManager] First 200 chars: ${transcript.substring(0, 200)}...`);
-			
+
 			// Return formatted metadata + transcript
 			return this.formatVideoMetadata(videoDetails, microformat, {
 				language: selectedTrack.languageCode,
@@ -1933,43 +1991,43 @@ export class ContextManager {
 		captionData: { language: string; languageName: string; isAutoGenerated: boolean; segmentCount: number; transcript: string } | null
 	): string {
 		const sections: string[] = [];
-		
+
 		// Video basic info
 		sections.push('## 视频信息');
 		sections.push('');
-		
+
 		if (videoDetails?.title) {
 			sections.push(`**标题**: ${videoDetails.title}`);
 		}
-		
+
 		if (videoDetails?.author) {
 			sections.push(`**作者**: ${videoDetails.author}`);
 		}
-		
+
 		if (videoDetails?.lengthSeconds) {
 			const duration = this.formatDuration(parseInt(videoDetails.lengthSeconds));
 			sections.push(`**时长**: ${duration}`);
 		}
-		
+
 		if (videoDetails?.viewCount) {
 			const views = parseInt(videoDetails.viewCount).toLocaleString();
 			sections.push(`**观看次数**: ${views}`);
 		}
-		
+
 		if (microformat?.publishDate) {
 			sections.push(`**发布日期**: ${microformat.publishDate}`);
 		}
-		
+
 		if (microformat?.category) {
 			sections.push(`**分类**: ${microformat.category}`);
 		}
-		
+
 		if (videoDetails?.shortDescription) {
 			sections.push('');
 			sections.push('**简介**:');
 			sections.push(videoDetails.shortDescription);
 		}
-		
+
 		// Caption info
 		if (captionData) {
 			sections.push('');
@@ -1987,7 +2045,7 @@ export class ContextManager {
 			sections.push('');
 			sections.push('**注**: 该视频没有可用的字幕');
 		}
-		
+
 		return sections.join('\n');
 	}
 
@@ -1998,7 +2056,7 @@ export class ContextManager {
 		const hours = Math.floor(seconds / 3600);
 		const minutes = Math.floor((seconds % 3600) / 60);
 		const secs = seconds % 60;
-		
+
 		if (hours > 0) {
 			return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 		} else {
@@ -2020,29 +2078,29 @@ export class ContextManager {
 		// 1. First check the active leaf (might be the chat view, but worth checking)
 		// 2. Then check recently active leaves
 		// 3. Finally check all leaves
-		
+
 		const workspaceLeaves: unknown[] = [];
 		this.app.workspace.iterateAllLeaves((leaf: unknown) => {
 			workspaceLeaves.push(leaf);
 		});
 
-	// Get the active leaf and recently active leaves for prioritization
-	const activeLeaf = this.app.workspace.getLeaf();
-	const recentLeaves = (this.app.workspace as unknown).recentlyActiveLeaves || [];		// Create a prioritized list: active leaf first, then recent leaves, then all others
+		// Get the active leaf and recently active leaves for prioritization
+		const activeLeaf = this.app.workspace.getLeaf();
+		const recentLeaves = (this.app.workspace as unknown).recentlyActiveLeaves || [];		// Create a prioritized list: active leaf first, then recent leaves, then all others
 		const prioritizedLeaves: unknown[] = [];
-		
+
 		// Add active leaf first
 		if (activeLeaf) {
 			prioritizedLeaves.push(activeLeaf);
 		}
-		
+
 		// Add recent leaves (excluding active leaf if already added)
 		for (const leaf of recentLeaves) {
 			if (leaf !== activeLeaf && !prioritizedLeaves.includes(leaf)) {
 				prioritizedLeaves.push(leaf);
 			}
 		}
-		
+
 		// Add remaining leaves
 		for (const leaf of workspaceLeaves) {
 			if (!prioritizedLeaves.includes(leaf)) {
@@ -2053,7 +2111,7 @@ export class ContextManager {
 		// Search through prioritized leaves for a webpage
 		for (const leaf of prioritizedLeaves) {
 			const view = leaf.view;
-			
+
 			// Method 1: Check if view has a frame property (iframe)
 			if (view?.frame && view.frame.src) {
 				const frameSrc = view.frame.src;
@@ -2061,7 +2119,7 @@ export class ContextManager {
 					url = frameSrc;
 					foundLeaf = leaf;
 					Logger.debug('Found URL:', url);
-					
+
 					// Try to access iframe content
 					try {
 						const iframeDoc = view.frame.contentDocument || view.frame.contentWindow?.document;
@@ -2085,7 +2143,7 @@ export class ContextManager {
 							url = iframeSrc;
 							foundLeaf = leaf;
 							Logger.debug('Found URL:', url);
-							
+
 							try {
 								const iframeEl = iframe as HTMLIFrameElement;
 								const iframeDoc = iframeEl.contentDocument || iframeEl.contentWindow?.document;
@@ -2098,7 +2156,7 @@ export class ContextManager {
 							break;
 						}
 					}
-					
+
 					if (url) break;
 				}
 			}
@@ -2125,7 +2183,7 @@ export class ContextManager {
 					break;
 				}
 			}
-			
+
 			if (url) break;
 		}
 
@@ -2144,30 +2202,30 @@ export class ContextManager {
 		const videoId = extractVideoId(url);
 		if (videoId) {
 			Logger.debug('[ContextManager] Detected YouTube video, fetching metadata and transcript...');
-			
+
 			const videoData = await this.getYouTubeVideoData(videoId);
-			
+
 			if (videoData) {
 				Logger.debug('[ContextManager] Successfully fetched YouTube video data');
-				
-				const preview = videoData.length > 100 
-					? videoData.substring(0, 100) + '...' 
+
+				const preview = videoData.length > 100
+					? videoData.substring(0, 100) + '...'
 					: videoData;
-				
+
 				const context: SelectedTextContext = {
 					text: `[YouTube视频: ${url}]\n\n${videoData}`,
 					preview: `YouTube: ${preview}`
 				};
 
 				this.selectedTextContexts.push(context);
-				
+
 				Logger.debug('[ContextManager] Added YouTube video data to context:', {
 					url: url,
 					contentLength: videoData.length,
 					preview: preview,
 					totalSelections: this.selectedTextContexts.length
 				});
-				
+
 				return {
 					success: true,
 					message: '',
@@ -2183,7 +2241,7 @@ export class ContextManager {
 
 		// If we couldn't get content directly due to CORS, use Obsidian's requestUrl API
 		if (!webContent && url) {
-			
+
 			try {
 				// Use Obsidian's requestUrl which can bypass CORS (same as web-content-tools.ts)
 				const { requestUrl } = require('obsidian');
@@ -2201,7 +2259,7 @@ export class ContextManager {
 					},
 					throw: false // Don't throw on HTTP errors, handle them manually
 				});
-				
+
 				if (response.status >= 200 && response.status < 300 && response.text) {
 					// Parse HTML and extract text
 					const parser = new DOMParser();
@@ -2211,12 +2269,12 @@ export class ContextManager {
 				}
 			} catch (fetchError) {
 				Logger.warn('Failed to fetch webpage content:', fetchError);
-				
+
 				// Fallback: Try to access iframe content one more time
 				if (foundLeaf) {
 					const view = foundLeaf.view;
 					let iframe: HTMLIFrameElement | null = null;
-					
+
 					// Find the iframe
 					if (view?.frame) {
 						iframe = view.frame;
@@ -2229,7 +2287,7 @@ export class ContextManager {
 							}
 						}
 					}
-					
+
 					if (iframe) {
 						try {
 							// Try contentWindow
@@ -2244,7 +2302,7 @@ export class ContextManager {
 									// contentWindow access failed
 								}
 							}
-							
+
 							// Try contentDocument
 							if (!webContent && iframe.contentDocument) {
 								try {
@@ -2260,21 +2318,21 @@ export class ContextManager {
 				}
 			}
 		}
-		
+
 		// If still no content after all attempts, provide URL only with better message
 		if (!webContent) {
 			Logger.warn('Unable to extract webpage content, adding URL reference');
-			
+
 			const contextText = `[Webpage: ${url}]\n\nNote: This webpage could not be automatically extracted due to security restrictions. The AI will be aware of this URL for context.`;
 			const preview = url;
-			
+
 			const context: SelectedTextContext = {
 				text: contextText,
 				preview: preview
 			};
 
 			this.selectedTextContexts.push(context);
-			
+
 			return {
 				success: true,
 				message: '',  // Will be formatted in input-handler with i18n
@@ -2284,24 +2342,24 @@ export class ContextManager {
 		}
 
 		// Create a context object with the webpage content
-		const preview = webContent.length > 100 
-			? webContent.substring(0, 100) + '...' 
+		const preview = webContent.length > 100
+			? webContent.substring(0, 100) + '...'
 			: webContent;
-		
+
 		const context: SelectedTextContext = {
 			text: `[Webpage: ${url}]\n\n${webContent.trim()}`,
 			preview: `${url}: ${preview}`
 		};
 
 		this.selectedTextContexts.push(context);
-		
+
 		Logger.debug('Added webpage content to context:', {
 			url: url,
 			contentLength: webContent.length,
 			preview: preview,
 			totalSelections: this.selectedTextContexts.length
 		});
-		
+
 		return {
 			success: true,
 			message: '',  // Will be formatted in input-handler with i18n
@@ -2327,7 +2385,7 @@ export class ContextManager {
 
 		// Extract text, preserving some structure
 		let text = body.innerText || body.textContent || '';
-		
+
 		// Clean up excessive whitespace
 		text = text.replace(/\n\s*\n\s*\n/g, '\n\n'); // Max 2 consecutive newlines
 		text = text.replace(/[ \t]+/g, ' '); // Normalize spaces
@@ -2416,18 +2474,18 @@ export class ContextManager {
 			// Try to get text content, removing extra whitespace
 			const textContent = epubPageElement.textContent || '';
 			pageContent = textContent.trim();
-			
+
 			if (!pageContent) {
 				return {
 					success: false,
 					message: this.i18n?.t('notifications.context.epubPageEmpty') || 'The epub page appears to be empty.'
 				};
 			}
-			
+
 			// Clean up excessive whitespace
 			pageContent = pageContent.replace(/\n\s*\n\s*\n/g, '\n\n'); // Max 2 consecutive newlines
 			pageContent = pageContent.replace(/[ \t]+/g, ' '); // Normalize spaces
-			
+
 		} catch (error) {
 			Logger.error('Error extracting epub page content:', error);
 			return {
@@ -2449,24 +2507,24 @@ export class ContextManager {
 		}
 
 		// Create preview (first 100 characters)
-		const preview = pageContent.length > 100 
-			? pageContent.substring(0, 100) + '...' 
+		const preview = pageContent.length > 100
+			? pageContent.substring(0, 100) + '...'
 			: pageContent;
-		
+
 		const context: SelectedTextContext = {
 			text: pageContent,
 			preview: `${bookTitle}: ${preview}`
 		};
 
 		this.selectedTextContexts.push(context);
-		
+
 		Logger.debug('Added epub page content to context:', {
 			bookTitle: bookTitle,
 			contentLength: pageContent.length,
 			preview: preview,
 			totalSelections: this.selectedTextContexts.length
 		});
-		
+
 		return {
 			success: true,
 			message: '',  // Will be formatted in input-handler with i18n
@@ -2480,7 +2538,7 @@ export class ContextManager {
 	 * Check if any context is available
 	 */
 	hasContext(): boolean {
-		return this.currentNoteContext.length > 0 || 
-			   this.selectedTextContexts.length > 0;
+		return this.currentNoteContext.length > 0 ||
+			this.selectedTextContexts.length > 0;
 	}
 }

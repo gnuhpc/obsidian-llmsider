@@ -518,10 +518,16 @@ select.llmsider-model-select-dropdown option {
 
 .llmsider-context-container {
     display: flex !important;
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap !important;
     gap: 6px !important;
-    align-items: center !important;
+    align-items: flex-start !important;
     overflow: hidden !important;
+}
+
+.llmsider-context-group-expanded {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
 }
 
 .llmsider-context-tag {
@@ -566,7 +572,7 @@ select.llmsider-model-select-dropdown option {
 }
 
 .llmsider-context-remove:hover {
-    background: rgba(255,255,255,0.12) !important;
+    background: rgba(255, 255, 255, 0.12) !important;
     opacity: 1 !important;
     transform: scale(1.05) !important;
 }
@@ -579,6 +585,25 @@ select.llmsider-model-select-dropdown option {
 
 .llmsider-context-remove:active {
     transform: scale(0.9);
+}
+
+.llmsider-context-group {
+    background: var(--interactive-accent) !important;
+    border: 1px dashed rgba(255, 255, 255, 0.4) !important;
+}
+
+.llmsider-context-collapse {
+    background: var(--background-modifier-border) !important;
+    color: var(--text-muted) !important;
+    cursor: pointer;
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+    border-radius: 10px !important;
+}
+
+.llmsider-context-collapse:hover {
+    background: var(--background-modifier-border-hover) !important;
+    color: var(--text-normal) !important;
 }
 
 /* Suggested Files (Pending State) */
@@ -833,8 +858,13 @@ select.llmsider-model-select-dropdown option {
 }
 
 @keyframes mcp-spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 .mcp-tool-progress {
@@ -1043,13 +1073,7 @@ select.llmsider-model-select-dropdown option {
     border-top: 1px solid var(--background-modifier-border);
 }
 
-.llmsider-input-hint {
-	text-align: right;
-	font-size: 12px;
-	color: var(--text-muted);
-	margin: 0;
-	white-space: nowrap;
-}
+
 
 .llmsider-button-row-left {
     display: flex;
@@ -1057,7 +1081,7 @@ select.llmsider-model-select-dropdown option {
     gap: 2px;
 }
 
-.llmsider-button-row-left > * {
+.llmsider-button-row-left>* {
     margin: 0 !important;
 }
 
@@ -1157,7 +1181,8 @@ select.llmsider-model-select-dropdown option {
 }
 
 .llmsider-input-btn:focus {
-    outline: none; /* 移除focus时的蓝色外框 */
+    outline: none;
+    /* 移除focus时的蓝色外框 */
 }
 
 .llmsider-input-btn svg {
@@ -1247,10 +1272,14 @@ select.llmsider-model-select-dropdown option {
 }
 
 @keyframes caret-blink {
-    0%, 50% {
+
+    0%,
+    50% {
         caret-color: var(--interactive-accent);
     }
-    51%, 100% {
+
+    51%,
+    100% {
         caret-color: transparent;
     }
 }
@@ -1821,6 +1850,7 @@ select.llmsider-model-select-dropdown option {
     from {
         opacity: 0;
     }
+
     to {
         opacity: 1;
     }
@@ -1831,6 +1861,7 @@ select.llmsider-model-select-dropdown option {
         transform: translateY(20px);
         opacity: 0;
     }
+
     to {
         transform: translateY(0);
         opacity: 1;

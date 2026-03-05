@@ -79,7 +79,7 @@ export class MessagePreparationService implements IMessagePreparationService {
 		private toolCoordinator: ToolCoordinator,
 		private uiBuilder: UIBuilder,
 		private callbacks: MessagePreparationCallbacks
-	) {}
+	) { }
 
 	/**
 	 * 准备要发送给 LLM 的消息列表
@@ -102,8 +102,8 @@ export class MessagePreparationService implements IMessagePreparationService {
 		// Add local vector search context if auto-search is enabled
 		// Skip during plugin initialization and session loading to prevent startup vector generation
 		let vectorSearchContext = '';
-		
-		if (allowExtraContext && this.plugin.settings.vectorSettings.autoSearchEnabled && 
+
+		if (allowExtraContext && this.plugin.settings.vectorSettings.autoSearchEnabled &&
 			this.plugin.state.isLoaded &&
 			!this.plugin.state.isLoadingSession) {
 			// Update step indicator to active
@@ -111,11 +111,11 @@ export class MessagePreparationService implements IMessagePreparationService {
 
 			const vectorDBManager = this.plugin.getVectorDBManager();
 			const isInitialized = vectorDBManager?.isSystemInitialized();
-			
+
 			if (vectorDBManager && isInitialized) {
 				try {
 					const status = vectorDBManager.getStatus();
-					
+
 					if (status.totalChunks > 0) {
 						// Extract query from user message
 						const query =
@@ -182,13 +182,13 @@ export class MessagePreparationService implements IMessagePreparationService {
 			// 1. Try to use Memory-provided messages (if Memory is enabled and has data)
 			if (memoryEnabled && memoryMessages && memoryMessages.length > 0) {
 				chatHistory = memoryMessages;
-				
+
 				// Apply history limit to memory messages too
 				if (chatHistory.length > limit) {
 					chatHistory = chatHistory.slice(-limit);
 					Logger.debug(`[Memory] 🔄 Truncated Memory history to ${limit} messages`);
 				}
-				
+
 				usedMemoryHistory = true;
 				Logger.debug(
 					'[Memory] 🔄 Using Memory-managed history:',
@@ -370,7 +370,7 @@ export class MessagePreparationService implements IMessagePreparationService {
 			// Show warning to user
 			new Notice(
 				this.plugin.getI18nManager()?.t('notifications.ui.tokenLimitExceeded') ||
-					'Token limit exceeded. Truncating conversation history to fit within limits.',
+				'Token limit exceeded. Truncating conversation history to fit within limits.',
 				5000
 			);
 
@@ -415,7 +415,7 @@ export class MessagePreparationService implements IMessagePreparationService {
 		if (warningLevel === 'warning') {
 			new Notice(
 				this.plugin.getI18nManager()?.t('notifications.ui.approachingTokenLimit') ||
-					'Approaching token limit. Consider starting a new chat if you encounter issues.',
+				'Approaching token limit. Consider starting a new chat if you encounter issues.',
 				4000
 			);
 		}
@@ -599,6 +599,11 @@ ${toolsInfo}
 
 Context Information:
 ${contextPrompt}
+
+CRITICAL: Context-First Rule
+- ALWAYS check "Context Information" before using any tools.
+- If the user references a folder (e.g., "Summarize folder X") and the content of files from that folder is ALREADY present in the "Context Information" (look for "Directory: X/" markers), you MUST NOT call \`list_directory\` or search for those files.
+- Use the provided context directly to answer the user's request. Only use tools if the necessary information is truly missing from the context.
 
 Remember: Always respond to the user. If you use tools, explain what you're doing. If you can't use tools, explain what you would do with them.`;
 	}

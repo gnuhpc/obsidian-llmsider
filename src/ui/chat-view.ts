@@ -74,7 +74,6 @@ export class ChatView extends ItemView {
 	providerSelect!: HTMLSelectElement;
 	contextDisplay!: HTMLElement;
 	heroContainer!: HTMLElement;
-	inputHint!: HTMLElement;
 
 	// Manager components
 	private uiBuilder: UIBuilder;
@@ -146,6 +145,7 @@ export class ChatView extends ItemView {
 		this.diffProcessor = new DiffProcessor(this.app, plugin);
 		this.contextManager = new ContextManager(
 			this.app,
+			this.plugin,
 			plugin.getMCPManager() || undefined,
 			plugin.getI18nManager() || undefined
 		);
@@ -185,7 +185,6 @@ export class ChatView extends ItemView {
 		this.providerSelect = uiComponents.providerSelect;
 		this.contextDisplay = uiComponents.contextDisplay;
 		this.heroContainer = uiComponents.heroContainer;
-		this.inputHint = uiComponents.inputHint;
 
 		// Initialize provider tabs manager (will be inserted dynamically)
 		const tabsWrapperEl = this.containerEl.createDiv();
@@ -503,7 +502,7 @@ export class ChatView extends ItemView {
 		if (this.conversationOrchestrator) {
 			this.conversationOrchestrator.cleanup();
 		}
-		
+
 		// Clean up mastra plan execute processor
 		if (this.mastraPlanExecuteProcessor) {
 			// Stop any ongoing execution and dispose resources
@@ -524,12 +523,12 @@ export class ChatView extends ItemView {
 		if (this.inputHandler) {
 			this.inputHandler.destroy();
 		}
-		
+
 		// Clean up memory manager references
 		this.sharedMemoryManager = null;
 		this.normalModeAgent = null;
 		this.guidedModeAgent = null;
-		
+
 		// Clear the container
 		this.containerEl.empty();
 	}
@@ -538,14 +537,12 @@ export class ChatView extends ItemView {
 	 * Update hero section visibility based on message count
 	 */
 	private updateHeroVisibility(): void {
-		if (this.heroContainer && this.inputHint) {
+		if (this.heroContainer) {
 			const hasMessages = this.currentSession && this.currentSession.messages.length > 0;
 			if (hasMessages) {
 				this.heroContainer.style.display = 'none';
-				this.inputHint.style.display = 'none';
 			} else {
 				this.heroContainer.style.display = 'flex';
-				this.inputHint.style.display = 'block';
 			}
 		}
 	}
@@ -566,12 +563,20 @@ export class ChatView extends ItemView {
 	) {
 		if (!this.currentSession) return;
 
+		// Ensure all folder contexts are loaded before sending
+		await this.inputHandler.ensureFolderContextsLoaded();
+
 		const selectedTextContexts = this.contextManager.getSelectedTextContexts();
 		const noteContexts = this.contextManager.getCurrentNoteContext();
+
+		// Check for folder placeholders manually in the input content
+		const folderMatches = content.match(/@\[📁[^\]]+\]/g);
+		const hasFolders = folderMatches && folderMatches.length > 0;
+
 		let contextReferenceType: 'text' | 'file' | undefined;
 		if (selectedTextContexts.length > 0) {
 			contextReferenceType = 'text';
-		} else if (noteContexts.length > 0) {
+		} else if (noteContexts.length > 0 || hasFolders) {
 			contextReferenceType = 'file';
 		}
 
@@ -1168,9 +1173,9 @@ export class ChatView extends ItemView {
 			}
 
 			// Check if it's a validation error that is handled by StreamingIndicatorManager
-			const isValidationError = error instanceof Error && 
-				(error.message.includes('Plan validation failed') || 
-				 (error as any).validationResult);
+			const isValidationError = error instanceof Error &&
+				(error.message.includes('Plan validation failed') ||
+					(error as any).validationResult);
 
 			if (isValidationError) {
 				Logger.debug('[ChatView] Plan validation failed - removing working message as UI is handled by StreamingIndicatorManager');
@@ -1186,7 +1191,7 @@ export class ChatView extends ItemView {
 						this.currentSession.messages.splice(messageIndex, 1);
 					}
 				}
-				return; 
+				return;
 			}
 
 			// Use unified error renderer
@@ -1852,62 +1857,62 @@ export class ChatView extends ItemView {
 							Logger.debug('[onToolSuggestion] Current message element:', messageEl);
 
 							if (chatMessagesContainer) {
-							// Collect elements that come AFTER the current message (in document order)
-							// to find the correct insertion point within this message's flow
-							let nextEl = messageEl.nextElementSibling;
-							const toolCardsAfterMessage: Element[] = [];
-							const indicatorsAfterMessage: Element[] = [];
-							const followUpMessagesAfterMessage: HTMLElement[] = [];
-							
-							// Walk through siblings until we hit another main message (not a tool card, indicator, or follow-up)
-							while (nextEl) {
-								if (nextEl.classList.contains('llmsider-tool-card-message')) {
-									toolCardsAfterMessage.push(nextEl);
-								} else if (nextEl.classList.contains('llmsider-plan-execute-tool-indicator')) {
-									indicatorsAfterMessage.push(nextEl);
-								} else if (nextEl.classList.contains('llmsider-message') && 
-										   (nextEl as HTMLElement).dataset.isFollowUp === 'true') {
-									followUpMessagesAfterMessage.push(nextEl as HTMLElement);
-								} else if (nextEl.classList.contains('llmsider-message')) {
-									// Hit another main message, stop looking
-									break;
+								// Collect elements that come AFTER the current message (in document order)
+								// to find the correct insertion point within this message's flow
+								let nextEl = messageEl.nextElementSibling;
+								const toolCardsAfterMessage: Element[] = [];
+								const indicatorsAfterMessage: Element[] = [];
+								const followUpMessagesAfterMessage: HTMLElement[] = [];
+
+								// Walk through siblings until we hit another main message (not a tool card, indicator, or follow-up)
+								while (nextEl) {
+									if (nextEl.classList.contains('llmsider-tool-card-message')) {
+										toolCardsAfterMessage.push(nextEl);
+									} else if (nextEl.classList.contains('llmsider-plan-execute-tool-indicator')) {
+										indicatorsAfterMessage.push(nextEl);
+									} else if (nextEl.classList.contains('llmsider-message') &&
+										(nextEl as HTMLElement).dataset.isFollowUp === 'true') {
+										followUpMessagesAfterMessage.push(nextEl as HTMLElement);
+									} else if (nextEl.classList.contains('llmsider-message')) {
+										// Hit another main message, stop looking
+										break;
+									}
+									nextEl = nextEl.nextElementSibling;
 								}
-								nextEl = nextEl.nextElementSibling;
-							}
 
-							Logger.debug(`[onToolSuggestion] Found ${toolCardsAfterMessage.length} cards, ${indicatorsAfterMessage.length} indicators, ${followUpMessagesAfterMessage.length} follow-up messages after current message`);
+								Logger.debug(`[onToolSuggestion] Found ${toolCardsAfterMessage.length} cards, ${indicatorsAfterMessage.length} indicators, ${followUpMessagesAfterMessage.length} follow-up messages after current message`);
 
-							const lastFollowUpMessage = followUpMessagesAfterMessage[followUpMessagesAfterMessage.length - 1];
-							const lastToolCard = toolCardsAfterMessage[toolCardsAfterMessage.length - 1];
-							const lastIndicator = indicatorsAfterMessage[indicatorsAfterMessage.length - 1];
+								const lastFollowUpMessage = followUpMessagesAfterMessage[followUpMessagesAfterMessage.length - 1];
+								const lastToolCard = toolCardsAfterMessage[toolCardsAfterMessage.length - 1];
+								const lastIndicator = indicatorsAfterMessage[indicatorsAfterMessage.length - 1];
 
-							if (lastToolCard) Logger.debug('[onToolSuggestion] Last tool card:', (lastToolCard as HTMLElement).dataset.toolName);
-							if (lastIndicator) Logger.debug('[onToolSuggestion] Last indicator found:', lastIndicator);
-							if (lastFollowUpMessage) Logger.debug('[onToolSuggestion] Last follow-up message found:', (lastFollowUpMessage as HTMLElement).dataset.messageId);
+								if (lastToolCard) Logger.debug('[onToolSuggestion] Last tool card:', (lastToolCard as HTMLElement).dataset.toolName);
+								if (lastIndicator) Logger.debug('[onToolSuggestion] Last indicator found:', lastIndicator);
+								if (lastFollowUpMessage) Logger.debug('[onToolSuggestion] Last follow-up message found:', (lastFollowUpMessage as HTMLElement).dataset.messageId);
 
-							// Priority: follow-up message > indicator > tool card > initial message
-							if (lastFollowUpMessage) {
-								insertAfter = lastFollowUpMessage;
-								Logger.debug('[ToolCard] Inserting after last follow-up message in this flow');
-							} else if (lastToolCard && lastIndicator) {
-								if (lastIndicator.compareDocumentPosition(lastToolCard) & Node.DOCUMENT_POSITION_PRECEDING) {
+								// Priority: follow-up message > indicator > tool card > initial message
+								if (lastFollowUpMessage) {
+									insertAfter = lastFollowUpMessage;
+									Logger.debug('[ToolCard] Inserting after last follow-up message in this flow');
+								} else if (lastToolCard && lastIndicator) {
+									if (lastIndicator.compareDocumentPosition(lastToolCard) & Node.DOCUMENT_POSITION_PRECEDING) {
+										insertAfter = lastIndicator;
+										Logger.debug('[ToolCard] Inserting after last indicator (global)');
+									} else {
+										insertAfter = lastToolCard;
+										Logger.debug('[ToolCard] Inserting after last tool card (global)');
+									}
+								} else if (lastToolCard) {
+									insertAfter = lastToolCard;
+									Logger.debug('[ToolCard] Inserting after last tool card (global)');
+								} else if (lastIndicator) {
 									insertAfter = lastIndicator;
 									Logger.debug('[ToolCard] Inserting after last indicator (global)');
 								} else {
-									insertAfter = lastToolCard;
-									Logger.debug('[ToolCard] Inserting after last tool card (global)');
+									insertAfter = messageEl;
+									Logger.debug('[ToolCard] No existing tool flow, inserting after message');
 								}
-							} else if (lastToolCard) {
-								insertAfter = lastToolCard;
-								Logger.debug('[ToolCard] Inserting after last tool card (global)');
-							} else if (lastIndicator) {
-								insertAfter = lastIndicator;
-								Logger.debug('[ToolCard] Inserting after last indicator (global)');
-							} else {
-								insertAfter = messageEl;
-								Logger.debug('[ToolCard] No existing tool flow, inserting after message');
 							}
-						}
 
 							Logger.debug(`[onToolSuggestion] Final insertion: ${toolName} after`, insertAfter);
 							insertAfter.insertAdjacentElement("afterend", toolCardEl);
@@ -2501,12 +2506,12 @@ export class ChatView extends ItemView {
 			Logger.error(
 				"[GuidedMode-Mastra] ❌❌❌ CRITICAL ERROR in guided conversation ❌❌❌"
 			);
-			
+
 			// Remove step indicators on error
 			if (stepIndicatorsEl && stepIndicatorsEl.parentElement) {
 				stepIndicatorsEl.remove();
 			}
-			
+
 			Logger.error(
 				"[GuidedMode-Mastra] Error type:",
 				error instanceof Error ? error.constructor.name : typeof error

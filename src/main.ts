@@ -165,7 +165,7 @@ export default class LLMSiderPlugin extends Plugin {
 			await this.initializeProviders();
 
 			await this.initializeSpeedReadingManager();
-			
+
 			// Initialize MCP Manager
 			await this.initializeMCPManager();
 
@@ -178,7 +178,7 @@ export default class LLMSiderPlugin extends Plugin {
 					if (this.similarNotesManager && file) {
 						this.similarNotesManager.onFileOpen(file);
 					}
-					
+
 					if (this.settings.contextSettings?.autoReference && file && file.extension === 'md') {
 						const chatView = this.getChatView();
 						if (chatView && (chatView as any).contextManager) {
@@ -187,7 +187,7 @@ export default class LLMSiderPlugin extends Plugin {
 							contextManager.clearContext();
 							await contextManager.addFileToContext(file);
 							this.lastAutoAddedNotePath = file.path;
-							
+
 							if ((chatView as any).updateContextDisplay) {
 								(chatView as any).updateContextDisplay();
 							}
@@ -624,10 +624,10 @@ export default class LLMSiderPlugin extends Plugin {
 		const pluginId = this.manifest?.id || 'llmsider';
 		const pluginDir = this.manifest?.dir || (this.app.vault.configDir + '/plugins/' + pluginId);
 		const downloadTag = releaseTag || version;
-		
+
 		const downloadUrl = `https://github.com/gnuhpc/obsidian-llmsider/releases/download/${downloadTag}`;
 		const filesToDownload = ['main.js', 'manifest.json', 'styles.css'];
-		
+
 		Logger.info(`[Update] Downloading version ${downloadTag}`);
 
 		try {
@@ -639,49 +639,49 @@ export default class LLMSiderPlugin extends Plugin {
 			Logger.error('[Update] Failed to create plugin directory:', error);
 			throw new Error(`Failed to create plugin directory: ${error}`);
 		}
-		
+
 		for (const filename of filesToDownload) {
 			try {
 				const url = `${downloadUrl}/${filename}`;
 				Logger.debug(`[Update] Downloading ${filename} from ${url}`);
-				
+
 				const response = await requestUrl({
 					url,
 					method: 'GET'
 				});
-				
+
 				if (response.status !== 200) {
 					throw new Error(`Failed to download ${filename}: HTTP ${response.status}`);
 				}
-				
-				const content = filename === 'manifest.json' 
+
+				const content = filename === 'manifest.json'
 					? JSON.stringify(response.json, null, 2)
 					: (typeof response.text === 'string' ? response.text : new TextDecoder().decode(response.arrayBuffer));
-				
+
 				const filepath = `${pluginDir}/${filename}`;
 				await this.app.vault.adapter.write(filepath, content);
-				
+
 				Logger.debug(`[Update] Successfully downloaded and saved ${filename}`);
 			} catch (error) {
 				Logger.error(`[Update] Failed to download ${filename}:`, error);
 				throw new Error(`Failed to download ${filename}: ${error}`);
 			}
 		}
-		
+
 		Logger.info(`[Update] Successfully downloaded all files for version ${downloadTag}`);
 		new Notice(this.i18n.t('ui.updateDownloaded'));
 	}
 
 	async reloadPlugin(): Promise<void> {
 		const pluginId = this.manifest?.id || 'llmsider';
-		
+
 		try {
 			Logger.info('[Update] Reloading plugin...');
-			
+
 			await (this.app as any).plugins.disablePlugin(pluginId);
 			await new Promise(resolve => setTimeout(resolve, 500));
 			await (this.app as any).plugins.enablePlugin(pluginId);
-			
+
 			Logger.info('[Update] Plugin reloaded successfully');
 			new Notice(this.i18n.t('ui.updateCompleted'));
 		} catch (error) {
@@ -694,9 +694,9 @@ export default class LLMSiderPlugin extends Plugin {
 	async performUpdate(version: string, releaseTag?: string): Promise<void> {
 		try {
 			await this.downloadAndInstallUpdate(version, releaseTag);
-			
+
 			await new Promise(resolve => setTimeout(resolve, 1000));
-			
+
 			await this.reloadPlugin();
 		} catch (error) {
 			Logger.error('[Update] Update failed:', error);
@@ -1059,14 +1059,14 @@ export default class LLMSiderPlugin extends Plugin {
 				// Built-in tool permissions are saved directly to database via ConfigDB methods
 				// No need to save from settings - they're managed in tool_settings table
 
-			// Save other settings
-			await this.configDb.setShowSidebar(this.settings.showSidebar);
-			await this.configDb.setSidebarPosition(this.settings.sidebarPosition);
-			await this.configDb.setDebugMode(this.settings.debugMode);
-			await this.configDb.setEnableDiffRendering(this.settings.enableDiffRenderingInActionMode);
-			await this.configDb.setUpdateNotificationsEnabled(this.settings.updateSettings.notifyUpdates);
-			await this.configDb.setUpdateLastCheckedAt(this.settings.updateSettings.lastCheckedAt);
-			await this.configDb.setUpdateLastNotifiedVersion(this.settings.updateSettings.lastNotifiedVersion);
+				// Save other settings
+				await this.configDb.setShowSidebar(this.settings.showSidebar);
+				await this.configDb.setSidebarPosition(this.settings.sidebarPosition);
+				await this.configDb.setDebugMode(this.settings.debugMode);
+				await this.configDb.setEnableDiffRendering(this.settings.enableDiffRenderingInActionMode);
+				await this.configDb.setUpdateNotificationsEnabled(this.settings.updateSettings.notifyUpdates);
+				await this.configDb.setUpdateLastCheckedAt(this.settings.updateSettings.lastCheckedAt);
+				await this.configDb.setUpdateLastNotifiedVersion(this.settings.updateSettings.lastNotifiedVersion);
 
 				// Save tool selection limits
 				await this.configDb.setMaxBuiltInToolsSelection(this.settings.maxBuiltInToolsSelection);
@@ -1509,12 +1509,12 @@ export default class LLMSiderPlugin extends Plugin {
 						this.app.workspace
 					);
 
-				// Removed: Auto-trigger for currently open file to prevent startup vector generation
-				// const activeFile = this.app.workspace.getActiveFile();
-				// if (activeFile) {
-				// 	Logger.debug('Triggering similar notes for currently open file:', activeFile.path);
-				// 	this.similarNotesManager.onFileOpen(activeFile);
-				// }
+					// Removed: Auto-trigger for currently open file to prevent startup vector generation
+					// const activeFile = this.app.workspace.getActiveFile();
+					// if (activeFile) {
+					// 	Logger.debug('Triggering similar notes for currently open file:', activeFile.path);
+					// 	this.similarNotesManager.onFileOpen(activeFile);
+					// }
 
 					Logger.debug('Similar notes view manager initialized (auto-trigger disabled to prevent startup vector generation)');
 				} catch (error) {
@@ -1820,26 +1820,19 @@ export default class LLMSiderPlugin extends Plugin {
 			} else {
 				// Create new chat view with better error handling
 				try {
-					// Try to get the main leaf first
-					const mainLeaf = workspace.getLeaf(false);
-					if (mainLeaf) {
-						// Split from the main leaf
-						leaf = workspace.getLeaf('split', 'vertical');
+					// Create new chat view in the sidebar (toolbar area)
+					const position = this.settings.sidebarPosition || 'right';
+					if (position === 'left') {
+						leaf = workspace.getLeftLeaf(false);
 					} else {
-						// Fallback: try to create a new leaf
-						leaf = workspace.getLeaf(true);
-					}
-
-					if (!leaf) {
-						// Last resort: try right sidebar
 						leaf = workspace.getRightLeaf(false);
 					}
 
-					if (leaf) {
-						await leaf.setViewState({ type: CHAT_VIEW_TYPE });
-					} else {
+					if (!leaf) {
 						throw new Error('Failed to create workspace leaf');
 					}
+
+					await leaf.setViewState({ type: CHAT_VIEW_TYPE });
 				} catch (error) {
 					Logger.error('Error creating chat view leaf:', error);
 					new Notice(this.i18n.t('notifications.chat.openFailed'));
