@@ -78,29 +78,29 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 		super(app, plugin);
 		this.plugin = plugin;
 		this.i18n = plugin.getI18nManager()!;
-		
+
 		// Initialize handlers first
 		this.connectionHandler = new ConnectionHandler(this.app, this.plugin, this.i18n, () => this.display());
 		this.modelHandler = new ModelHandler(this.app, this.plugin, this.i18n, () => this.display());
 		this.toolPermissionHandler = new ToolPermissionHandler(this.plugin, this.i18n, () => this.display());
-		
+
 		// Initialize components
 		this.toolButtonControls = new ToolButtonControls(this.i18n);
 		this.mcpConnectedTools = new MCPConnectedTools(this.i18n);
-		
+
 		// Initialize MCP handler (needs to be created early for card updater callback)
 		this.mcpHandler = new MCPHandler(this.app, this.plugin, this.i18n, () => this.display(), async () => await this.updateAllMCPCards());
-		
+
 		// Initialize MCP components (need mcpHandler)
 		this.mcpServerCard = new MCPServerCard(this.i18n, this.mcpHandler, this.toolButtonControls, this.plugin, this.toolPermissionHandler);
 		this.mcpServerDetails = new MCPServerDetails(this.i18n, this.toolButtonControls, this.plugin, () => this.display(), this.toolPermissionHandler);
-		
+
 		// Initialize utils (need mcpServerCard)
 		this.mcpCardUpdater = new MCPCardUpdater(this.plugin, this.mcpServerCard);
-		
+
 		// Initialize event handler (needs mcpCardUpdater)
 		this.eventHandler = new EventHandler(this.plugin, async () => await this.mcpCardUpdater.updateAllCards());
-		
+
 		// Initialize renderers
 		this.vectorDBRenderer = new VectorDBRenderer(this.app, this.plugin, this.i18n);
 		this.builtInToolsRenderer = new BuiltInToolsRenderer(this.plugin, this.i18n, this.toolButtonControls, this.toolPermissionHandler);
@@ -111,7 +111,7 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 		this.toolManagementSectionRenderer = new ToolManagementSectionRenderer(this.i18n, this.builtInToolsRenderer);
 		this.promptManagementRenderer = new PromptManagementRenderer(this.plugin, this.i18n, () => this.display());
 		this.memorySettingsRenderer = new MemorySettingsRenderer(this.app, this.plugin, this.i18n);
-		
+
 		// Initialize modals
 		this.mcpToolsModal = new MCPToolsModal(this.plugin, this.i18n, this.toolButtonControls);
 		this.mcpToolDetailsModal = new MCPToolDetailsModal(this.i18n);
@@ -124,7 +124,7 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 			vectorDBManager.setProgressCallback(null);
 			vectorDBManager.setStatsUpdateCallback(null);
 		}
-		
+
 		// Clean up event listeners when settings tab is hidden
 		this.eventHandler.cleanupMCPEventListeners();
 		super.hide();
@@ -164,7 +164,7 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 
 		// MCP Settings Section
 		this.mcpSettingsRenderer.renderMCPSettings(containerEl);
-		
+
 		// Render MCP Inline Editor (controls section at the bottom of MCP Settings)
 		const mcpContainer = containerEl.querySelector('.llmsider-mcp-container') as HTMLElement;
 		if (mcpContainer) {

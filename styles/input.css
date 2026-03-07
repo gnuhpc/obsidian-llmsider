@@ -444,12 +444,13 @@ select.llmsider-model-select-dropdown option {
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
+    background: var(--background-secondary);
+    color: var(--text-normal);
     border-radius: 12px;
     font-size: 12px;
     font-weight: 500;
     max-width: 200px;
+    border: 1px solid var(--background-modifier-border);
 }
 
 .llmsider-context-icon {
@@ -464,7 +465,7 @@ select.llmsider-model-select-dropdown option {
 }
 
 .llmsider-context-name {
-    color: var(--text-on-accent);
+    color: var(--text-normal);
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
@@ -477,7 +478,7 @@ select.llmsider-model-select-dropdown option {
     height: 16px;
     border: none;
     background: transparent;
-    color: var(--text-on-accent);
+    color: var(--text-muted);
     border-radius: 8px;
     cursor: pointer;
     font-size: 11px;
@@ -535,16 +536,17 @@ select.llmsider-model-select-dropdown option {
     align-items: center !important;
     gap: 4px !important;
     padding: 4px 8px !important;
-    background: var(--interactive-accent) !important;
-    color: var(--text-on-accent) !important;
+    background: var(--background-secondary) !important;
+    color: var(--text-normal) !important;
     border-radius: 12px !important;
     font-size: 12px !important;
     font-weight: 500 !important;
     max-width: 200px !important;
+    border: 1px solid var(--background-modifier-border) !important;
 }
 
 .llmsider-context-name {
-    color: var(--text-on-accent) !important;
+    color: var(--text-normal) !important;
     font-weight: 500 !important;
     white-space: nowrap !important;
     overflow: hidden !important;
@@ -588,8 +590,8 @@ select.llmsider-model-select-dropdown option {
 }
 
 .llmsider-context-group {
-    background: var(--interactive-accent) !important;
-    border: 1px dashed rgba(255, 255, 255, 0.4) !important;
+    background: var(--background-modifier-border-hover) !important;
+    border: 1px dashed var(--background-modifier-border-focus) !important;
 }
 
 .llmsider-context-collapse {
@@ -671,11 +673,12 @@ select.llmsider-model-select-dropdown option {
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
+    background: var(--background-secondary);
+    color: var(--text-normal);
     border-radius: 12px;
     font-size: 12px;
     font-weight: 500;
+    border: 1px solid var(--background-modifier-border);
 }
 
 .llmsider-ref-name {
@@ -688,7 +691,7 @@ select.llmsider-model-select-dropdown option {
 .llmsider-ref-remove {
     background: transparent;
     border: none;
-    color: var(--text-on-accent);
+    color: var(--text-muted);
     cursor: pointer;
     padding: 0;
     width: 16px;

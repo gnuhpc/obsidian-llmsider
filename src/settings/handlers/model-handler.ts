@@ -13,7 +13,7 @@ export class ModelHandler {
 		private plugin: LLMSiderPlugin,
 		private i18n: I18nManager,
 		private onUpdate: () => void
-	) {}
+	) { }
 
 	async showAddModelModal(connection: LLMConnection): Promise<void> {
 		const modal = new ModelModal(
@@ -33,13 +33,13 @@ export class ModelHandler {
 					}
 					await Promise.all(updatePromises);
 				}
-				
+
 				// Add new model
-				this.plugin.settings.models.push(model);
+				this.plugin.settings.models.unshift(model);
 				// Optimize: Save only the new model
 				await this.plugin.configDb.saveModel(model);
 				await this.plugin.reinitializeProviders();
-				
+
 				this.onUpdate(); // Refresh UI
 			}
 		);
@@ -70,7 +70,7 @@ export class ModelHandler {
 					}
 					await Promise.all(updatePromises);
 				}
-				
+
 				// Find and update the model
 				const modelIndex = this.plugin.settings.models.findIndex(m => m.id === updatedModel.id);
 				if (modelIndex !== -1) {
@@ -78,7 +78,7 @@ export class ModelHandler {
 					// Optimize: Save only the updated model
 					await this.plugin.configDb.saveModel(updatedModel);
 					await this.plugin.reinitializeProviders();
-					
+
 					this.onUpdate(); // Refresh UI
 				}
 			},
@@ -97,7 +97,7 @@ export class ModelHandler {
 				// Optimize: Delete only the model
 				await this.plugin.configDb.deleteModel(model.id);
 				await this.plugin.reinitializeProviders();
-				
+
 				new Notice(this.i18n.t('notifications.settingsHandlers.modelDeleted', { name: model.name }) || `Model "${model.name}" deleted`);
 				this.onUpdate(); // Refresh UI
 			}

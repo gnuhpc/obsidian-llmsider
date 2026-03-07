@@ -68,11 +68,41 @@
     flex-shrink: 0;
 }
 
+.llmsider-chat-history-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .llmsider-chat-history-title {
     font-size: 16px;
     font-weight: 600;
     margin: 0;
     color: var(--text-normal);
+}
+
+.llmsider-chat-history-delete-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.llmsider-chat-history-delete-all:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.llmsider-chat-history-delete-all svg {
+    width: 14px;
+    height: 14px;
 }
 
 .llmsider-chat-history-close {

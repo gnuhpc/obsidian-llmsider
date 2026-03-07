@@ -13,28 +13,28 @@ export class ConnectionHandler {
 		private plugin: LLMSiderPlugin,
 		private i18n: I18nManager,
 		private onUpdate: () => void
-	) {}
+	) { }
 
-	async showAddConnectionModal(type?: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode'): Promise<void> {
+	async showAddConnectionModal(type?: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode' | 'webllm'): Promise<void> {
 		const modal = new ConnectionModal(
 			this.app,
 			this.plugin,
 			async (connection: LLMConnection) => {
-				// Add new connection
-				this.plugin.settings.connections.push(connection);
+				// Add new connection to the beginning
+				this.plugin.settings.connections.unshift(connection);
 				// Optimize: Save only the new connection instead of full settings save
 				await this.plugin.configDb.saveConnection(connection);
 				await this.plugin.reinitializeProviders();
-				
+
 				// Start GitHub token monitoring if applicable
 				await this.plugin.startGitHubTokenMonitoring(connection);
-				
+
 				this.onUpdate(); // Refresh UI
 			},
 			undefined, // no existing connection
 			type // preset type
 		);
-		
+
 		// Open the modal
 		modal.open();
 	}
@@ -51,10 +51,10 @@ export class ConnectionHandler {
 					// Optimize: Save only the updated connection instead of full settings save
 					await this.plugin.configDb.saveConnection(updatedConnection);
 					await this.plugin.reinitializeProviders();
-					
+
 					// Restart GitHub token monitoring if applicable (in case enabled status changed)
 					await this.plugin.startGitHubTokenMonitoring(updatedConnection);
-					
+
 					this.onUpdate(); // Refresh UI
 				}
 			},
@@ -68,22 +68,22 @@ export class ConnectionHandler {
 		if (confirmed) {
 			// Stop GitHub token monitoring if applicable
 			this.plugin.stopGitHubTokenMonitoring(connection.id);
-			
+
 			// Remove connection
 			const connIndex = this.plugin.settings.connections.findIndex(c => c.id === connection.id);
 			if (connIndex !== -1) {
 				this.plugin.settings.connections.splice(connIndex, 1);
 			}
-			
+
 			// Remove all models associated with this connection
 			this.plugin.settings.models = this.plugin.settings.models.filter(
 				m => m.connectionId !== connection.id
 			);
-			
+
 			// Optimize: Delete only the connection (cascade deletes models) instead of full settings save
 			await this.plugin.configDb.deleteConnection(connection.id);
 			await this.plugin.reinitializeProviders();
-			
+
 			new Notice(this.i18n.t('notifications.settingsHandlers.connectionDeleted', { name: connection.name }) || `Connection "${connection.name}" deleted`);
 			this.onUpdate(); // Refresh UI
 		}

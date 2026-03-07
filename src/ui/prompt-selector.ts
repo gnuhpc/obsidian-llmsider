@@ -41,10 +41,10 @@ export class PromptSelector {
     /**
      * Show prompt selector with query
      */
-	async show(
-		query: string = '',
-		position: { x: number; y: number; yBottom?: number }
-	): Promise<void> {
+    async show(
+        query: string = '',
+        position: { x: number; y: number; yBottom?: number }
+    ): Promise<void> {
         this.currentQuery = query;
         this.selectedIndex = 0;
         this.isVisibleState = true;
@@ -69,12 +69,12 @@ export class PromptSelector {
         this.currentQuery = '';
         this.suggestions = [];
         this.selectedIndex = 0;
-        
+
         if (this.selectorEl) {
             this.selectorEl.remove();
             this.selectorEl = undefined;
         }
-        
+
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
             this.searchTimeout = undefined;
@@ -87,11 +87,11 @@ export class PromptSelector {
     async updateQuery(query: string): Promise<void> {
         this.currentQuery = query;
         this.selectedIndex = 0;
-        
+
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
         }
-        
+
         this.searchTimeout = window.setTimeout(async () => {
             await this.searchPrompts();
             this.updateList();
@@ -162,6 +162,8 @@ export class PromptSelector {
     private async searchPrompts(): Promise<void> {
         try {
             this.suggestions = await this.promptManager.searchPrompts(this.currentQuery);
+            // Only show chat prompts in selector (exclude speed-reading prompts)
+            this.suggestions = this.suggestions.filter(prompt => prompt.type !== 'speed-reading');
             // For empty query, show all results; for specific queries, limit to top matches
             const maxResults = this.currentQuery.trim() === '' ? 50 : 15;
             this.suggestions = this.suggestions.slice(0, maxResults);
@@ -174,7 +176,7 @@ export class PromptSelector {
     /**
      * Render the prompt selector UI
      */
-	private renderSelector(position: { x: number; y: number; yBottom?: number }): void {
+    private renderSelector(position: { x: number; y: number; yBottom?: number }): void {
         // Remove existing selector
         if (this.selectorEl) {
             this.selectorEl.remove();
@@ -184,41 +186,41 @@ export class PromptSelector {
         if (!this.isVisibleState || this.suggestions.length === 0) {
             return;
         }
-        
+
         // Create selector element - attach to document.body for fixed positioning
         this.selectorEl = document.body.createDiv({
             cls: 'llmsider-prompt-selector llmsider-prompt-selector-modern'
         });
 
-		// Use fixed positioning for reliable placement
-		const maxHeight = 250; // Match CSS max-height
-		const selectorHeight = Math.min(maxHeight, this.suggestions.length * 35 + 80); // Dynamic height based on suggestions, reduced padding
-		const selectorWidth = 350;
-		const margin = 8;
-		const viewportWidth = window.innerWidth;
-		const viewportHeight = window.innerHeight;
-		const preferredTop = position.y - selectorHeight - margin;
-		const fallbackTop =
-			typeof position.yBottom === 'number'
-				? position.yBottom + margin
-				: position.y + margin;
-		const top =
-			preferredTop >= margin
-				? preferredTop
-				: Math.min(
-					Math.max(fallbackTop, margin),
-					viewportHeight - selectorHeight - margin
-				);
-		const left = Math.min(
-			Math.max(position.x, margin),
-			viewportWidth - selectorWidth - margin
-		);
+        // Use fixed positioning for reliable placement
+        const maxHeight = 250; // Match CSS max-height
+        const selectorHeight = Math.min(maxHeight, this.suggestions.length * 35 + 80); // Dynamic height based on suggestions, reduced padding
+        const selectorWidth = 350;
+        const margin = 8;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const preferredTop = position.y - selectorHeight - margin;
+        const fallbackTop =
+            typeof position.yBottom === 'number'
+                ? position.yBottom + margin
+                : position.y + margin;
+        const top =
+            preferredTop >= margin
+                ? preferredTop
+                : Math.min(
+                    Math.max(fallbackTop, margin),
+                    viewportHeight - selectorHeight - margin
+                );
+        const left = Math.min(
+            Math.max(position.x, margin),
+            viewportWidth - selectorWidth - margin
+        );
 
-		this.selectorEl.style.position = 'fixed';
-		this.selectorEl.style.left = `${left}px`;
-		this.selectorEl.style.top = `${top}px`;
-		this.selectorEl.style.transform = 'none';
-		this.selectorEl.style.width = `${selectorWidth}px`;
+        this.selectorEl.style.position = 'fixed';
+        this.selectorEl.style.left = `${left}px`;
+        this.selectorEl.style.top = `${top}px`;
+        this.selectorEl.style.transform = 'none';
+        this.selectorEl.style.width = `${selectorWidth}px`;
         this.selectorEl.style.maxHeight = maxHeight + 'px';
         this.selectorEl.style.zIndex = '10000';
         this.selectorEl.style.backgroundColor = 'var(--background-primary)';
@@ -304,12 +306,12 @@ export class PromptSelector {
      */
     private updateList(): void {
         if (!this.selectorEl) return;
-        
+
         if (this.suggestions.length === 0) {
             this.hide();
             return;
         }
-        
+
         this.renderContent();
     }
 
@@ -336,11 +338,11 @@ export class PromptSelector {
      */
     private selectTemplate(template: PromptTemplate): void {
         this.hide();
-        
+
         if (this.onSelectCallback) {
             this.onSelectCallback(template);
         }
-        
+
         // Mark as used (don't await to avoid blocking)
         this.promptManager.markPromptAsUsed(template.id).catch(error => {
             Logger.error('Failed to mark prompt as used:', error);

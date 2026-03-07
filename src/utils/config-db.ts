@@ -33,15 +33,15 @@ export class ConfigDatabase {
 
     async initialize(): Promise<void> {
         if (this.isInitialized) return;
-        
+
         try {
             Logger.debug('Starting SQL.js initialization with embedded WASM...');
             Logger.debug('Data dir:', this.dataDir);
-            
+
             // Convert base64 WASM data to ArrayBuffer
             const wasmBinary = Uint8Array.from(atob(SQL_WASM_BASE64), c => c.charCodeAt(0)).buffer;
             Logger.debug('Loaded embedded WASM, size:', wasmBinary.byteLength);
-            
+
             // Initialize SQL.js with embedded WASM binary
             // Retry up to 3 times if WASM initialization fails due to memory issues
             let SQL;
@@ -56,11 +56,11 @@ export class ConfigDatabase {
                 } catch (error) {
                     lastError = error;
                     const errorMsg = error instanceof Error ? error.message : String(error);
-                    
+
                     // Check if it's a WASM memory error
                     if (errorMsg.includes('Out of memory') || errorMsg.includes('Cannot allocate Wasm memory')) {
                         Logger.warn(`WASM memory allocation failed on attempt ${attempt}/3:`, errorMsg);
-                        
+
                         // Wait a bit before retrying to allow memory to be freed
                         if (attempt < 3) {
                             await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
@@ -75,7 +75,7 @@ export class ConfigDatabase {
                     }
                 }
             }
-            
+
             if (!SQL) {
                 throw lastError || new Error('Failed to initialize SQL.js after retries');
             }
@@ -180,7 +180,7 @@ export class ConfigDatabase {
         try {
             const stmt = this.db.prepare("SELECT id, name, type FROM connections WHERE type IS NULL OR type = ''");
             const needsFix: { id: string; name: string }[] = [];
-            
+
             while (stmt.step()) {
                 const row = stmt.getAsObject();
                 needsFix.push({ id: row.id as string, name: row.name as string });
@@ -189,10 +189,10 @@ export class ConfigDatabase {
 
             if (needsFix.length > 0) {
                 Logger.warn(`⚠️  Found ${needsFix.length} connection(s) with missing type field, fixing...`);
-                
+
                 for (const conn of needsFix) {
                     let inferredType = 'openai'; // default fallback
-                    
+
                     const nameLower = conn.name.toLowerCase();
                     if (nameLower.includes('deepseek') || nameLower.includes('freeds')) {
                         inferredType = 'free-deepseek';
@@ -213,11 +213,11 @@ export class ConfigDatabase {
                     } else if (nameLower.includes('github') || nameLower.includes('copilot')) {
                         inferredType = 'github-copilot';
                     }
-                    
+
                     this.db.run('UPDATE connections SET type = ? WHERE id = ?', [inferredType, conn.id]);
                     Logger.info(`✅ Fixed connection "${conn.name}" - set type to: ${inferredType}`);
                 }
-                
+
                 // Save immediately after fixing to persist changes
                 this.saveToFileImmediate();
             }
@@ -288,7 +288,8 @@ export class ConfigDatabase {
                 usage_count INTEGER NOT NULL DEFAULT 0,
                 pinned INTEGER NOT NULL DEFAULT 0,
                 is_user_modified INTEGER NOT NULL DEFAULT 0,
-                is_deleted INTEGER NOT NULL DEFAULT 0
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                type TEXT NOT NULL DEFAULT 'chat'
             )
         `);
 
@@ -297,7 +298,7 @@ export class ConfigDatabase {
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_is_built_in ON prompt_templates(is_built_in)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_order ON prompt_templates(order_index)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_last_used ON prompt_templates(last_used)`);
-        
+
         // Migration: Add usage_count and pinned columns if they don't exist
         try {
             const tableInfo = this.db.exec("PRAGMA table_info(prompt_templates)");
@@ -319,6 +320,10 @@ export class ConfigDatabase {
                     this.db.run("ALTER TABLE prompt_templates ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0");
                     Logger.info("Added is_deleted column to prompt_templates table");
                 }
+                if (!columns.includes('type')) {
+                    this.db.run("ALTER TABLE prompt_templates ADD COLUMN type TEXT NOT NULL DEFAULT 'chat'");
+                    Logger.info("Added type column to prompt_templates table");
+                }
             }
         } catch (e) {
             Logger.error("Failed to migrate prompt_templates table:", e);
@@ -336,11 +341,11 @@ export class ConfigDatabase {
                 mode TEXT NOT NULL
             )
         `);
-        
+
         // Create indexes for chat_sessions
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_session_updated ON chat_sessions(updated DESC)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_session_provider ON chat_sessions(provider)`);
-        
+
         // Create prompt_history table for quick chat history
         this.db.run(`
             CREATE TABLE IF NOT EXISTS prompt_history (
@@ -350,11 +355,11 @@ export class ConfigDatabase {
                 use_count INTEGER NOT NULL DEFAULT 1
             )
         `);
-        
+
         // Create indexes for prompt_history
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_history_last_used ON prompt_history(last_used DESC)`);
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_prompt_history_prompt ON prompt_history(prompt)`);
-        
+
         // DEPRECATED: Create built_in_tool_permissions table (kept for backward compatibility)
         // New code uses tool_settings table with 'built-in:toolName' format
         this.db.run(`
@@ -364,7 +369,7 @@ export class ConfigDatabase {
                 updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
             )
         `);
-        
+
         // Create tool_settings table for storing tool enable/confirmation states
         this.db.run(`
             CREATE TABLE IF NOT EXISTS tool_settings (
@@ -375,14 +380,14 @@ export class ConfigDatabase {
                 updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
             )
         `);
-        
+
         // Create index for faster lookups by server_id
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_tool_server ON tool_settings(server_id)`);
-        
+
         // Note: Built-in prompts initialization is now handled separately after i18n is ready
         // See initializeBuiltInPrompts() - should be called after i18n.initialize()
     }
-    
+
     /**
      * Initialize built-in prompts with i18n translations
      * IMPORTANT: This method must be called AFTER i18n.initialize() completes
@@ -390,26 +395,26 @@ export class ConfigDatabase {
      */
     public initializeBuiltInPrompts(): void {
         if (!this.db) return;
-        
+
         try {
             // Get built-in prompts with i18n support
             const builtInPrompts = getBuiltInPrompts();
-            
+
             const countResult = this.db.exec('SELECT COUNT(*) as count FROM prompt_templates WHERE is_built_in = 1 AND is_deleted = 0');
-            const dbCount = countResult.length > 0 && countResult[0].values.length > 0 
-                ? Number(countResult[0].values[0][0]) 
+            const dbCount = countResult.length > 0 && countResult[0].values.length > 0
+                ? Number(countResult[0].values[0][0])
                 : 0;
-            
+
             const codeCount = builtInPrompts.length;
-            
+
             Logger.debug(`Built-in prompts - Database (active): ${dbCount}, Code: ${codeCount}`);
-            
+
             const updateStmt = this.db.prepare(`
                 UPDATE prompt_templates 
                 SET title = ?, content = ?, description = ?, updated_at = ?
                 WHERE id = ? AND is_built_in = 1 AND is_user_modified = 0 AND is_deleted = 0
             `);
-            
+
             const now = Date.now();
             let translationUpdateCount = 0;
             for (const prompt of builtInPrompts) {
@@ -432,7 +437,7 @@ export class ConfigDatabase {
                 SELECT ?, ?, ?, ?, 1, ?, 0, 0, 0, 0, 0, ?, ?
                 WHERE NOT EXISTS (SELECT 1 FROM prompt_templates WHERE id = ?)
             `);
-            
+
             let newCount = 0;
             for (const prompt of builtInPrompts) {
                 upsertStmt.bind([
@@ -452,39 +457,39 @@ export class ConfigDatabase {
                 }
             }
             upsertStmt.free();
-            
+
             if (newCount > 0) {
                 Logger.debug(`Imported ${newCount} new built-in prompts`);
             }
-            
+
             // Save changes to file
             this.saveToFile();
-            
+
         } catch (error) {
             Logger.error('Error initializing built-in prompts:', error);
             // Don't throw error, just log it - this shouldn't prevent database initialization
         }
     }
-    
+
     /**
      * Update built-in prompts translations
      * Call this method when language is changed to update prompt titles/descriptions/content
      */
     public updateBuiltInPromptsTranslations(): void {
         if (!this.db) return;
-        
+
         try {
             Logger.debug('Updating built-in prompts translations...');
-            
+
             // Get fresh translations
             const builtInPrompts = getBuiltInPrompts();
-            
+
             const updateStmt = this.db.prepare(`
                 UPDATE prompt_templates 
                 SET title = ?, content = ?, description = ?, updated_at = ?
                 WHERE id = ? AND is_built_in = 1 AND is_user_modified = 0 AND is_deleted = 0
             `);
-            
+
             const now = Date.now();
             for (const prompt of builtInPrompts) {
                 updateStmt.bind([
@@ -497,7 +502,7 @@ export class ConfigDatabase {
                 updateStmt.step();
                 updateStmt.reset();
             }
-            
+
             updateStmt.free();
             Logger.debug(`Updated ${builtInPrompts.length} built-in prompts translations`);
         } catch (error) {
@@ -517,18 +522,18 @@ export class ConfigDatabase {
      */
     async saveToFile(): Promise<void> {
         if (!this.db || !this.adapter) return;
-        
+
         this.pendingSave = true;
-        
+
         // Clear existing timer
         if (this.saveTimer !== null) {
             window.clearTimeout(this.saveTimer);
         }
-        
+
         // Set new timer to save after 500ms of inactivity
         this.saveTimer = window.setTimeout(async () => {
             if (!this.pendingSave) return;
-            
+
             try {
                 const data = this.db!.export();
                 await this.adapter!.writeBinary(this.dbPath, data.buffer as ArrayBuffer);
@@ -547,13 +552,13 @@ export class ConfigDatabase {
      */
     async saveToFileImmediate(): Promise<void> {
         if (!this.db || !this.adapter) return;
-        
+
         // Cancel pending debounced save
         if (this.saveTimer !== null) {
             window.clearTimeout(this.saveTimer);
             this.saveTimer = null;
         }
-        
+
         try {
             const data = this.db.export();
             await this.adapter.writeBinary(this.dbPath, data.buffer as ArrayBuffer);
@@ -571,13 +576,13 @@ export class ConfigDatabase {
         try {
             const stmt = this.db.prepare('SELECT value FROM config WHERE key = ?');
             stmt.bind([key]);
-            
+
             if (stmt.step()) {
                 const result = stmt.getAsObject() as SqlRow;
                 stmt.free();
                 return result.value as string;
             }
-            
+
             stmt.free();
             return null;
         } catch (error) {
@@ -598,7 +603,7 @@ export class ConfigDatabase {
             stmt.bind([key, value]);
             stmt.step();
             stmt.free();
-            
+
             await this.saveToFile();
         } catch (error) {
             Logger.error(`Error setting config value for key ${key}:`, error);
@@ -614,7 +619,7 @@ export class ConfigDatabase {
             stmt.bind([key]);
             stmt.step();
             stmt.free();
-            
+
             await this.saveToFile();
             Logger.debug(`Deleted config value: ${key}`);
         } catch (error) {
@@ -629,13 +634,13 @@ export class ConfigDatabase {
 
         const stmt = this.db.prepare('SELECT value FROM config WHERE key = ?');
         stmt.bind([key]);
-        
+
         if (stmt.step()) {
             const row = stmt.getAsObject() as SqlRow;
             stmt.free();
             return row.value as string;
         }
-        
+
         stmt.free();
         return null;
     }
@@ -688,8 +693,8 @@ export class ConfigDatabase {
 
         const stmt = this.db.prepare(`
             INSERT INTO prompt_templates (
-                id, title, content, description, is_built_in, order_index, last_used
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, title, content, description, is_built_in, order_index, last_used, type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         stmt.run([
@@ -699,7 +704,8 @@ export class ConfigDatabase {
             prompt.description || null,
             prompt.isBuiltIn ? 1 : 0,
             prompt.order || 999,
-            prompt.lastUsed || 0
+            prompt.lastUsed || 0,
+            prompt.type || 'chat'
         ]);
 
         await this.saveToFile();
@@ -710,7 +716,7 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted, type
             FROM prompt_templates
             WHERE is_deleted = 0
             ORDER BY pinned DESC, usage_count DESC, order_index ASC, title ASC
@@ -738,6 +744,7 @@ export class ConfigDatabase {
             pinned: Boolean(row.pinned),
             isUserModified: Boolean(row.is_user_modified),
             isDeleted: Boolean(row.is_deleted),
+            type: (row.type as 'chat' | 'speed-reading') || 'chat',
             searchKeywords: keywordsMap.get(row.id as string) || []
         }));
     }
@@ -747,7 +754,7 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted
+            SELECT id, title, content, description, is_built_in, order_index, last_used, usage_count, pinned, is_user_modified, is_deleted, type
             FROM prompt_templates
             WHERE id = ? AND is_deleted = 0
         `);
@@ -773,6 +780,7 @@ export class ConfigDatabase {
                 pinned: Boolean(row.pinned),
                 isUserModified: Boolean(row.is_user_modified),
                 isDeleted: Boolean(row.is_deleted),
+                type: (row.type as 'chat' | 'speed-reading') || 'chat',
                 searchKeywords: foundPrompt?.searchKeywords || []
             };
         }
@@ -816,6 +824,18 @@ export class ConfigDatabase {
             setClause.push('pinned = ?');
             values.push(updates.pinned ? 1 : 0);
         }
+        if (updates.isDeleted !== undefined) {
+            setClause.push('is_deleted = ?');
+            values.push(updates.isDeleted ? 1 : 0);
+        }
+        if (updates.type !== undefined) {
+            setClause.push('type = ?');
+            values.push(updates.type);
+        }
+
+        if (setClause.length === 0) {
+            return;
+        }
 
         if (updates.title !== undefined || updates.content !== undefined || updates.description !== undefined) {
             const checkStmt = this.db.prepare('SELECT is_built_in FROM prompt_templates WHERE id = ?');
@@ -856,10 +876,10 @@ export class ConfigDatabase {
             SET usage_count = usage_count + 1, last_used = ? 
             WHERE id = ?
         `);
-        
+
         stmt.run([Date.now(), id]);
         stmt.free();
-        
+
         await this.saveToFile();
     }
 
@@ -870,7 +890,7 @@ export class ConfigDatabase {
         // First get current state
         const getStmt = this.db.prepare('SELECT pinned FROM prompt_templates WHERE id = ?');
         getStmt.bind([id]);
-        
+
         let newPinnedState = false;
         if (getStmt.step()) {
             const row = getStmt.getAsObject();
@@ -883,7 +903,7 @@ export class ConfigDatabase {
         const updateStmt = this.db.prepare('UPDATE prompt_templates SET pinned = ? WHERE id = ?');
         updateStmt.run([newPinnedState ? 1 : 0, id]);
         updateStmt.free();
-        
+
         await this.saveToFile();
         return newPinnedState;
     }
@@ -920,14 +940,14 @@ export class ConfigDatabase {
         }
 
         const searchTerm = `%${query.toLowerCase()}%`;
-        
+
         // Get all prompts for keyword-based filtering (since SQLite doesn't have the keywords column)
         const allPrompts = await this.getAllPrompts();
-        
+
         if (!allPrompts || allPrompts.length === 0) {
             return [];
         }
-        
+
         const lowerQuery = query.toLowerCase();
         const filtered = allPrompts.filter(prompt => {
             const titleMatch = prompt.title.toLowerCase().includes(lowerQuery);
@@ -935,32 +955,32 @@ export class ConfigDatabase {
             const keywordMatch = prompt.searchKeywords?.some(kw => kw.toLowerCase().includes(lowerQuery)) || false;
             return titleMatch || descMatch || keywordMatch;
         });
-        
+
         // Sort by relevance
         return filtered.sort((a, b) => {
             const aTitle = a.title.toLowerCase();
             const bTitle = b.title.toLowerCase();
-            
+
             // Exact match first
             if (aTitle === lowerQuery && bTitle !== lowerQuery) return -1;
             if (bTitle === lowerQuery && aTitle !== lowerQuery) return 1;
-            
+
             // Starts with query
             const aStarts = aTitle.startsWith(lowerQuery);
             const bStarts = bTitle.startsWith(lowerQuery);
             if (aStarts && !bStarts) return -1;
             if (bStarts && !aStarts) return 1;
-            
+
             // Contains in title
             const aContains = aTitle.includes(lowerQuery);
             const bContains = bTitle.includes(lowerQuery);
             if (aContains && !bContains) return -1;
             if (bContains && !aContains) return 1;
-            
+
             // Then by last used
             const lastUsedDiff = (b.lastUsed || 0) - (a.lastUsed || 0);
             if (lastUsedDiff !== 0) return lastUsedDiff;
-            
+
             // Finally by order
             return (a.order || 999) - (b.order || 999);
         });
@@ -1066,7 +1086,7 @@ export class ConfigDatabase {
     // Backup and restore
     async backup(backupPath: string): Promise<void> {
         if (!this.db || !this.adapter) return;
-        
+
         try {
             const data = this.db.export();
             await this.adapter.writeBinary(backupPath, data.buffer as ArrayBuffer);
@@ -1120,7 +1140,7 @@ export class ConfigDatabase {
     async importMCPConfigFromClaudeDesktop(jsonContent: string): Promise<void> {
         try {
             const config = JSON.parse(jsonContent) as MCPServersConfig;
-            
+
             // Validate the structure
             if (!config.mcpServers || typeof config.mcpServers !== 'object') {
                 throw new Error('Invalid MCP configuration format');
@@ -1266,7 +1286,7 @@ export class ConfigDatabase {
     async getI18nSettings(): Promise<{ language: 'en' | 'zh'; initialized: boolean }> {
         const language = await this.getConfig('i18n.language');
         const initialized = await this.getConfig('i18n.initialized');
-        
+
         return {
             language: (language as 'en' | 'zh') || 'en',
             initialized: initialized === 'true'
@@ -1344,17 +1364,17 @@ export class ConfigDatabase {
      */
     async addPromptHistory(prompt: string): Promise<void> {
         if (!this.db || !prompt || !prompt.trim()) return;
-        
+
         const trimmedPrompt = prompt.trim();
         const now = Date.now();
-        
+
         try {
             // Check if prompt already exists
             const existing = this.db.exec(
                 'SELECT id, use_count FROM prompt_history WHERE prompt = ?',
                 [trimmedPrompt]
             );
-            
+
             if (existing.length > 0 && existing[0].values.length > 0) {
                 // Update existing entry
                 const useCount = existing[0].values[0][1] as number;
@@ -1369,7 +1389,7 @@ export class ConfigDatabase {
                     [trimmedPrompt, now, 1]
                 );
             }
-            
+
             await this.saveToFile();
         } catch (error) {
             Logger.error('Failed to add prompt history:', error);
@@ -1382,17 +1402,17 @@ export class ConfigDatabase {
      */
     async getPromptHistory(limit: number = 10): Promise<string[]> {
         if (!this.db) return [];
-        
+
         try {
             const result = this.db.exec(
                 'SELECT prompt FROM prompt_history ORDER BY last_used DESC LIMIT ?',
                 [limit]
             );
-            
+
             if (result.length === 0 || result[0].values.length === 0) {
                 return [];
             }
-            
+
             return result[0].values.map(row => row[0] as string);
         } catch (error) {
             Logger.error('Failed to get prompt history:', error);
@@ -1413,7 +1433,7 @@ export class ConfigDatabase {
      */
     async cleanPromptHistory(keepCount: number = 100): Promise<void> {
         if (!this.db) return;
-        
+
         try {
             this.db.run(
                 `DELETE FROM prompt_history WHERE id NOT IN (
@@ -1684,17 +1704,17 @@ export class ConfigDatabase {
         await this.setConfig('maxMCPToolsSelection', limit.toString());
     }
 
-	// Plan Execution Mode Settings
-	async getPlanExecutionMode(): Promise<'sequential' | 'dag'> {
-		const value = await this.getConfig('planExecutionMode');
-		return (value as 'sequential' | 'dag') || 'sequential'; // Default: sequential
-	}
+    // Plan Execution Mode Settings
+    async getPlanExecutionMode(): Promise<'sequential' | 'dag'> {
+        const value = await this.getConfig('planExecutionMode');
+        return (value as 'sequential' | 'dag') || 'sequential'; // Default: sequential
+    }
 
-	async setPlanExecutionMode(mode: 'sequential' | 'dag'): Promise<void> {
-		await this.setConfig('planExecutionMode', mode);
-	}
+    async setPlanExecutionMode(mode: 'sequential' | 'dag'): Promise<void> {
+        await this.setConfig('planExecutionMode', mode);
+    }
 
-	// ============================================================================
+    // ============================================================================
     // Tool Auto-Execute Settings
     // ============================================================================
 
@@ -1745,7 +1765,7 @@ export class ConfigDatabase {
      */
     getToolSettings(toolId: string): { enabled: boolean; requireConfirmation: boolean } | null {
         if (!this.db) return null;
-        
+
         try {
             const stmt = this.db.prepare(`
                 SELECT enabled, require_confirmation 
@@ -1753,7 +1773,7 @@ export class ConfigDatabase {
                 WHERE tool_id = ?
             `);
             stmt.bind([toolId]);
-            
+
             if (stmt.step()) {
                 const row = stmt.getAsObject() as SqlRow;
                 stmt.free();
@@ -1762,7 +1782,7 @@ export class ConfigDatabase {
                     requireConfirmation: row.require_confirmation === 1
                 };
             }
-            
+
             stmt.free();
             return null;
         } catch (error) {
@@ -1776,13 +1796,13 @@ export class ConfigDatabase {
      */
     setToolSettings(toolId: string, enabled: boolean, requireConfirmation: boolean, serverId?: string): void {
         if (!this.db) return;
-        
+
         try {
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO tool_settings (tool_id, enabled, require_confirmation, server_id, updated_at)
                 VALUES (?, ?, ?, ?, ?)
             `);
-            
+
             stmt.bind([
                 toolId,
                 enabled ? 1 : 0,
@@ -1792,7 +1812,7 @@ export class ConfigDatabase {
             ]);
             stmt.step();
             stmt.free();
-            
+
             // Persist changes to file
             this.saveToFile();
         } catch (error) {
@@ -1805,12 +1825,12 @@ export class ConfigDatabase {
      */
     setToolEnabled(toolId: string, enabled: boolean, serverId?: string): void {
         if (!this.db) return;
-        
+
         try {
             // Get existing settings or use defaults
             const existing = this.getToolSettings(toolId);
             const requireConfirmation = existing?.requireConfirmation ?? true; // Default to require confirmation
-            
+
             this.setToolSettings(toolId, enabled, requireConfirmation, serverId);
         } catch (error) {
             Logger.error('Failed to set tool enabled state:', error);
@@ -1822,12 +1842,12 @@ export class ConfigDatabase {
      */
     setToolRequireConfirmation(toolId: string, requireConfirmation: boolean, serverId?: string): void {
         if (!this.db) return;
-        
+
         try {
             // Get existing settings or use defaults
             const existing = this.getToolSettings(toolId);
             const enabled = existing?.enabled ?? true; // Default to enabled
-            
+
             this.setToolSettings(toolId, enabled, requireConfirmation, serverId);
         } catch (error) {
             Logger.error('Failed to set tool require confirmation state:', error);
@@ -1839,7 +1859,7 @@ export class ConfigDatabase {
      */
     initializeToolSettings(toolId: string, serverId?: string): void {
         if (!this.db) return;
-        
+
         // Only initialize if not already exists
         const existing = this.getToolSettings(toolId);
         if (existing === null) {
@@ -1853,9 +1873,9 @@ export class ConfigDatabase {
      */
     getToolSettingsByServer(serverId: string): Map<string, { enabled: boolean; requireConfirmation: boolean }> {
         const result = new Map<string, { enabled: boolean; requireConfirmation: boolean }>();
-        
+
         if (!this.db) return result;
-        
+
         try {
             const stmt = this.db.prepare(`
                 SELECT tool_id, enabled, require_confirmation 
@@ -1863,7 +1883,7 @@ export class ConfigDatabase {
                 WHERE server_id = ?
             `);
             stmt.bind([serverId]);
-            
+
             while (stmt.step()) {
                 const row = stmt.getAsObject() as SqlRow;
                 result.set(row.tool_id as string, {
@@ -1871,12 +1891,12 @@ export class ConfigDatabase {
                     requireConfirmation: row.require_confirmation === 1
                 });
             }
-            
+
             stmt.free();
         } catch (error) {
             Logger.error('Failed to get tool settings by server:', error);
         }
-        
+
         return result;
     }
 
@@ -1896,21 +1916,21 @@ export class ConfigDatabase {
      */
     cleanupMCPToolSettings(validMCPToolIds: string[]): void {
         if (!this.db) return;
-        
+
         try {
             if (validMCPToolIds.length === 0) {
                 // If no valid MCP tools, clear all MCP tool settings (keep built-in)
                 this.db.run(`DELETE FROM tool_settings WHERE server_id != 'built-in'`);
                 return;
             }
-            
+
             const placeholders = validMCPToolIds.map(() => '?').join(',');
             const stmt = this.db.prepare(`
                 DELETE FROM tool_settings 
                 WHERE server_id != 'built-in'
                 AND tool_id NOT IN (${placeholders})
             `);
-            
+
             stmt.bind(validMCPToolIds);
             stmt.step();
             stmt.free();
@@ -1924,7 +1944,7 @@ export class ConfigDatabase {
      */
     removeToolSettingsByServer(serverId: string): void {
         if (!this.db) return;
-        
+
         try {
             const stmt = this.db.prepare(`DELETE FROM tool_settings WHERE server_id = ?`);
             stmt.bind([serverId]);
@@ -1941,7 +1961,7 @@ export class ConfigDatabase {
      */
     getBuiltInToolSettings(toolName: string): { enabled: boolean; requireConfirmation: boolean } | null {
         if (!this.db) return null;
-        
+
         const toolId = `built-in:${toolName}`;
         return this.getToolSettings(toolId);
     }
@@ -1951,7 +1971,7 @@ export class ConfigDatabase {
      */
     setBuiltInToolEnabled(toolName: string, enabled: boolean): void {
         if (!this.db) return;
-        
+
         const toolId = `built-in:${toolName}`;
         this.setToolEnabled(toolId, enabled, 'built-in');
     }
@@ -1961,7 +1981,7 @@ export class ConfigDatabase {
      */
     setBuiltInToolRequireConfirmation(toolName: string, requireConfirmation: boolean): void {
         if (!this.db) return;
-        
+
         const toolId = `built-in:${toolName}`;
         this.setToolRequireConfirmation(toolId, requireConfirmation, 'built-in');
     }
@@ -1972,7 +1992,7 @@ export class ConfigDatabase {
      */
     initializeBuiltInToolSettings(toolName: string): void {
         if (!this.db) return;
-        
+
         const toolId = `built-in:${toolName}`;
         this.initializeToolSettings(toolId, 'built-in');
     }
@@ -1989,14 +2009,14 @@ export class ConfigDatabase {
         }
 
         const settings = this.getBuiltInToolSettings(toolName);
-        
+
         // CRITICAL DEBUG: Log the exact settings retrieval
         if (!settings) {
             Logger.debug(`[ConfigDB] Tool ${toolName} has NO settings record in database - defaulting to DISABLED`);
         } else {
             Logger.debug(`[ConfigDB] Tool ${toolName} settings found: enabled=${settings.enabled}, requireConfirmation=${settings.requireConfirmation}`);
         }
-        
+
         // Default to FALSE (disabled) if not explicitly set - CONSERVATIVE APPROACH
         // This prevents accidentally enabling all tools
         return settings ? settings.enabled : false;
@@ -2034,7 +2054,7 @@ export class ConfigDatabase {
             `);
             const connections = [];
             const connectionsNeedingFix = [];
-            
+
             while (stmt.step()) {
                 const row = stmt.getAsObject() as SqlRow;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2044,7 +2064,7 @@ export class ConfigDatabase {
                     proxyEnabled: row.proxyEnabled === 1,
                     proxyAuth: row.proxyAuth === 1
                 };
-                
+
                 // Fix missing type field from old data
                 if (!connection.type || connection.type === '') {
                     // Try to infer type from connection name
@@ -2067,7 +2087,7 @@ export class ConfigDatabase {
                     Logger.warn(`Fixed missing type for connection ${connection.id}: ${connection.name} -> ${connection.type}`);
                     connectionsNeedingFix.push(connection);
                 }
-                
+
                 // For GitHub Copilot, decode tokens from apiKey JSON
                 if (connection.type === 'github-copilot' && connection.apiKey) {
                     try {
@@ -2080,11 +2100,11 @@ export class ConfigDatabase {
                         // If parsing fails, keep apiKey as is
                     }
                 }
-                
+
                 connections.push(connection);
             }
             stmt.free();
-            
+
             // Save fixed connections back to database
             for (const connection of connectionsNeedingFix) {
                 try {
@@ -2094,7 +2114,7 @@ export class ConfigDatabase {
                     Logger.error(`Failed to save fixed connection ${connection.id}:`, error);
                 }
             }
-            
+
             return connections;
         } catch (error) {
             Logger.error('Error getting connections:', error);
@@ -2118,7 +2138,7 @@ export class ConfigDatabase {
                     tokenExpiry: connection.tokenExpiry
                 });
             }
-            
+
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO connections 
                 (id, name, type, api_key, base_url, organization_id, region,

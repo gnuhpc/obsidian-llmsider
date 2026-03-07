@@ -20,11 +20,10 @@ export class ToolButtonControls {
 		onConfirmationChange: (requireConfirm: boolean) => Promise<void>
 	): void {
 		const buttonGroup = container.createDiv({ cls: 'llmsider-tool-button-group' });
-		buttonGroup.style.cssText = 'display: flex; gap: 8px; align-items: center;';
 		
 		// Enable/Disable toggle button (single square icon button)
 		const enableBtn = buttonGroup.createEl('button', {
-			cls: 'llmsider-tool-icon-btn',
+			cls: 'llmsider-tool-icon-btn llmsider-tool-enable-btn',
 			attr: { 
 				'data-tooltip': isToolEnabled ? this.i18n.t('settingsPage.toolEnabledTooltip') : this.i18n.t('settingsPage.toolDisabledTooltip'),
 				'aria-label': isToolEnabled ? this.i18n.t('settingsPage.toolEnabled') : this.i18n.t('settingsPage.toolDisabled')
@@ -39,8 +38,6 @@ export class ToolButtonControls {
 					<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
 					<polyline points="22 4 12 14.01 9 11.01"></polyline>
 				</svg>`;
-				enableBtn.style.background = 'var(--interactive-accent)';
-				enableBtn.style.color = 'var(--text-on-accent)';
 			} else {
 				// X icon (disabled)
 				enableBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -48,71 +45,62 @@ export class ToolButtonControls {
 					<line x1="15" y1="9" x2="9" y2="15"></line>
 					<line x1="9" y1="9" x2="15" y2="15"></line>
 				</svg>`;
-				enableBtn.style.background = 'var(--background-modifier-border)';
-				enableBtn.style.color = 'var(--text-muted)';
 			}
+			enableBtn.classList.toggle('is-active', enabled);
+			enableBtn.classList.toggle('is-inactive', !enabled);
 			enableBtn.setAttribute('data-tooltip', enabled ? this.i18n.t('settingsPage.toolEnabledTooltip') : this.i18n.t('settingsPage.toolDisabledTooltip'));
+			enableBtn.setAttribute('aria-label', enabled ? this.i18n.t('settingsPage.toolEnabled') : this.i18n.t('settingsPage.toolDisabled'));
+			enableBtn.setAttribute('aria-pressed', String(enabled));
 		};
-		
-		enableBtn.style.cssText = `
-			width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;
-			border-radius: 6px; border: 1px solid var(--background-modifier-border);
-			cursor: pointer; transition: all 0.2s; flex-shrink: 0;
-		`;
 		updateEnableIcon(isToolEnabled);
 		
-	enableBtn.addEventListener('click', async (e) => {
-		Logger.debug('[ToolButtonControls] Enable button clicked, current state:', isToolEnabled);
-		
-		// Aggressively remove tooltip on click
-		enableBtn.removeAttribute('data-tooltip');
-		enableBtn.removeAttribute('aria-label');
-		enableBtn.blur();
-		
-		// Trigger mouseout event to force tooltip to hide
-		const mouseOutEvent = new MouseEvent('mouseout', {
-			bubbles: true,
-			cancelable: true,
-			view: window
-		});
-		enableBtn.dispatchEvent(mouseOutEvent);
-		
-		// Also trigger mouseleave
-		const mouseLeaveEvent = new MouseEvent('mouseleave', {
-			bubbles: true,
-			cancelable: true,
-			view: window
-		});
-		enableBtn.dispatchEvent(mouseLeaveEvent);
-		
-		Logger.debug('[ToolButtonControls] Tooltip attributes removed and mouse events triggered');
-		
-		const newState = !isToolEnabled;
-		const result = await onEnableChange(newState);
-		
-		// Only update state if callback returned true (success)
-		if (result) {
-			Logger.debug('[ToolButtonControls] State change successful, new state:', newState);
-			isToolEnabled = newState;
-			updateEnableIcon(newState);
-			// Update confirmation button state
-			if (!newState) {
-				confirmBtn.style.opacity = '0.5';
-				confirmBtn.style.cursor = 'not-allowed';
-				confirmBtn.disabled = true;
+		enableBtn.addEventListener('click', async () => {
+			Logger.debug('[ToolButtonControls] Enable button clicked, current state:', isToolEnabled);
+			
+			// Aggressively remove tooltip on click
+			enableBtn.removeAttribute('data-tooltip');
+			enableBtn.removeAttribute('aria-label');
+			enableBtn.blur();
+			
+			// Trigger mouseout event to force tooltip to hide
+			const mouseOutEvent = new MouseEvent('mouseout', {
+				bubbles: true,
+				cancelable: true,
+				view: window
+			});
+			enableBtn.dispatchEvent(mouseOutEvent);
+			
+			// Also trigger mouseleave
+			const mouseLeaveEvent = new MouseEvent('mouseleave', {
+				bubbles: true,
+				cancelable: true,
+				view: window
+			});
+			enableBtn.dispatchEvent(mouseLeaveEvent);
+			
+			Logger.debug('[ToolButtonControls] Tooltip attributes removed and mouse events triggered');
+			
+			const newState = !isToolEnabled;
+			const result = await onEnableChange(newState);
+			
+			// Only update state if callback returned true (success)
+			if (result) {
+				Logger.debug('[ToolButtonControls] State change successful, new state:', newState);
+				isToolEnabled = newState;
+				updateEnableIcon(newState);
+				// Update confirmation button state
+				this.setConfirmButtonEnabled(confirmBtn, newState);
+				updateConfirmIcon(requireConfirmation);
 			} else {
-				confirmBtn.style.opacity = '1';
-				confirmBtn.style.cursor = 'pointer';
-				confirmBtn.disabled = false;
+				Logger.debug('[ToolButtonControls] State change failed or cancelled');
+				// Restore tooltip even if change failed
+				enableBtn.setAttribute('data-tooltip', isToolEnabled ? this.i18n.t('settingsPage.toolEnabledTooltip') : this.i18n.t('settingsPage.toolDisabledTooltip'));
 			}
-		} else {
-			Logger.debug('[ToolButtonControls] State change failed or cancelled');
-			// Restore tooltip even if change failed
-			enableBtn.setAttribute('data-tooltip', isToolEnabled ? this.i18n.t('settingsPage.toolEnabledTooltip') : this.i18n.t('settingsPage.toolDisabledTooltip'));
-		}
-	});		// Confirmation/Auto toggle button (single square icon button)
+		});
+
+		// Confirmation/Auto toggle button (single square icon button)
 		const confirmBtn = buttonGroup.createEl('button', {
-			cls: 'llmsider-tool-icon-btn',
+			cls: 'llmsider-tool-icon-btn llmsider-tool-confirm-btn',
 			attr: { 
 				'data-tooltip': requireConfirmation ? this.i18n.t('settingsPage.confirmationRequiredTooltip') : this.i18n.t('settingsPage.autoExecuteTooltip'),
 				'aria-label': requireConfirmation ? this.i18n.t('settingsPage.confirmationRequired') : this.i18n.t('settingsPage.autoExecute')
@@ -128,26 +116,20 @@ export class ToolButtonControls {
 					<path d="M12 8v4"></path>
 					<path d="M12 16h.01"></path>
 				</svg>`;
-				confirmBtn.style.background = 'var(--interactive-accent)';
-				confirmBtn.style.color = 'var(--text-on-accent)';
 			} else {
 				// Lightning bolt icon (auto execute)
 				confirmBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 					<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
 				</svg>`;
-				confirmBtn.style.background = 'var(--background-modifier-border)';
-				confirmBtn.style.color = 'var(--text-muted)';
 			}
+			confirmBtn.classList.toggle('is-active', needConfirm);
+			confirmBtn.classList.toggle('is-inactive', !needConfirm);
 			confirmBtn.setAttribute('data-tooltip', needConfirm ? this.i18n.t('settingsPage.confirmationRequiredTooltip') : this.i18n.t('settingsPage.autoExecuteTooltip'));
+			confirmBtn.setAttribute('aria-label', needConfirm ? this.i18n.t('settingsPage.confirmationRequired') : this.i18n.t('settingsPage.autoExecute'));
+			confirmBtn.setAttribute('aria-pressed', String(needConfirm));
 		};
-		
-		confirmBtn.style.cssText = `
-			width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;
-			border-radius: 6px; border: 1px solid var(--background-modifier-border);
-			cursor: ${isToolEnabled ? 'pointer' : 'not-allowed'}; transition: all 0.2s; flex-shrink: 0;
-			opacity: ${isToolEnabled ? '1' : '0.5'};
-		`;
-		confirmBtn.disabled = !isToolEnabled;
+
+		this.setConfirmButtonEnabled(confirmBtn, isToolEnabled);
 		updateConfirmIcon(requireConfirmation);
 		
 		confirmBtn.addEventListener('click', async () => {
@@ -156,20 +138,6 @@ export class ToolButtonControls {
 			await onConfirmationChange(newState);
 			requireConfirmation = newState;
 			updateConfirmIcon(newState);
-		});
-		
-		// Hover effect
-		[enableBtn, confirmBtn].forEach(btn => {
-			btn.addEventListener('mouseenter', () => {
-				if (!btn.disabled) {
-					btn.style.transform = 'scale(1.05)';
-					btn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
-				}
-			});
-			btn.addEventListener('mouseleave', () => {
-				btn.style.transform = 'scale(1)';
-				btn.style.boxShadow = 'none';
-			});
 		});
 		
 		// Tooltip functionality
@@ -206,5 +174,10 @@ export class ToolButtonControls {
 				}
 			});
 		});
+	}
+
+	private setConfirmButtonEnabled(button: HTMLButtonElement, enabled: boolean): void {
+		button.disabled = !enabled;
+		button.classList.toggle('is-disabled-control', !enabled);
 	}
 }

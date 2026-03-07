@@ -30,7 +30,7 @@ export class ConnectionModelRenderer {
 	 */
 	render(containerEl: HTMLElement): void {
 		// Main Header - first section, no top margin
-		const sectionHeader = containerEl.createEl('h2', { 
+		const sectionHeader = containerEl.createEl('h2', {
 			text: this.i18n.t('settingsPage.connectionsAndModels'),
 			cls: 'llmsider-section-header llmsider-section-header-first'
 		});
@@ -40,7 +40,7 @@ export class ConnectionModelRenderer {
 
 		// Add Connection Section
 		const addConnectionSection = container.createDiv({ cls: 'llmsider-add-connection-section' });
-		const addConnectionTitle = addConnectionSection.createEl('h3', { 
+		const addConnectionTitle = addConnectionSection.createEl('h3', {
 			text: this.i18n.t('settingsPage.addNewConnection'),
 			cls: 'llmsider-subsection-header'
 		});
@@ -48,7 +48,7 @@ export class ConnectionModelRenderer {
 		const connectionCardsContainer = addConnectionSection.createDiv({ cls: 'llmsider-connection-cards-grid' });
 
 		// Provider Cards with SVG logos - using centralized definitions
-		type ProviderType = 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode';
+		type ProviderType = 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'hugging-chat' | 'github-copilot' | 'xai' | 'openrouter' | 'opencode' | 'webllm';
 		const providerTypes: ProviderType[] = [
 			'openai',
 			'anthropic',
@@ -64,9 +64,9 @@ export class ConnectionModelRenderer {
 			'qwen',
 			'free-qwen',
 			'free-deepseek',
-			'free-gemini',
 			'hugging-chat',
-			'openai-compatible'
+			'openai-compatible',
+			'webllm'
 		];
 
 		providerTypes.forEach(type => {
@@ -80,7 +80,7 @@ export class ConnectionModelRenderer {
 
 		// Configured Connections Section
 		if (this.plugin.settings.connections.length > 0) {
-			const listHeader = container.createEl('h3', { 
+			const listHeader = container.createEl('h3', {
 				text: this.i18n.t('settingsPage.configuredConnectionsAndModels'),
 				cls: 'llmsider-subsection-header llmsider-subsection-header-spaced'
 			});
@@ -104,17 +104,27 @@ export class ConnectionModelRenderer {
 
 		// Left side - Toggle and info
 		const leftSide = header.createDiv({ cls: 'llmsider-connection-header-left' });
-		
+
 		// Collapse toggle button
 		const collapseBtn = leftSide.createEl('button', { cls: 'llmsider-connection-collapse-btn' });
 		collapseBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-		
-		// Connection info
+
+		// Connection info container
 		const info = leftSide.createDiv({ cls: 'llmsider-connection-info' });
 		const nameContainer = info.createDiv({ cls: 'llmsider-connection-name-container' });
+
+		// 1. Provider Name
 		const nameEl = nameContainer.createEl('h4', { text: connection.name, cls: 'llmsider-connection-name' });
+
+		// 2. Model Count
+		const models = this.plugin.settings.models.filter(m => m.connectionId === connection.id);
+		const modelsCount = nameContainer.createEl('span', {
+			text: `${models.length} ${this.i18n.t('settingsPage.models')}`,
+			cls: 'llmsider-connection-model-count'
+		});
+
+		// 3. Provider Type Badge
 		const typeEl = nameContainer.createEl('span', { cls: 'llmsider-connection-type-badge' });
-		
 		// Add logo icon and type name to badge
 		const logoIcon = typeEl.createEl('span', { cls: 'llmsider-connection-type-logo' });
 		logoIcon.innerHTML = getConnectionTypeLogo(connection.type);
@@ -122,7 +132,7 @@ export class ConnectionModelRenderer {
 
 		// Add server status indicator for OpenCode
 		if (connection.type === 'opencode') {
-			const statusIndicator = nameContainer.createEl('span', { 
+			const statusIndicator = nameContainer.createEl('span', {
 				cls: 'llmsider-opencode-status-indicator',
 				attr: { 'data-connection-id': connection.id }
 			});
@@ -130,14 +140,14 @@ export class ConnectionModelRenderer {
 				<span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-muted); margin-left: 8px; margin-right: 4px;"></span>
 				<span class="status-text" style="font-size: 0.85em; color: var(--text-muted);">Checking...</span>
 			`;
-			
+
 			this.checkOpenCodeServerStatus(statusIndicator);
 		}
 
 		// Add description for Free Deepseek
 		let descEl: HTMLElement | null = null;
 		if (connection.type === 'free-deepseek') {
-			descEl = info.createEl('div', { cls: 'llmsider-connection-description' });
+			descEl = card.createEl('div', { cls: 'llmsider-connection-description-inline' });
 			descEl.innerHTML = `
 				<div style="font-size: 0.85em; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">
 					<strong>Available Models:</strong><br/>
@@ -152,24 +162,44 @@ export class ConnectionModelRenderer {
 
 		// Right side - Actions
 		const rightSide = header.createDiv({ cls: 'llmsider-connection-header-right' });
-		
+		const actions = rightSide.createDiv({ cls: 'llmsider-connection-actions' });
+		const actionButtons = actions.createDiv({ cls: 'llmsider-connection-action-buttons' });
+
 		// Edit button
-		const editBtn = rightSide.createEl('button', { 
+		const editBtn = actionButtons.createEl('button', {
 			cls: 'llmsider-icon-btn',
-			attr: { 'aria-label': 'Edit connection' }
+			attr: { 'aria-label': this.i18n.t('ui.editConnection') || 'Edit connection' }
 		});
-		editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
+		editBtn.title = this.i18n.t('ui.editConnection') || 'Edit connection';
+		editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
 		editBtn.onclick = (e) => {
 			e.stopPropagation();
 			this.connectionHandler.editConnection(connection, index);
 		};
 
-		// Delete button
-		const deleteBtn = rightSide.createEl('button', { 
+		// Add model button directly in header
+		const addModelBtn = actionButtons.createEl('button', {
 			cls: 'llmsider-icon-btn',
-			attr: { 'aria-label': 'Delete connection' }
+			attr: { 'aria-label': this.i18n.t('settingsPage.addModel') }
 		});
-		deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+		addModelBtn.innerHTML = `
+			<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<line x1="12" y1="5" x2="12" y2="19"></line>
+				<line x1="5" y1="12" x2="19" y2="12"></line>
+			</svg>
+		`;
+		addModelBtn.onclick = (e) => {
+			e.stopPropagation();
+			this.modelHandler.showAddModelModal(connection);
+		};
+
+		// Delete button
+		const deleteBtn = actionButtons.createEl('button', {
+			cls: 'llmsider-icon-btn',
+			attr: { 'aria-label': this.i18n.t('ui.deleteConnection') || 'Delete connection' }
+		});
+		deleteBtn.title = this.i18n.t('ui.deleteConnection') || 'Delete connection';
+		deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
 		deleteBtn.onclick = async (e) => {
 			e.stopPropagation();
 			deleteBtn.disabled = true;
@@ -185,14 +215,14 @@ export class ConnectionModelRenderer {
 		};
 
 		// Toggle switch
-		const toggleSwitch = rightSide.createDiv({ cls: 'llmsider-switch-container' });
+		const toggleSwitch = actions.createDiv({ cls: 'llmsider-switch-container' });
 		const switchInput = toggleSwitch.createEl('input', {
 			type: 'checkbox',
 			cls: 'llmsider-switch-input',
 			attr: { id: `connection-toggle-${connection.id}` }
 		});
 		switchInput.checked = connection.enabled;
-		
+
 		const switchLabel = toggleSwitch.createEl('label', {
 			cls: 'llmsider-switch-label',
 			attr: { for: `connection-toggle-${connection.id}` }
@@ -213,26 +243,6 @@ export class ConnectionModelRenderer {
 		// Models section (collapsible)
 		const modelsSection = card.createDiv({ cls: 'llmsider-models-section' });
 		modelsSection.style.display = 'block'; // Initially expanded
-		
-		const models = this.plugin.settings.models.filter(m => m.connectionId === connection.id);
-		
-		// Models header
-		const modelsHeader = modelsSection.createDiv({ cls: 'llmsider-models-header' });
-		const modelsCount = modelsHeader.createEl('span', { 
-			text: `${this.i18n.t('settingsPage.models')} (${models.length})`,
-			cls: 'llmsider-models-count'
-		});
-		
-		// Add Model button
-		const addModelBtn = modelsHeader.createEl('button', { cls: 'llmsider-add-model-btn' });
-		addModelBtn.innerHTML = `
-			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<line x1="12" y1="5" x2="12" y2="19"></line>
-				<line x1="5" y1="12" x2="19" y2="12"></line>
-			</svg>
-			<span>${this.i18n.t('settingsPage.addModel')}</span>
-		`;
-		addModelBtn.onclick = () => this.modelHandler.showAddModelModal(connection);
 
 		// Models list
 		const modelsList = modelsSection.createDiv({ cls: 'llmsider-models-list' });
@@ -260,16 +270,16 @@ export class ConnectionModelRenderer {
 
 		// Model info section
 		const modelInfo = modelCard.createDiv({ cls: 'llmsider-model-card-info' });
-		
+
 		// Model name and badge
 		const modelHeader = modelInfo.createDiv({ cls: 'llmsider-model-card-header' });
-		const modelName = modelHeader.createEl('span', { 
+		const modelName = modelHeader.createEl('span', {
 			text: model.name,
 			cls: 'llmsider-model-card-name'
 		});
 
 		if (model.isDefault) {
-			const defaultBadge = modelHeader.createEl('span', { 
+			const defaultBadge = modelHeader.createEl('span', {
 				text: this.i18n.t('settingsPage.defaultBadge'),
 				cls: 'llmsider-model-default-badge'
 			});
@@ -287,9 +297,9 @@ export class ConnectionModelRenderer {
 
 		// Model actions
 		const modelActions = modelCard.createDiv({ cls: 'llmsider-model-card-actions' });
-		
+
 		// Edit button
-		const editBtn = modelActions.createEl('button', { 
+		const editBtn = modelActions.createEl('button', {
 			cls: 'llmsider-icon-btn',
 			attr: { 'aria-label': 'Edit model' }
 		});
@@ -297,7 +307,7 @@ export class ConnectionModelRenderer {
 		editBtn.onclick = () => this.modelHandler.editModel(model, index);
 
 		// Delete button
-		const deleteBtn = modelActions.createEl('button', { 
+		const deleteBtn = modelActions.createEl('button', {
 			cls: 'llmsider-icon-btn',
 			attr: { 'aria-label': 'Delete model' }
 		});
@@ -311,9 +321,9 @@ export class ConnectionModelRenderer {
 	renderGoogleSearchSettings(containerEl: HTMLElement): void {
 		// Container with border
 		const webSearchContainer = containerEl.createDiv({ cls: 'llmsider-settings-section-container' });
-		
+
 		// Section Header
-		const webSearchHeader = webSearchContainer.createEl('h3', { 
+		const webSearchHeader = webSearchContainer.createEl('h3', {
 			text: this.i18n.t('settingsPage.webSearchSettings'),
 			cls: 'llmsider-subsection-header'
 		});
@@ -332,12 +342,12 @@ export class ConnectionModelRenderer {
 				dropdown.addOption('google', this.i18n.t('settingsPage.googleBackend'));
 				dropdown.addOption('serpapi', this.i18n.t('settingsPage.serpapiBackend'));
 				dropdown.addOption('tavily', this.i18n.t('settingsPage.tavilyBackend'));
-				
+
 				dropdown.setValue(this.plugin.settings.googleSearch.searchBackend);
 				dropdown.onChange(async (value: string) => {
 					this.plugin.settings.googleSearch.searchBackend = value as 'google' | 'serpapi' | 'tavily';
 					await this.plugin.saveSettings();
-					
+
 					// Re-render to show/hide relevant API key fields
 					this.onUpdate();
 				});
@@ -412,9 +422,9 @@ export class ConnectionModelRenderer {
 	renderAutocompletionSettings(containerEl: HTMLElement): void {
 		// Container with border
 		const autocompletionContainer = containerEl.createDiv({ cls: 'llmsider-settings-section-container' });
-		
+
 		// Section Header
-		const autocompletionHeader = autocompletionContainer.createEl('h3', { 
+		const autocompletionHeader = autocompletionContainer.createEl('h3', {
 			text: this.i18n.t('settingsPage.autocompletionSettings'),
 			cls: 'llmsider-subsection-header'
 		});
@@ -428,7 +438,7 @@ export class ConnectionModelRenderer {
 				toggle.onChange(async (value) => {
 					this.plugin.settings.autocomplete.enabled = value;
 					await this.plugin.saveSettings();
-					
+
 					if (value) {
 						new Notice(this.i18n.t('autocomplete.completionEnabled'));
 					} else {
@@ -444,7 +454,7 @@ export class ConnectionModelRenderer {
 			.addDropdown(dropdown => {
 				// Add default option
 				dropdown.addOption('', this.i18n.t('autocomplete.useDefaultModel'));
-				
+
 				// Add all enabled models
 				const enabledModels = this.plugin.settings.models.filter(m => m.enabled);
 				for (const model of enabledModels) {
@@ -452,7 +462,7 @@ export class ConnectionModelRenderer {
 					const displayName = connection ? `${connection.name} - ${model.name}` : model.name;
 					dropdown.addOption(model.id, displayName);
 				}
-				
+
 				dropdown.setValue(this.plugin.settings.autocomplete.modelId || '');
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.autocomplete.modelId = value || undefined;
@@ -536,7 +546,7 @@ export class ConnectionModelRenderer {
 	private async checkOpenCodeServerStatus(statusIndicator: HTMLElement): Promise<void> {
 		const statusDot = statusIndicator.querySelector('.status-dot') as HTMLElement;
 		const statusText = statusIndicator.querySelector('.status-text') as HTMLElement;
-		
+
 		if (!statusDot || !statusText) return;
 
 		try {

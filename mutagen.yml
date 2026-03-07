@@ -1,11 +1,19 @@
 sync:
-  llmsider:
-    alpha: "."
-    beta: "clawuser@100.118.60.93:/home/clawuser/obsidian-llmsider"
-    mode: "two-way-safe"
+  defaults:
+    mode: "two-way-resolved"
+    symlink:
+      mode: "portable"
     ignore:
       vcs: true
       paths:
         - "node_modules"
         - ".DS_Store"
         - "tmp"
+        - ".venv"    # 强烈建议忽略虚拟环境
+        - ".venv-new"
+  llmsider:
+    alpha: "."
+    beta: "clawuser@100.118.60.93:/home/clawuser/projects/obsidian-llmsider"
+  option-master:
+    alpha: "/Users/gnuhpc/projects/option-master"
+    beta: "clawuser@mylinux:/home/clawuser/projects/option-master"

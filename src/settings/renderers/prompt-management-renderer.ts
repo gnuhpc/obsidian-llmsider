@@ -1,22 +1,36 @@
-import { Notice, Setting } from 'obsidian';
+import { App, Modal, Notice } from 'obsidian';
 import type LLMSiderPlugin from '../../main';
 import type { I18nManager } from '../../i18n/i18n-manager';
 import { PromptTemplate } from '../../types';
 import { PromptManagementModal } from '../modals/prompt-management-modal';
 
+type PromptTabName = 'builtin' | 'custom' | 'speed-reading';
+
+interface PromptCollections {
+	builtInPrompts: PromptTemplate[];
+	customPrompts: PromptTemplate[];
+	speedReadingPrompts: PromptTemplate[];
+	total: number;
+}
+
+const PROMPT_TAB_ORDER: PromptTabName[] = ['builtin', 'custom', 'speed-reading'];
+
 /**
  * PromptManagementRenderer
- * Handles rendering of Prompt Management section including:
- * - Display of built-in prompts (read-only)
- * - CRUD operations for custom prompts
- * - Quick filtering/search functionality
+ * Renders the settings prompt management studio.
  */
 export class PromptManagementRenderer {
 	private plugin: LLMSiderPlugin;
 	private i18n: I18nManager;
 	private onDisplayCallback: () => void;
-	private filterQuery: string = '';
+	private filterQuery = '';
+	private activeTab: PromptTabName = 'builtin';
 	private promptContainer: HTMLElement | null = null;
+	private addButtonLabel: HTMLSpanElement | null = null;
+	private resultMetaEl: HTMLElement | null = null;
+	private tabButtons: Partial<Record<PromptTabName, HTMLButtonElement>> = {};
+	private tabCountEls: Partial<Record<PromptTabName, HTMLElement>> = {};
+	private overviewCountEls: Partial<Record<PromptTabName | 'total', HTMLElement>> = {};
 
 	constructor(plugin: LLMSiderPlugin, i18n: I18nManager, onDisplayCallback: () => void) {
 		this.plugin = plugin;
@@ -24,172 +38,370 @@ export class PromptManagementRenderer {
 		this.onDisplayCallback = onDisplayCallback;
 	}
 
-	/**
-	 * Render the entire Prompt Management section
-	 */
 	async render(containerEl: HTMLElement): Promise<void> {
-		// Section header (outside border) - match Built-in Tools style
-		const builtInHeader = containerEl.createEl('h2', { 
+		containerEl.createEl('h2', {
 			text: this.i18n.t('settingsPage.promptManagement.title'),
 			cls: 'llmsider-section-header'
 		});
-		
-		// Container for controls and list
-		const promptSection = containerEl.createDiv({ cls: 'llmsider-settings-section-container' });
 
-		// Controls row: search + add button
-		const controlsRow = promptSection.createDiv({ cls: 'llmsider-prompt-controls' });
-		
-		// Search/filter input
-		const searchContainer = controlsRow.createDiv({ cls: 'llmsider-prompt-search' });
-		const searchInput = searchContainer.createEl('input', {
+		const promptSection = containerEl.createDiv({
+			cls: 'llmsider-settings-section-container llmsider-settings-list-section llmsider-prompt-management-section'
+		});
+
+		this.renderToolbar(promptSection);
+		this.promptContainer = promptSection.createDiv({ cls: 'llmsider-prompt-list' });
+
+		this.updateActiveTabUI();
+		this.updateCreateButtonLabel();
+		await this.refreshPromptList();
+	}
+
+	private renderOverview(container: HTMLElement): void {
+		const overview = container.createDiv({ cls: 'llmsider-prompt-overview' });
+		const copy = overview.createDiv({ cls: 'llmsider-prompt-overview-copy' });
+
+		copy.createEl('p', {
+			text: this.i18n.t('settingsPage.promptManagement.description'),
+			cls: 'llmsider-prompt-overview-description'
+		});
+
+		const statsGrid = overview.createDiv({ cls: 'llmsider-prompt-overview-stats' });
+		this.createOverviewStat(statsGrid, 'total', this.i18n.t('settingsPage.promptManagement.totalPrompts'));
+		this.createOverviewStat(statsGrid, 'builtin', this.i18n.t('settingsPage.promptManagement.builtInPrompts'));
+		this.createOverviewStat(statsGrid, 'custom', this.i18n.t('settingsPage.promptManagement.customPrompts'));
+		this.createOverviewStat(statsGrid, 'speed-reading', this.i18n.t('settingsPage.promptManagement.speedReadingPrompts'));
+	}
+
+	private createOverviewStat(
+		container: HTMLElement,
+		key: PromptTabName | 'total',
+		label: string
+	): void {
+		const card = container.createDiv({ cls: 'llmsider-prompt-overview-stat' });
+		const valueEl = card.createEl('strong', {
+			text: '0',
+			cls: 'llmsider-prompt-overview-stat-value'
+		});
+
+		card.createEl('span', {
+			text: label,
+			cls: 'llmsider-prompt-overview-stat-label'
+		});
+
+		this.overviewCountEls[key] = valueEl;
+	}
+
+	private renderToolbar(container: HTMLElement): void {
+		const toolbar = container.createDiv({
+			cls: 'llmsider-prompt-toolbar llmsider-settings-list-toolbar'
+		});
+
+		const tabControl = toolbar.createDiv({ cls: 'llmsider-prompt-segmented-control' });
+		PROMPT_TAB_ORDER.forEach((tab) => {
+			const button = tabControl.createEl('button', {
+				cls: 'llmsider-prompt-tab',
+				attr: {
+					type: 'button',
+					'data-tab': tab
+				}
+			});
+
+			button.createEl('span', {
+				text: this.getTabLabel(tab),
+				cls: 'llmsider-prompt-tab-label'
+			});
+
+			const count = button.createEl('span', {
+				text: '0',
+				cls: 'llmsider-prompt-tab-count'
+			});
+
+			button.addEventListener('click', () => {
+				this.setActiveTab(tab);
+			});
+
+			this.tabButtons[tab] = button;
+			this.tabCountEls[tab] = count;
+		});
+
+		const actions = toolbar.createDiv({ cls: 'llmsider-prompt-toolbar-actions' });
+		const searchShell = actions.createDiv({ cls: 'llmsider-prompt-search-shell' });
+		const searchIcon = searchShell.createDiv({ cls: 'llmsider-settings-search-icon' });
+		searchIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="11" cy="11" r="7"></circle>
+			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+		</svg>`;
+
+		const searchInput = searchShell.createEl('input', {
 			type: 'text',
 			placeholder: this.i18n.t('settingsPage.promptManagement.searchPlaceholder'),
 			cls: 'llmsider-prompt-search-input'
 		});
-		
-		searchInput.addEventListener('input', (e) => {
-			this.filterQuery = (e.target as HTMLInputElement).value.toLowerCase();
-			this.refreshPromptList();
+
+		searchInput.addEventListener('input', (event) => {
+			this.filterQuery = (event.target as HTMLInputElement).value.trim().toLowerCase();
+			void this.refreshPromptList();
 		});
 
-		// Add new prompt button
-		const addButton = controlsRow.createEl('button', {
-			text: this.i18n.t('settingsPage.promptManagement.addPrompt'),
-			cls: 'mod-cta'
+		const addButton = actions.createEl('button', {
+			cls: 'mod-cta llmsider-prompt-create-btn',
+			attr: {
+				type: 'button',
+				title: this.i18n.t('settingsPage.promptManagement.addChatPrompt')
+			}
 		});
-		
+		addButton.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<line x1="12" y1="5" x2="12" y2="19"></line>
+			<line x1="5" y1="12" x2="19" y2="12"></line>
+		</svg>`;
+
 		addButton.addEventListener('click', () => {
-			new PromptManagementModal(
-				this.plugin.app,
-				this.plugin,
-				this.i18n,
-				null,
-				async () => {
-					await this.refreshPromptList();
-				}
-			).open();
+			this.openPromptEditor(null, this.getDraftPromptType());
 		});
 
-		// Tab navigation
-		const tabContainer = promptSection.createDiv({ cls: 'llmsider-prompt-tabs' });
-		const builtInTab = tabContainer.createEl('button', {
-			text: this.i18n.t('settingsPage.promptManagement.builtInPrompts'),
-			cls: 'llmsider-prompt-tab llmsider-prompt-tab-active',
-			attr: { 'data-tab': 'builtin' }
-		});
-		const customTab = tabContainer.createEl('button', {
-			text: this.i18n.t('settingsPage.promptManagement.customPrompts'),
-			cls: 'llmsider-prompt-tab',
-			attr: { 'data-tab': 'custom' }
-		});
-
-		// Prompt list container
-		this.promptContainer = promptSection.createDiv({ cls: 'llmsider-prompt-list' });
-		
-		// Tab switching logic with toggle collapse
-		builtInTab.addEventListener('click', () => {
-			if (builtInTab.hasClass('llmsider-prompt-tab-active')) {
-				// Toggle collapse if already active
-				if (this.promptContainer!.hasClass('llmsider-collapsed')) {
-					this.promptContainer!.removeClass('llmsider-collapsed');
-				} else {
-					this.promptContainer!.addClass('llmsider-collapsed');
-				}
-			} else {
-				// Switch to built-in tab
-				builtInTab.addClass('llmsider-prompt-tab-active');
-				customTab.removeClass('llmsider-prompt-tab-active');
-				this.promptContainer!.removeClass('llmsider-collapsed');
-				this.refreshPromptList();
-			}
-		});
-		
-		customTab.addEventListener('click', () => {
-			if (customTab.hasClass('llmsider-prompt-tab-active')) {
-				// Toggle collapse if already active
-				if (this.promptContainer!.hasClass('llmsider-collapsed')) {
-					this.promptContainer!.removeClass('llmsider-collapsed');
-				} else {
-					this.promptContainer!.addClass('llmsider-collapsed');
-				}
-			} else {
-				// Switch to custom tab
-				customTab.addClass('llmsider-prompt-tab-active');
-				builtInTab.removeClass('llmsider-prompt-tab-active');
-				this.promptContainer!.removeClass('llmsider-collapsed');
-				this.refreshPromptList();
-			}
-		});
-		
-		await this.refreshPromptList();
+		// this.resultMetaEl = container.createDiv({ cls: 'llmsider-prompt-result-meta' });
 	}
 
-	/**
-	 * Refresh the prompt list display with current filter
-	 */
-	private async refreshPromptList(): Promise<void> {
-		if (!this.promptContainer) return;
-
-		this.promptContainer.empty();
-
-		// Get all prompts from config database
-		const allPrompts = await this.plugin.configDb.getAllPrompts();
-		
-		// Filter prompts based on search query
-		const filteredPrompts = this.filterPrompts(allPrompts);
-
-		if (filteredPrompts.length === 0) {
-			this.promptContainer.createDiv({
-				text: this.i18n.t('settingsPage.promptManagement.noPromptsFound'),
-				cls: 'llmsider-prompt-empty'
-			});
+	private setActiveTab(tab: PromptTabName): void {
+		if (this.activeTab === tab) {
 			return;
 		}
 
-		// Separate built-in and custom prompts
-		const builtInPrompts = filteredPrompts.filter(p => p.isBuiltIn);
-		const customPrompts = filteredPrompts.filter(p => !p.isBuiltIn);
+		this.activeTab = tab;
+		this.updateActiveTabUI();
+		void this.refreshPromptList();
+	}
 
-		// Determine which tab is active
-		const tabContainer = this.promptContainer.parentElement?.querySelector('.llmsider-prompt-tabs');
-		const activeTab = tabContainer?.querySelector('.llmsider-prompt-tab-active') as HTMLElement;
-		const isBuiltInActive = activeTab?.dataset?.tab === 'builtin';
+	private updateActiveTabUI(): void {
+		PROMPT_TAB_ORDER.forEach((tab) => {
+			this.tabButtons[tab]?.toggleClass('llmsider-prompt-tab-active', tab === this.activeTab);
+		});
+	}
 
-		// Render based on active tab
-		if (isBuiltInActive) {
-			if (builtInPrompts.length > 0) {
-				builtInPrompts.forEach(prompt => {
-					this.renderPromptCard(this.promptContainer!, prompt, true);
-				});
-			} else {
-				this.promptContainer.createDiv({
-					text: this.i18n.t('settingsPage.promptManagement.noPromptsFound'),
-					cls: 'llmsider-prompt-empty'
-				});
-			}
-		} else {
-			if (customPrompts.length > 0) {
-				customPrompts.forEach(prompt => {
-					this.renderPromptCard(this.promptContainer!, prompt, false);
-				});
-			} else {
-				this.promptContainer.createDiv({
-					text: this.i18n.t('settingsPage.promptManagement.noPromptsFound'),
-					cls: 'llmsider-prompt-empty'
-				});
-			}
+	private updateCreateButtonLabel(): void {
+		// No longer needed as button is icon-only
+	}
+
+	private async refreshPromptList(): Promise<void> {
+		if (!this.promptContainer) {
+			return;
+		}
+
+		const allPrompts = await this.plugin.configDb.getAllPrompts();
+		const collections = this.getPromptCollections(allPrompts);
+		const activePrompts = this.getPromptsForActiveTab(collections);
+		const visiblePrompts = this.filterPrompts(activePrompts);
+
+		this.updateOverview(collections);
+		this.updateTabCounts(collections);
+		// this.updateResultMeta(visiblePrompts.length, activePrompts.length);
+
+		this.promptContainer.empty();
+
+		if (visiblePrompts.length === 0) {
+			this.renderEmptyState(this.promptContainer, activePrompts.length > 0);
+			return;
+		}
+
+		const grid = this.promptContainer.createDiv({ cls: 'llmsider-prompt-grid' });
+		visiblePrompts.forEach((prompt) => {
+			this.renderPromptCard(grid, prompt);
+		});
+	}
+
+	private renderEmptyState(container: HTMLElement, hasTabPrompts: boolean): void {
+		const emptyState = container.createDiv({ cls: 'llmsider-prompt-empty' });
+		const icon = emptyState.createDiv({ cls: 'llmsider-prompt-empty-icon' });
+		icon.innerHTML = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+			<path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"></path>
+			<path d="M9 13h6"></path>
+			<path d="M9 17h6"></path>
+		</svg>`;
+
+		emptyState.createEl('p', {
+			text: this.i18n.t('settingsPage.promptManagement.noPromptsFound'),
+			cls: 'llmsider-prompt-empty-text'
+		});
+
+		if (!this.filterQuery && !hasTabPrompts && this.activeTab !== 'builtin') {
+			const createButton = emptyState.createEl('button', {
+				text: this.activeTab === 'speed-reading'
+					? this.i18n.t('settingsPage.promptManagement.addSpeedReadingPrompt')
+					: this.i18n.t('settingsPage.promptManagement.addChatPrompt'),
+				cls: 'llmsider-prompt-empty-action mod-cta',
+				attr: { type: 'button' }
+			});
+
+			createButton.addEventListener('click', () => {
+				this.openPromptEditor(null, this.getDraftPromptType());
+			});
 		}
 	}
 
-	/**
-	 * Filter prompts based on search query
-	 */
-	private filterPrompts(prompts: PromptTemplate[]): PromptTemplate[] {
-		if (!this.filterQuery) return prompts;
+	private renderPromptCard(container: HTMLElement, prompt: PromptTemplate): void {
+		const promptType = prompt.type === 'speed-reading' ? 'speed-reading' : 'chat';
+		const hasPlaceholder = prompt.content.includes('{}');
+		const previewText = this.getContentPreview(prompt.content);
+		const lineCount = prompt.content.split(/\r?\n/).length;
+		const description = prompt.description?.trim() || this.getContentPreview(prompt.content, 96);
 
-		return prompts.filter(prompt => {
-			// Search in title, description, and content
+		const card = container.createDiv({
+			cls: `llmsider-prompt-card ${prompt.isBuiltIn ? 'is-built-in' : 'is-custom'} ${promptType === 'speed-reading' ? 'is-speed-reading' : 'is-chat'}`
+		});
+
+		card.addEventListener('click', (e) => {
+			if ((e.target as HTMLElement).closest('.llmsider-prompt-action-btn')) return;
+			card.toggleClass('is-expanded', !card.hasClass('is-expanded'));
+		});
+
+		const cardHeader = card.createDiv({ cls: 'llmsider-prompt-card-header' });
+		const identity = cardHeader.createDiv({ cls: 'llmsider-prompt-card-identity' });
+		const icon = identity.createDiv({ cls: 'llmsider-prompt-card-icon' });
+		icon.setText(promptType === 'speed-reading' ? 'SR' : '{}');
+
+		const copy = identity.createDiv({ cls: 'llmsider-prompt-card-copy' });
+		copy.createEl('h3', {
+			text: prompt.title,
+			cls: 'llmsider-prompt-card-title'
+		});
+
+		/* Remove tag row as requested
+		const badgeRow = copy.createDiv({ cls: 'llmsider-prompt-card-badge-row' });
+		this.createCardBadge(
+			badgeRow,
+			prompt.isBuiltIn
+				? this.i18n.t('settingsPage.promptManagement.builtInBadge')
+				: this.i18n.t('settingsPage.promptManagement.customBadge'),
+			prompt.isBuiltIn ? 'is-built-in' : 'is-custom'
+		);
+		this.createCardBadge(
+			badgeRow,
+			promptType === 'speed-reading'
+				? this.i18n.t('settingsPage.promptManagement.speedReadingPromptType')
+				: this.i18n.t('settingsPage.promptManagement.chatPromptType'),
+			promptType === 'speed-reading' ? 'is-speed-reading' : 'is-chat'
+		);
+		*/
+
+		copy.createEl('p', {
+			text: description,
+			cls: 'llmsider-prompt-card-description'
+		});
+
+		const actions = cardHeader.createDiv({ cls: 'llmsider-prompt-card-actions' });
+		this.createActionButton(
+			actions,
+			this.i18n.t('settingsPage.promptManagement.duplicatePrompt'),
+			`<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"></path>`,
+			async () => {
+				await this.duplicatePrompt(prompt);
+			}
+		);
+		this.createActionButton(
+			actions,
+			this.i18n.t('settingsPage.promptManagement.editPrompt'),
+			`<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>`,
+			() => {
+				this.openPromptEditor(prompt, promptType);
+			}
+		);
+		this.createActionButton(
+			actions,
+			this.i18n.t('settingsPage.promptManagement.deletePrompt'),
+			`<polyline points="3 6 5 6 21 6"></polyline><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path>`,
+			async () => {
+				await this.deletePrompt(prompt);
+			},
+			'llmsider-prompt-action-delete'
+		);
+
+		const preview = card.createDiv({ cls: 'llmsider-prompt-card-preview' });
+		preview.createEl('p', {
+			text: previewText,
+			cls: 'llmsider-prompt-card-preview-text'
+		});
+
+		const footer = card.createDiv({ cls: 'llmsider-prompt-card-footer' });
+		this.createMetricChip(
+			footer,
+			hasPlaceholder
+				? this.i18n.t('settingsPage.promptManagement.placeholderReady')
+				: this.i18n.t('settingsPage.promptManagement.placeholderMissing'),
+			hasPlaceholder ? 'is-accent' : 'is-muted'
+		);
+		this.createMetricChip(
+			footer,
+			`${prompt.content.length} ${this.i18n.t('settingsPage.promptManagement.characters')}`
+		);
+		this.createMetricChip(
+			footer,
+			`${lineCount} ${this.i18n.t('settingsPage.promptManagement.lines')}`
+		);
+	}
+
+	private createCardBadge(container: HTMLElement, label: string, tone: string): void {
+		container.createEl('span', {
+			text: label,
+			cls: `llmsider-prompt-card-badge ${tone}`
+		});
+	}
+
+	private createMetricChip(container: HTMLElement, text: string, tone?: string): void {
+		container.createEl('span', {
+			text,
+			cls: `llmsider-prompt-card-metric${tone ? ` ${tone}` : ''}`
+		});
+	}
+
+	private createActionButton(
+		container: HTMLElement,
+		label: string,
+		iconMarkup: string,
+		handler: () => void | Promise<void>,
+		extraClass = ''
+	): void {
+		const button = container.createEl('button', {
+			cls: `llmsider-prompt-action-btn ${extraClass}`.trim(),
+			attr: {
+				type: 'button',
+				'aria-label': label,
+				title: label
+			}
+		});
+
+		button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${iconMarkup}</svg>`;
+		button.addEventListener('click', () => {
+			void handler();
+		});
+	}
+
+	private openPromptEditor(
+		prompt: PromptTemplate | null,
+		promptType: 'chat' | 'speed-reading'
+	): void {
+		new PromptManagementModal(
+			this.plugin.app,
+			this.plugin,
+			this.i18n,
+			prompt,
+			promptType,
+			async () => {
+				await this.refreshPromptList();
+			}
+		).open();
+	}
+
+	private getDraftPromptType(): 'chat' | 'speed-reading' {
+		return this.activeTab === 'speed-reading' ? 'speed-reading' : 'chat';
+	}
+
+	private filterPrompts(prompts: PromptTemplate[]): PromptTemplate[] {
+		if (!this.filterQuery) {
+			return prompts;
+		}
+
+		return prompts.filter((prompt) => {
 			const searchText = [
 				prompt.title,
 				prompt.description || '',
@@ -201,105 +413,95 @@ export class PromptManagementRenderer {
 		});
 	}
 
-	/**
-	 * Render a single prompt card (two-line layout)
-	 */
-	private renderPromptCard(container: HTMLElement, prompt: PromptTemplate, isBuiltIn: boolean): void {
-		const card = container.createDiv({ cls: 'llmsider-prompt-card' });
+	private getPromptCollections(prompts: PromptTemplate[]): PromptCollections {
+		const sortedPrompts = [...prompts].sort((a, b) => {
+			const orderDelta = (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
+			if (orderDelta !== 0) {
+				return orderDelta;
+			}
 
-		// First row: Title + Description + Actions
-		const firstRow = card.createDiv({ cls: 'llmsider-prompt-card-first-row' });
-		
-		// Left side: Title with badge and description
-		const textContent = firstRow.createDiv({ cls: 'llmsider-prompt-card-header' });
-		
-		// Title with optional badge
-		const titleContainer = textContent.createDiv({ cls: 'llmsider-prompt-card-title-line' });
-		const titleEl = titleContainer.createEl('span', { 
-			text: prompt.title,
-			cls: 'llmsider-prompt-card-title'
-		});
-		
-		if (isBuiltIn) {
-			titleContainer.createEl('span', { 
-				text: this.i18n.t('settingsPage.promptManagement.builtInBadge'),
-				cls: 'llmsider-prompt-builtin-badge'
-			});
-		}
-
-		// Description (on same line as title, truncated)
-		if (prompt.description) {
-			textContent.createEl('span', { 
-				text: prompt.description,
-				cls: 'llmsider-prompt-card-description'
-			});
-		}
-
-		// Right side: Action buttons (always show, including for built-in)
-		const actions = firstRow.createDiv({ cls: 'llmsider-prompt-card-actions' });
-		
-		// Duplicate button (available for all prompts)
-		const duplicateBtn = actions.createEl('button', {
-			cls: 'llmsider-prompt-action-btn',
-			attr: { 'aria-label': this.i18n.t('settingsPage.promptManagement.duplicatePrompt') }
-		});
-		duplicateBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-		duplicateBtn.addEventListener('click', async () => {
-			await this.duplicatePrompt(prompt);
+			return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
 		});
 
-		// Edit button
-		const editBtn = actions.createEl('button', {
-			cls: 'llmsider-prompt-action-btn',
-			attr: { 'aria-label': this.i18n.t('settingsPage.promptManagement.editPrompt') }
-		});
-		editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`;
-		editBtn.addEventListener('click', () => {
-			new PromptManagementModal(
-				this.plugin.app,
-				this.plugin,
-				this.i18n,
-				prompt,
-				async () => {
-					await this.refreshPromptList();
-				}
-			).open();
-		});
+		const builtInPrompts = sortedPrompts.filter(
+			(prompt) => prompt.isBuiltIn && prompt.type !== 'speed-reading'
+		);
+		const customPrompts = sortedPrompts.filter(
+			(prompt) => !prompt.isBuiltIn && prompt.type !== 'speed-reading'
+		);
+		const speedReadingPrompts = sortedPrompts.filter(
+			(prompt) => prompt.type === 'speed-reading'
+		);
 
-		// Delete button
-		const deleteBtn = actions.createEl('button', {
-			cls: 'llmsider-prompt-action-btn llmsider-prompt-action-delete',
-			attr: { 'aria-label': this.i18n.t('settingsPage.promptManagement.deletePrompt') }
-		});
-		deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
-		deleteBtn.addEventListener('click', async () => {
-			await this.deletePrompt(prompt);
-		});
-
-		// Second row: Prompt content preview (truncated)
-		const secondRow = card.createDiv({ cls: 'llmsider-prompt-card-second-row' });
-		secondRow.createEl('div', { 
-			text: prompt.content,
-			cls: 'llmsider-prompt-card-content-preview'
-		});
+		return {
+			builtInPrompts,
+			customPrompts,
+			speedReadingPrompts,
+			total: sortedPrompts.length
+		};
 	}
 
-	/**
-	 * Truncate content for preview
-	 */
-	private truncateContent(content: string, maxLength: number = 150): string {
-		if (content.length <= maxLength) return content;
-		return content.substring(0, maxLength) + '...';
+	private getPromptsForActiveTab(collections: PromptCollections): PromptTemplate[] {
+		if (this.activeTab === 'custom') {
+			return collections.customPrompts;
+		}
+
+		if (this.activeTab === 'speed-reading') {
+			return collections.speedReadingPrompts;
+		}
+
+		return collections.builtInPrompts;
 	}
 
-	/**
-	 * Duplicate a prompt
-	 */
+	private updateOverview(collections: PromptCollections): void {
+		this.overviewCountEls.total?.setText(String(collections.total));
+		this.overviewCountEls.builtin?.setText(String(collections.builtInPrompts.length));
+		this.overviewCountEls.custom?.setText(String(collections.customPrompts.length));
+		this.overviewCountEls['speed-reading']?.setText(String(collections.speedReadingPrompts.length));
+	}
+
+	private updateTabCounts(collections: PromptCollections): void {
+		this.tabCountEls.builtin?.setText(String(collections.builtInPrompts.length));
+		this.tabCountEls.custom?.setText(String(collections.customPrompts.length));
+		this.tabCountEls['speed-reading']?.setText(String(collections.speedReadingPrompts.length));
+	}
+
+	private updateResultMeta(visibleCount: number, totalCount: number): void {
+		if (!this.resultMetaEl) {
+			return;
+		}
+
+		const activeLabel = this.getTabLabel(this.activeTab);
+		this.resultMetaEl.setText(
+			this.filterQuery ? `${activeLabel} · ${visibleCount}/${totalCount}` : `${activeLabel} · ${totalCount}`
+		);
+	}
+
+	private getTabLabel(tab: PromptTabName): string {
+		switch (tab) {
+			case 'custom':
+				return this.i18n.t('settingsPage.promptManagement.customPrompts');
+			case 'speed-reading':
+				return this.i18n.t('settingsPage.promptManagement.speedReadingPrompts');
+			case 'builtin':
+			default:
+				return this.i18n.t('settingsPage.promptManagement.builtInPrompts');
+		}
+	}
+
+	private getContentPreview(content: string, maxLength = 220): string {
+		const normalized = content.replace(/\s+/g, ' ').trim();
+		if (normalized.length <= maxLength) {
+			return normalized;
+		}
+
+		return `${normalized.slice(0, maxLength).trimEnd()}...`;
+	}
+
 	private async duplicatePrompt(prompt: PromptTemplate): Promise<void> {
-		// Find similar prompts to generate a unique name
 		const allPrompts = await this.plugin.configDb.getAllPrompts();
-		const baseName = prompt.title.replace(/\s+\d+$/, ''); // Remove existing number suffix
-		const similarPrompts = allPrompts.filter(p => p.title.startsWith(baseName));
+		const baseName = prompt.title.replace(/\s+\d+$/, '');
+		const similarPrompts = allPrompts.filter((item) => item.title.startsWith(baseName));
 		const nextNumber = similarPrompts.length + 1;
 
 		const newPrompt: PromptTemplate = {
@@ -308,78 +510,107 @@ export class PromptManagementRenderer {
 			content: prompt.content,
 			description: prompt.description,
 			isBuiltIn: false,
-			order: prompt.order
+			order: prompt.order,
+			type: prompt.type || 'chat'
 		};
 
 		await this.plugin.configDb.createPrompt(newPrompt);
 		new Notice(this.i18n.t('settingsPage.promptManagement.promptDuplicated', { name: newPrompt.title }));
-		
-		// If duplicating a built-in prompt, switch to custom tab
-		if (prompt.isBuiltIn) {
-			const tabContainer = this.promptContainer?.parentElement?.querySelector('.llmsider-prompt-tabs');
-			const customTab = tabContainer?.querySelector('.llmsider-prompt-tab:last-child') as HTMLElement;
-			const builtInTab = tabContainer?.querySelector('.llmsider-prompt-tab:first-child') as HTMLElement;
-			
-			if (customTab && builtInTab) {
-				customTab.addClass('llmsider-prompt-tab-active');
-				builtInTab.removeClass('llmsider-prompt-tab-active');
-				this.promptContainer?.removeClass('llmsider-collapsed');
-			}
-		}
-		
+
+		this.activeTab = newPrompt.type === 'speed-reading' ? 'speed-reading' : 'custom';
+		this.updateActiveTabUI();
+		this.updateCreateButtonLabel();
 		await this.refreshPromptList();
 	}
 
-	/**
-	 * Delete a prompt
-	 */
 	private async deletePrompt(prompt: PromptTemplate): Promise<void> {
-
-		// Confirm deletion
 		const confirmed = await this.showConfirmDialog(
 			this.i18n.t('settingsPage.promptManagement.confirmDelete', { name: prompt.title })
 		);
 
-		if (!confirmed) return;
+		if (!confirmed) {
+			return;
+		}
 
 		await this.plugin.configDb.deletePrompt(prompt.id);
 		new Notice(this.i18n.t('settingsPage.promptManagement.promptDeleted', { name: prompt.title }));
 		await this.refreshPromptList();
 	}
 
-	/**
-	 * Show confirmation dialog
-	 */
 	private async showConfirmDialog(message: string): Promise<boolean> {
 		return new Promise((resolve) => {
-			const modal = document.createElement('div');
-			modal.classList.add('modal-container');
-			modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;';
-			
-			const dialog = modal.createDiv({ cls: 'modal llmsider-confirm-dialog' });
-			dialog.style.cssText = 'padding: 20px; background: var(--background-primary); border-radius: 8px; max-width: 400px;';
-			
-			dialog.createEl('p', { text: message });
-			
-			const buttons = dialog.createDiv({ cls: 'modal-button-container' });
-			buttons.style.cssText = 'display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;';
-			
-			const cancelBtn = buttons.createEl('button', { text: this.i18n.t('settingsPage.promptManagement.cancel') });
-			cancelBtn.addEventListener('click', () => {
-				document.body.removeChild(modal);
-				resolve(false);
-			});
-			
-			const confirmBtn = buttons.createEl('button', { 
-				text: this.i18n.t('settingsPage.promptManagement.confirm'),
-				cls: 'mod-warning'
-			});
-			confirmBtn.addEventListener('click', () => {
-				document.body.removeChild(modal);
-				resolve(true);
-			});
-			
-			document.body.appendChild(modal);
+			new PromptConfirmModal(this.plugin.app, this.i18n, message, resolve).open();
 		});
+	}
+}
+
+class PromptConfirmModal extends Modal {
+	private resolved = false;
+
+	constructor(
+		app: App,
+		private i18n: I18nManager,
+		private message: string,
+		private onResolve: (confirmed: boolean) => void
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		this.modalEl.addClass('llmsider-prompt-confirm-modal-shell');
+		this.contentEl.empty();
+		this.contentEl.addClass('llmsider-prompt-confirm-modal');
+
+		const body = this.contentEl.createDiv({ cls: 'llmsider-prompt-confirm-modal-body' });
+		const icon = body.createDiv({ cls: 'llmsider-prompt-confirm-modal-icon' });
+		icon.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<path d="M12 9v4"></path>
+			<path d="M12 17h.01"></path>
+			<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+		</svg>`;
+
+		body.createEl('p', {
+			text: this.message,
+			cls: 'llmsider-prompt-confirm-modal-text'
+		});
+
+		const actions = this.contentEl.createDiv({ cls: 'llmsider-prompt-confirm-modal-actions' });
+		const cancelButton = actions.createEl('button', {
+			text: this.i18n.t('settingsPage.promptManagement.cancel'),
+			attr: { type: 'button' }
+		});
+		cancelButton.addEventListener('click', () => {
+			this.resolve(false);
+		});
+
+		const confirmButton = actions.createEl('button', {
+			text: this.i18n.t('settingsPage.promptManagement.confirm'),
+			cls: 'mod-warning',
+			attr: { type: 'button' }
+		});
+		confirmButton.addEventListener('click', () => {
+			this.resolve(true);
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		this.contentEl.removeClass('llmsider-prompt-confirm-modal');
+		this.modalEl.removeClass('llmsider-prompt-confirm-modal-shell');
+
+		if (!this.resolved) {
+			this.resolved = true;
+			this.onResolve(false);
+		}
+	}
+
+	private resolve(confirmed: boolean): void {
+		if (this.resolved) {
+			return;
+		}
+
+		this.resolved = true;
+		this.onResolve(confirmed);
+		this.close();
 	}
 }

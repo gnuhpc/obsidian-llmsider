@@ -4,6 +4,8 @@ import { LLMConnection, LLMModel } from '../types';
 import LLMSiderPlugin from '../main';
 import { I18nManager } from '../i18n/i18n-manager';
 import { ProviderFactory } from '../utils/provider-factory';
+import { getWebLLMModelById } from '../core/webllm/webllm-models';
+import { WebLLMManager } from '../core/webllm/webllm-manager';
 
 /**
  * Modal for adding or editing a Model
@@ -56,8 +58,8 @@ export class ModelModal extends Modal {
 		contentEl.empty();
 
 		// Modal title
-		contentEl.createEl('h2', { 
-			text: this.existingModel 
+		contentEl.createEl('h2', {
+			text: this.existingModel
 				? this.i18n.t('settingsPage.editModel', { connectionName: this.connection.name })
 				: this.i18n.t('settingsPage.addModelToConnection', { connectionName: this.connection.name })
 		});
@@ -68,11 +70,11 @@ export class ModelModal extends Modal {
 		// Model selection section - first field, will be populated after API call
 		const modelGroup = formContainer.createDiv({ cls: 'llmsider-form-group' });
 		modelGroup.createEl('label', { text: this.i18n.t('settingsPage.modelNameLabel'), cls: 'llmsider-form-label' });
-		
+
 		// Show loading indicator
-		const loadingIndicator = modelGroup.createEl('p', { 
-			text: this.i18n.t('settingsPage.loadingModels'), 
-			cls: 'llmsider-loading-text' 
+		const loadingIndicator = modelGroup.createEl('p', {
+			text: this.i18n.t('settingsPage.loadingModels'),
+			cls: 'llmsider-loading-text'
 		});
 
 		// Display Name field - second field, show immediately
@@ -97,7 +99,10 @@ export class ModelModal extends Modal {
 					maxTokens: 4000,
 					temperature: 0.7,
 					isDefault: false,
-					isEmbedding: false
+					isEmbedding: false,
+					enabled: true,
+					created: Date.now(),
+					updated: Date.now()
 				};
 				this.tempProvider = ProviderFactory.createProvider(this.connection, tempModel, this.plugin.getToolManager());
 			} catch (error) {
@@ -143,7 +148,7 @@ export class ModelModal extends Modal {
 
 				freeModelsToggle = new ToggleComponent(filterContainer)
 					.setValue(false);
-				
+
 				filterContainer.createSpan({ text: 'Show Free Models Only' });
 			}
 
@@ -188,9 +193,9 @@ export class ModelModal extends Modal {
 			// Function to render filtered models
 			const renderFilteredModels = (filter: string) => {
 				dropdownList.empty();
-				
+
 				// Filter models based on search input
-				filteredModels = this.availableModels.filter(model => 
+				filteredModels = this.availableModels.filter(model =>
 					model.toLowerCase().includes(filter.toLowerCase())
 				);
 
@@ -212,7 +217,7 @@ export class ModelModal extends Modal {
 					customItem.style.borderBottom = '1px solid var(--background-modifier-border)';
 					customItem.style.fontWeight = 'bold';
 					customItem.style.backgroundColor = 'var(--background-secondary)';
-					
+
 					customItem.addEventListener('click', () => {
 						selectedModel = filter;
 						searchInput.value = filter;
@@ -256,14 +261,14 @@ export class ModelModal extends Modal {
 							if (typeof this.tempProvider.getModelCapabilities === 'function') {
 								const capabilities = this.tempProvider.getModelCapabilities(model);
 								Logger.debug('[ModelModal] Capabilities for', model, ':', capabilities);
-								
+
 								if (capabilities && capabilities.length > 0) {
 									const capsuleContainer = item.createSpan();
 									capsuleContainer.style.display = 'flex';
 									capsuleContainer.style.gap = '4px';
 									capsuleContainer.style.flexWrap = 'wrap';
 									capsuleContainer.style.alignItems = 'center';
-									
+
 									capabilities
 										.filter((cap: any) => cap.enable)
 										.forEach((cap: any) => {
@@ -328,7 +333,7 @@ export class ModelModal extends Modal {
 								new Notice(this.i18n.t('ui.failedToFetchFreeModels'));
 							}
 						}
-						
+
 						if (this.freeModelsCache.length > 0) {
 							this.availableModels = this.freeModelsCache;
 						}
@@ -336,7 +341,7 @@ export class ModelModal extends Modal {
 						// Show all models
 						this.availableModels = this.allModels;
 					}
-					
+
 					// Trigger search update
 					renderFilteredModels(searchInput.value);
 				});
@@ -392,7 +397,7 @@ export class ModelModal extends Modal {
 					selectedModel = value;
 				}
 			} as any;
-			
+
 			// Add hint for users about search
 			const hintText = modelGroup.createEl('p', {
 				text: this.i18n.t('settingsPage.searchModelHint'),
@@ -401,7 +406,7 @@ export class ModelModal extends Modal {
 			hintText.style.fontSize = '0.9em';
 			hintText.style.color = 'var(--text-muted)';
 			hintText.style.marginTop = '8px';
-			
+
 			// No need for custom input field anymore since search box handles everything
 			// Users can type any model name directly in the search box
 
@@ -414,11 +419,11 @@ export class ModelModal extends Modal {
 			});
 		} else {
 			// No models available, show manual input
-			const noModelsNote = modelGroup.createEl('p', { 
-				text: this.i18n.t('settingsPage.noModelsAvailable'), 
-				cls: 'llmsider-note-text' 
+			const noModelsNote = modelGroup.createEl('p', {
+				text: this.i18n.t('settingsPage.noModelsAvailable'),
+				cls: 'llmsider-note-text'
 			});
-			
+
 			this.modelNameInput = new TextComponent(modelGroup);
 			this.modelNameInput.setPlaceholder(this.i18n.t('settingsPage.modelNamePlaceholder'));
 			this.modelNameInput.inputEl.style.width = '100%';
@@ -441,8 +446,8 @@ export class ModelModal extends Modal {
 	 * Fetch and display model details for Qwen models
 	 */
 	private async fetchAndDisplayModelDetails(modelName: string, container: HTMLElement): Promise<void> {
-		// Only fetch details for Qwen providers (both regular and free) and OpenRouter
-		if (this.connection.type !== 'qwen' && this.connection.type !== 'free-qwen' && this.connection.type !== 'openrouter') {
+		// Only fetch details for Qwen providers, OpenRouter, and WebLLM
+		if (this.connection.type !== 'qwen' && this.connection.type !== 'free-qwen' && this.connection.type !== 'openrouter' && this.connection.type !== 'webllm') {
 			return;
 		}
 
@@ -466,6 +471,11 @@ export class ModelModal extends Modal {
 		});
 		loadingText.style.color = 'var(--text-muted)';
 
+		if (this.connection.type === 'webllm') {
+			loadingText.remove();
+			return this.renderWebLLMDetails(modelName, detailsBox);
+		}
+
 		try {
 			// Create a temporary model config to instantiate the provider
 			const tempModel: LLMModel = {
@@ -476,16 +486,19 @@ export class ModelModal extends Modal {
 				maxTokens: 4000,
 				temperature: 0.7,
 				isDefault: false,
-				isEmbedding: false
+				isEmbedding: false,
+				enabled: true,
+				created: Date.now(),
+				updated: Date.now()
 			};
 
 			// Get the provider instance using ProviderFactory
 			const provider = ProviderFactory.createProvider(
-				this.connection, 
-				tempModel, 
+				this.connection,
+				tempModel,
 				this.plugin.getToolManager()
 			);
-			
+
 			if (!provider || typeof (provider as any).getModelDetails !== 'function') {
 				detailsBox.remove();
 				return;
@@ -493,7 +506,7 @@ export class ModelModal extends Modal {
 
 			// Fetch model details
 			const details = await (provider as any).getModelDetails(modelName);
-			
+
 			// Remove loading indicator
 			loadingText.remove();
 
@@ -537,7 +550,7 @@ export class ModelModal extends Modal {
 				// Display key information
 				// DashScope API returns: name, organization, description, create_time, update_time
 				const infoItems: string[] = [];
-				
+
 				if (details.name) {
 					infoItems.push(`• ${this.i18n.t('settingsPage.modelName')}: ${details.name}`);
 				}
@@ -555,7 +568,7 @@ export class ModelModal extends Modal {
 					const updateDate = new Date(details.update_time).toLocaleString();
 					infoItems.push(`• ${this.i18n.t('settingsPage.updateTime')}: ${updateDate}`);
 				}
-				
+
 				// Also check for extended fields (if available from detail endpoint)
 				if (details.model_type) {
 					infoItems.push(`• ${this.i18n.t('settingsPage.modelType')}: ${details.model_type}`);
@@ -564,8 +577,8 @@ export class ModelModal extends Modal {
 					infoItems.push(`• ${this.i18n.t('settingsPage.taskType')}: ${details.task_type}`);
 				}
 				if (details.supported_languages) {
-					const langs = Array.isArray(details.supported_languages) 
-						? details.supported_languages.join(', ') 
+					const langs = Array.isArray(details.supported_languages)
+						? details.supported_languages.join(', ')
 						: details.supported_languages;
 					infoItems.push(`• ${this.i18n.t('settingsPage.supportedLanguages')}: ${langs}`);
 				}
@@ -594,10 +607,10 @@ export class ModelModal extends Modal {
 						? details.output_modalities.join(', ')
 						: details.output_modalities;
 					infoItems.push(`• ${this.i18n.t('settingsPage.outputModalities')}: ${modalities}`);
-					
+
 					// Store output_modalities for later use
 					this.selectedModelOutputModalities = details.output_modalities;
-					
+
 					// Show image generation capability notice
 					if (details.output_modalities.includes('image')) {
 						const imageGenNotice = detailsBox.createDiv({ cls: 'llmsider-image-gen-notice' });
@@ -636,6 +649,145 @@ export class ModelModal extends Modal {
 		}
 	}
 
+	private async renderWebLLMDetails(modelName: string, detailsBox: HTMLElement): Promise<void> {
+		const webllmInfo = getWebLLMModelById(modelName);
+		if (!webllmInfo) {
+			detailsBox.createEl('p', { text: `Unknown WebLLM model: ${modelName}` });
+			return;
+		}
+
+		const isZh = this.i18n.getCurrentLanguage() === 'zh';
+		const title = detailsBox.createEl('p', {
+			text: '📋 ' + webllmInfo.name,
+			cls: 'llmsider-info-title'
+		});
+		title.style.fontWeight = 'bold';
+		title.style.marginBottom = '8px';
+
+		const detailsContent = detailsBox.createDiv({ cls: 'llmsider-model-details-content' });
+		detailsContent.style.color = 'var(--text-muted)';
+		detailsContent.style.lineHeight = '1.6';
+
+		detailsContent.createDiv({ text: isZh ? webllmInfo.descriptionZh : webllmInfo.description });
+
+		const statsContainer = detailsContent.createDiv();
+		statsContainer.style.display = 'flex';
+		statsContainer.style.flexWrap = 'wrap';
+		statsContainer.style.gap = '20px';
+		statsContainer.style.marginTop = '12px';
+		statsContainer.style.padding = '10px';
+		statsContainer.style.backgroundColor = 'var(--background-primary)';
+		statsContainer.style.borderRadius = '6px';
+		statsContainer.style.border = '1px solid var(--background-modifier-border)';
+
+		const createStat = (label: string, value: string) => {
+			const stat = statsContainer.createDiv();
+			stat.style.display = 'flex';
+			stat.style.flexDirection = 'column';
+			stat.style.gap = '2px';
+			const labelSpan = stat.createSpan({ text: label });
+			labelSpan.style.fontSize = '10px';
+			labelSpan.style.textTransform = 'uppercase';
+			labelSpan.style.letterSpacing = '0.5px';
+			labelSpan.style.color = 'var(--text-muted)';
+
+			const valueSpan = stat.createSpan({ text: value });
+			valueSpan.style.fontSize = '13px';
+			valueSpan.style.fontWeight = '600';
+			valueSpan.style.color = 'var(--text-normal)';
+		};
+
+		createStat(this.i18n.t('ui.webllm.modelSize'), webllmInfo.size);
+		createStat(this.i18n.t('ui.webllm.contextWindow'), webllmInfo.contextWindowSize.toLocaleString());
+		createStat(this.i18n.t('ui.webllm.quantization'), webllmInfo.quantization);
+
+		// Auto-fill context length slider
+		if (webllmInfo.contextWindowSize > 150000) {
+			this.maxTokensSlider.setLimits(100, webllmInfo.contextWindowSize, 100);
+		}
+		this.maxTokensSlider.setValue(webllmInfo.contextWindowSize);
+		this.maxTokensValue.textContent = webllmInfo.contextWindowSize.toString();
+
+		// Handle Download UI
+		const manager = this.plugin.webllmManager;
+		if (!manager) return;
+
+		const modelsWithCache = await manager.getModelsWithCacheStatus();
+		const cachedModel = modelsWithCache.find(m => m.id === modelName);
+		const isCached = cachedModel?.cached || false;
+
+		const actionContainer = detailsBox.createDiv();
+		actionContainer.style.marginTop = '12px';
+
+		if (isCached) {
+			const cachedBadge = actionContainer.createEl('span', {
+				text: `✅ ${this.i18n.t('ui.webllm.cached') || 'Cached & Ready to use'}`,
+			});
+			cachedBadge.style.fontSize = '12px';
+			cachedBadge.style.color = 'var(--text-success)';
+			cachedBadge.style.padding = '4px 8px';
+			cachedBadge.style.borderRadius = '4px';
+			cachedBadge.style.background = 'var(--background-modifier-success)';
+		} else {
+			const downloadBtn = actionContainer.createEl('button', {
+				text: this.i18n.t('ui.webllm.downloadModel') || 'Download Model',
+				cls: 'mod-cta'
+			});
+			downloadBtn.style.fontSize = '12px';
+
+			const progressContainer = detailsBox.createDiv({ cls: 'llmsider-webllm-progress' });
+			progressContainer.style.display = 'none';
+			progressContainer.style.marginTop = '8px';
+			progressContainer.style.background = 'var(--background-primary)';
+			progressContainer.style.padding = '8px';
+			progressContainer.style.borderRadius = '4px';
+
+			const progressTextEl = progressContainer.createDiv();
+			progressTextEl.style.fontSize = '12px';
+			progressTextEl.style.marginBottom = '4px';
+
+			const progressBarOuter = progressContainer.createDiv();
+			progressBarOuter.style.height = '6px';
+			progressBarOuter.style.background = 'var(--background-modifier-border)';
+			progressBarOuter.style.borderRadius = '3px';
+
+			const progressBarEl = progressBarOuter.createDiv();
+			progressBarEl.style.height = '100%';
+			progressBarEl.style.background = 'var(--interactive-accent)';
+			progressBarEl.style.borderRadius = '3px';
+			progressBarEl.style.width = '0%';
+			progressBarEl.style.transition = 'width 0.3s ease';
+
+			downloadBtn.onclick = async () => {
+				downloadBtn.disabled = true;
+				downloadBtn.textContent = 'Downloading...';
+				progressContainer.style.display = 'block';
+
+				const statusUnsubscribe = manager.onStatusChange((status) => {
+					progressTextEl.textContent = status.downloadText || `Downloading: ${status.downloadProgress}%`;
+					progressBarEl.style.width = `${status.downloadProgress || 0}%`;
+				});
+
+				try {
+					await manager.loadModel(modelName);
+					progressTextEl.textContent = 'Download complete! ✅';
+					progressTextEl.style.color = 'var(--text-success)';
+					downloadBtn.style.display = 'none';
+
+					// Also optionally unload it right after so it doesn't take up VRAM until needed
+					await manager.unloadModel();
+				} catch (e: any) {
+					progressTextEl.textContent = 'Error: ' + e.message;
+					progressTextEl.style.color = 'var(--text-error)';
+					downloadBtn.disabled = false;
+					downloadBtn.textContent = 'Retry Download';
+				} finally {
+					statusUnsubscribe();
+				}
+			};
+		}
+	}
+
 	private embeddingDimensionInput?: TextComponent;
 
 	private renderFormControls(formContainer: HTMLElement): void {
@@ -663,9 +815,9 @@ export class ModelModal extends Modal {
 
 		// Embedding Dimension input (only shown if isEmbedding is true)
 		const embeddingDimensionGroup = formContainer.createDiv({ cls: 'llmsider-form-group' });
-		embeddingDimensionGroup.createEl('label', { 
-			text: this.i18n.t('settingsPage.embeddingDimensionLabel'), 
-			cls: 'llmsider-form-label' 
+		embeddingDimensionGroup.createEl('label', {
+			text: this.i18n.t('settingsPage.embeddingDimensionLabel'),
+			cls: 'llmsider-form-label'
 		});
 		embeddingDimensionGroup.createEl('p', {
 			text: this.i18n.t('settingsPage.embeddingDimensionDesc'),
@@ -689,9 +841,9 @@ export class ModelModal extends Modal {
 		this.maxTokensSlider = new SliderComponent(tokensRow);
 		this.maxTokensSlider.setLimits(100, 150000, 100);
 		this.maxTokensSlider.setValue(this.existingModel?.maxTokens || 4096);
-		this.maxTokensValue = tokensRow.createEl('span', { 
-			text: (this.existingModel?.maxTokens || 4096).toString(), 
-			cls: 'llmsider-slider-value' 
+		this.maxTokensValue = tokensRow.createEl('span', {
+			text: (this.existingModel?.maxTokens || 4096).toString(),
+			cls: 'llmsider-slider-value'
 		});
 		this.maxTokensSlider.onChange((value) => {
 			this.maxTokensValue.textContent = value.toString();
@@ -704,9 +856,9 @@ export class ModelModal extends Modal {
 		this.temperatureSlider = new SliderComponent(tempRow);
 		this.temperatureSlider.setLimits(0, 2, 0.1);
 		this.temperatureSlider.setValue(this.existingModel?.temperature || 0.7);
-		this.temperatureValue = tempRow.createEl('span', { 
-			text: (this.existingModel?.temperature || 0.7).toFixed(1), 
-			cls: 'llmsider-slider-value' 
+		this.temperatureValue = tempRow.createEl('span', {
+			text: (this.existingModel?.temperature || 0.7).toFixed(1),
+			cls: 'llmsider-slider-value'
 		});
 		this.temperatureSlider.onChange((value) => {
 			this.temperatureValue.textContent = value.toFixed(1);
@@ -715,9 +867,9 @@ export class ModelModal extends Modal {
 		// Supports Vision toggle
 		const visionGroup = formContainer.createDiv({ cls: 'llmsider-form-group' });
 		const visionRow = visionGroup.createDiv({ cls: 'llmsider-slider-row' });
-		const visionLabel = visionRow.createEl('label', { 
-			text: this.i18n.t('settingsPage.supportsVision'), 
-			cls: 'llmsider-form-label' 
+		const visionLabel = visionRow.createEl('label', {
+			text: this.i18n.t('settingsPage.supportsVision'),
+			cls: 'llmsider-form-label'
 		});
 		// Add tooltip to label
 		visionLabel.setAttribute('title', this.i18n.t('settingsPage.supportsVisionTooltip') || 'Enable this if the model supports image understanding (vision)');
@@ -775,7 +927,7 @@ export class ModelModal extends Modal {
 			}
 
 			const name = this.nameInput.getValue().trim();
-			
+
 			if (!name) {
 				new Notice(this.i18n.t('settingsPage.displayNameRequired'));
 				this.nameInput.inputEl.focus();
@@ -826,19 +978,19 @@ export class ModelModal extends Modal {
 				updated: Date.now()
 			};
 
-		Logger.debug('[ModelModal] Saving model:', {
-			id: model.id,
-			name: model.name,
-			modelName: model.modelName,
-			connectionId: model.connectionId,
-			enabled: model.enabled,
-			isNew: !this.existingModel,
-			connectionType: this.connection.type,
-			isEmbedding: model.isEmbedding,
-			embeddingDimension: model.embeddingDimension
-		});
+			Logger.debug('[ModelModal] Saving model:', {
+				id: model.id,
+				name: model.name,
+				modelName: model.modelName,
+				connectionId: model.connectionId,
+				enabled: model.enabled,
+				isNew: !this.existingModel,
+				connectionType: this.connection.type,
+				isEmbedding: model.isEmbedding,
+				embeddingDimension: model.embeddingDimension
+			});
 
-		await this.onSave(model);			new Notice(this.i18n.t('settingsPage.modelSavedSuccess', { name }));
+			await this.onSave(model); new Notice(this.i18n.t('settingsPage.modelSavedSuccess', { name }));
 			this.close();
 		} catch (error) {
 			Logger.error('Error saving model:', error);

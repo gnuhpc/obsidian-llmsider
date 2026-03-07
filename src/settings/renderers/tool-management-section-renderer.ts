@@ -21,7 +21,9 @@ export class ToolManagementSectionRenderer {
 		});
 		
 		// 使用统一的 settings-section-container 样式 - 包含筛选器和按钮
-		const toolManagementContainer = containerEl.createDiv({ cls: 'llmsider-settings-section-container' });
+		const toolManagementContainer = containerEl.createDiv({
+			cls: 'llmsider-settings-section-container llmsider-settings-list-section llmsider-tools-management-container'
+		});
 
 		// Top controls row (inside border): search input and action buttons
 		const topControlsRow = this.renderTopControls(toolManagementContainer);
@@ -56,10 +58,19 @@ export class ToolManagementSectionRenderer {
 	 * Render the top controls row with search input
 	 */
 	private renderTopControls(container: HTMLElement): HTMLElement {
-		const topControlsRow = container.createDiv({ cls: 'llmsider-builtin-tools-header-container llmsider-top-controls-row' });
+		const topControlsRow = container.createDiv({
+			cls: 'llmsider-builtin-tools-header-container llmsider-top-controls-row llmsider-settings-list-toolbar'
+		});
 		
+		const searchShell = topControlsRow.createDiv({ cls: 'llmsider-settings-search-shell' });
+		const searchIcon = searchShell.createDiv({ cls: 'llmsider-settings-search-icon' });
+		searchIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="11" cy="11" r="7"></circle>
+			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+		</svg>`;
+
 		// Search input (left side)
-		const searchInput = topControlsRow.createEl('input', {
+		const searchInput = searchShell.createEl('input', {
 			type: 'text',
 			placeholder: this.i18n.t('ui.searchTools') || 'Filter tools...',
 			cls: 'llmsider-builtin-tools-search-input llmsider-search-input'

@@ -9,7 +9,6 @@ import { OpenAIProviderImpl } from '../providers/openai-provider';
 import { AnthropicProviderImpl } from '../providers/anthropic-provider';
 import { QwenProviderImpl } from '../providers/qwen-provider';
 import { FreeQwenProviderImpl } from '../providers/free-qwen-provider-impl';
-import { FreeGeminiProviderImpl } from '../providers/free-gemini-provider-impl';
 import { FreeDeepseekProviderImpl } from '../providers/free-deepseek-provider-impl';
 import { OpenAICompatibleProviderImpl } from '../providers/openai-compatible-provider';
 import { SiliconFlowProviderImpl } from '../providers/siliconflow-provider';
@@ -17,6 +16,7 @@ import { KimiProviderImpl } from '../providers/kimi-provider';
 import { GitHubCopilotProviderImpl } from '../providers/github-copilot-provider';
 import { HuggingChatProviderImpl } from '../providers/hugging-chat-provider';
 import { OpenCodeProviderImpl } from '../providers/opencode-provider';
+import { WebLLMProviderImpl } from '../providers/webllm-provider';
 
 import { UnifiedToolManager } from '../tools/unified-tool-manager';
 
@@ -67,7 +67,9 @@ export class ProviderFactory {
 			proxyAuth: connection.proxyAuth,
 			proxyUsername: connection.proxyUsername,
 			proxyPassword: connection.proxyPassword,
-			toolManager: toolManager
+			toolManager: toolManager,
+			// WebLLM manager (injected by main.ts for webllm connections)
+			_webllmManager: (connection as any)._webllmManager,
 		};
 
 		Logger.debug(`[ProviderFactory] Creating provider ${connection.type} for model ${model.modelName} with supportsVision: ${model.supportsVision}`);
@@ -81,22 +83,19 @@ export class ProviderFactory {
 			case 'anthropic':
 				return new AnthropicProviderImpl(providerConfig);
 
-		case 'qwen':
-			return new QwenProviderImpl(providerConfig);
+			case 'qwen':
+				return new QwenProviderImpl(providerConfig);
 
-		case 'free-qwen':
-			return new FreeQwenProviderImpl(providerConfig);
+			case 'free-qwen':
+				return new FreeQwenProviderImpl(providerConfig);
 
-		case 'free-gemini':
-			return new FreeGeminiProviderImpl(providerConfig);
+			case 'free-deepseek':
+				return new FreeDeepseekProviderImpl(providerConfig);
 
-		case 'free-deepseek':
-			return new FreeDeepseekProviderImpl(providerConfig);
+			case 'hugging-chat':
+				return new HuggingChatProviderImpl(providerConfig);
 
-		case 'hugging-chat':
-			return new HuggingChatProviderImpl(providerConfig);
-
-		case 'github-copilot':
+			case 'github-copilot':
 				Logger.debug('Creating GitHub Copilot provider:', {
 					hasGithubToken: !!connection.githubToken,
 					hasCopilotToken: !!connection.copilotToken,
@@ -156,23 +155,33 @@ export class ProviderFactory {
 				}
 				return new OpenAICompatibleProviderImpl(providerConfig);
 
-		case 'openrouter':
-			if (!connection.baseUrl) {
-				providerConfig.baseUrl = 'https://openrouter.ai/api/v1';
+			case 'openrouter':
+				if (!connection.baseUrl) {
+					providerConfig.baseUrl = 'https://openrouter.ai/api/v1';
+				}
+				return new OpenAICompatibleProviderImpl(providerConfig);
+
+			case 'opencode':
+				return new OpenCodeProviderImpl(providerConfig);
+
+			case 'webllm': {
+				// WebLLM uses a shared manager instance from the plugin
+				// The manager is passed via the providerConfig._webllmManager field
+				const webllmManager = providerConfig._webllmManager;
+				if (!webllmManager) {
+					throw new Error('WebLLM manager is required but not available. Is WebLLM enabled?');
+				}
+				return new WebLLMProviderImpl(providerConfig, webllmManager);
 			}
-			return new OpenAICompatibleProviderImpl(providerConfig);
 
-		case 'opencode':
-			return new OpenCodeProviderImpl(providerConfig);
+			case 'local':
+				throw new Error(
+					'Local connections are designed for embedding models only. ' +
+					'Please use a cloud provider for chat models.'
+				);
 
-		case 'local':
-			throw new Error(
-				'Local connections are designed for embedding models only. ' +
-				'Please use a cloud provider for chat models.'
-			);
-
-		default:
-			throw new Error(`Unknown provider type: ${connection.type}`);
+			default:
+				throw new Error(`Unknown provider type: ${connection.type}`);
 		}
 	}
 
@@ -255,38 +264,38 @@ export class ProviderFactory {
 					continue;
 				}
 
-			// Skip embedding-only connection types (local) for chat models
-			if (connection.type === 'local') {
-				Logger.warn(
-					`[ProviderFactory] Skipping model ${model.id} from ${connection.type} connection - ` +
-					'only embedding models are supported for this connection type'
-				);
-				continue;
-			}
-
-			// Skip GitHub Copilot connections without valid tokens (need at least one)
-			if (connection.type === 'github-copilot') {
-				Logger.debug(`Checking GitHub Copilot connection ${connection.id}:`, {
-					hasGithubToken: !!connection.githubToken,
-					hasCopilotToken: !!connection.copilotToken,
-					tokenExpiry: connection.tokenExpiry ? new Date(connection.tokenExpiry).toISOString() : 'none'
-				});
-				
-				if (!connection.githubToken && !connection.copilotToken) {
+				// Skip embedding-only connection types (local) for chat models
+				if (connection.type === 'local') {
 					Logger.warn(
-						`[ProviderFactory] Skipping model ${model.id} from GitHub Copilot connection - ` +
-						'authentication required'
+						`[ProviderFactory] Skipping model ${model.id} from ${connection.type} connection - ` +
+						'only embedding models are supported for this connection type'
 					);
 					continue;
 				}
+
+				// Skip GitHub Copilot connections without valid tokens (need at least one)
+				if (connection.type === 'github-copilot') {
+					Logger.debug(`Checking GitHub Copilot connection ${connection.id}:`, {
+						hasGithubToken: !!connection.githubToken,
+						hasCopilotToken: !!connection.copilotToken,
+						tokenExpiry: connection.tokenExpiry ? new Date(connection.tokenExpiry).toISOString() : 'none'
+					});
+
+					if (!connection.githubToken && !connection.copilotToken) {
+						Logger.warn(
+							`[ProviderFactory] Skipping model ${model.id} from GitHub Copilot connection - ` +
+							'authentication required'
+						);
+						continue;
+					}
+				}
+
+				combinations.push({ connection, model });
 			}
-
-			combinations.push({ connection, model });
 		}
-	}
 
-	return combinations;
-}	/**
+		return combinations;
+	}	/**
 	 * Validate connection object
 	 */
 	private static validateConnection(connection: LLMConnection): void {
@@ -300,7 +309,7 @@ export class ProviderFactory {
 		// - ollama, local: local providers without auth
 		// - github-copilot: uses OAuth tokens (githubToken/copilotToken)
 		// Note: free-qwen and free-deepseek DO require tokens (stored in apiKey field)
-		if (!connection.apiKey && !['ollama', 'local', 'github-copilot', 'opencode'].includes(connection.type)) {
+		if (!connection.apiKey && !['ollama', 'local', 'github-copilot', 'opencode', 'webllm'].includes(connection.type)) {
 			throw new Error('Connection must have an API key');
 		}
 		// GitHub Copilot specific validation - check if we have at least githubToken or copilotToken

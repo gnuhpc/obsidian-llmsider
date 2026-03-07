@@ -1,4 +1,4 @@
-import { setIcon } from 'obsidian';
+import { setIcon, Notice } from 'obsidian';
 import type LLMSiderPlugin from '../../main';
 import type { I18nManager } from '../../i18n/i18n-manager';
 import type { MCPHandler } from '../handlers/mcp-handler';
@@ -48,28 +48,39 @@ export class MCPSettingsRenderer {
 	 */
 	renderMCPSettings(containerEl: HTMLElement): void {
 		// MCP Settings Section header (outside border)
-		const mcpHeader = containerEl.createEl('h2', { 
+		const mcpHeader = containerEl.createEl('h2', {
 			text: this.i18n.t('settingsPage.mcpSettings'),
 			cls: 'llmsider-section-header'
 		});
-		
+
 		// 使用统一的 settings-section-container 样式 - 包含筛选器和按钮
-		const mcpContainer = containerEl.createDiv({ cls: 'llmsider-settings-section-container llmsider-mcp-container' });
+		const mcpContainer = containerEl.createDiv({
+			cls: 'llmsider-settings-section-container llmsider-settings-list-section llmsider-mcp-container'
+		});
 
 		// Top controls row (inside border): search input and action buttons
-		const topControlsRow = mcpContainer.createDiv({ cls: 'llmsider-builtin-tools-header-container llmsider-top-controls-row' });
-		
+		const topControlsRow = mcpContainer.createDiv({
+			cls: 'llmsider-builtin-tools-header-container llmsider-top-controls-row llmsider-settings-list-toolbar'
+		});
+
+		const searchShell = topControlsRow.createDiv({ cls: 'llmsider-settings-search-shell' });
+		const searchIcon = searchShell.createDiv({ cls: 'llmsider-settings-search-icon' });
+		searchIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="11" cy="11" r="7"></circle>
+			<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+		</svg>`;
+
 		// Search input (left side)
-		const searchInput = topControlsRow.createEl('input', {
+		const searchInput = searchShell.createEl('input', {
 			type: 'text',
 			placeholder: this.i18n.t('ui.searchMCPServers') || 'Filter MCP servers...',
 			cls: 'llmsider-builtin-tools-search-input llmsider-search-input'
 		});
-		
+
 		// Action buttons container (right side)
 		const actionsContainer = topControlsRow.createDiv({ cls: 'llmsider-builtin-tools-actions llmsider-actions-container' });
 		this.renderMCPActions(actionsContainer);
-		
+
 		// Server list container
 		const serversListContainer = mcpContainer.createDiv({ cls: 'llmsider-mcp-servers-list-container' });
 
@@ -78,7 +89,7 @@ export class MCPSettingsRenderer {
 
 		// Render MCP servers with current filter
 		this.renderMCPServersList(serversListContainer, currentFilterText);
-		
+
 		// Add search input event listener
 		searchInput.addEventListener('input', (e) => {
 			currentFilterText = (e.target as HTMLInputElement).value;
@@ -97,7 +108,7 @@ export class MCPSettingsRenderer {
 		// Get MCP Manager state
 		const mcpManager = this.plugin.getMCPManager();
 		if (!mcpManager) {
-			container.createEl('p', { 
+			container.createEl('p', {
 				text: this.i18n.t('settingsPage.mcpManagerNotInitialized'),
 				cls: 'llmsider-mcp-status-error'
 			});
@@ -112,14 +123,16 @@ export class MCPSettingsRenderer {
 		// Filter servers if search text provided
 		if (filterText) {
 			const lowerFilter = filterText.toLowerCase();
-			serverIds = serverIds.filter(serverId => 
+			serverIds = serverIds.filter(serverId =>
 				serverId.toLowerCase().includes(lowerFilter)
 			);
 		}
 
 		// Show no results message if nothing matches
 		if (filterText && serverIds.length === 0) {
-			const noResultsState = container.createDiv({ cls: 'llmsider-mcp-empty-state llmsider-no-results' });
+			const noResultsState = container.createDiv({
+				cls: 'llmsider-mcp-empty-state llmsider-no-results llmsider-settings-empty-state'
+			});
 			noResultsState.createEl('p', {
 				text: this.i18n.t('ui.noMatchingServers') || 'No matching MCP servers found',
 				cls: 'llmsider-empty-text'
@@ -130,10 +143,10 @@ export class MCPSettingsRenderer {
 		// Server cards grid - tool details row is part of the grid
 		if (serverIds.length > 0) {
 			const serversGrid = container.createDiv({ cls: 'llmsider-mcp-servers-grid' });
-			
+
 			// Tool details row - full width, shown below the clicked card's row, part of grid
 			const toolDetailsRow = serversGrid.createDiv({ cls: 'llmsider-mcp-tool-details-row' });
-			
+
 			serverIds.forEach((serverId, index) => {
 				const serverConfig = serverConfigs[serverId];
 				const isConnected = connectedServers.has(serverId);
@@ -141,12 +154,12 @@ export class MCPSettingsRenderer {
 				// Get all tools and filter by server
 				const allTools = mcpManager.getAllAvailableTools();
 				const tools = allTools.filter((tool: unknown) => tool.server === serverId);
-				
+
 				this.mcpServerCard.render(serversGrid, serverId, serverConfig, isConnected, health, tools, mcpManager, toolDetailsRow, index);
 			});
 		} else {
-			const emptyState = container.createDiv({ cls: 'llmsider-mcp-empty-state' });
-			emptyState.createEl('p', { 
+			const emptyState = container.createDiv({ cls: 'llmsider-mcp-empty-state llmsider-settings-empty-state' });
+			emptyState.createEl('p', {
 				text: this.i18n.t('settingsPage.noMCPServersConfigured'),
 				cls: 'llmsider-empty-text'
 			});
@@ -163,30 +176,32 @@ export class MCPSettingsRenderer {
 		}
 
 		// "Enable/Disable All" toggle switch
-		const actionRow = container.createDiv({ cls: 'llmsider-mcp-action-row llmsider-flex-row' });
+		const actionRow = container.createDiv({
+			cls: 'llmsider-mcp-action-row llmsider-flex-row llmsider-settings-batch-toggle'
+		});
 
-		const label = actionRow.createEl('span', { 
+		const label = actionRow.createEl('span', {
 			text: this.i18n.t('ui.toggleAllServers') || 'All Servers',
 			cls: 'llmsider-label-text'
 		});
 
 		const state = mcpManager.getState();
 		const serverIds = Object.keys(state.serversConfig.mcpServers);
-		const allEnabled = serverIds.every(id => mcpManager.isServerEnabled(id));
+		const allEnabled = serverIds.length > 0 && serverIds.every(id => mcpManager.isServerEnabled(id));
 
-		const toggleSwitch = actionRow.createEl('label', { cls: 'llmsider-toggle-switch' });
-		const checkbox = toggleSwitch.createEl('input', { type: 'checkbox' });
-		checkbox.checked = allEnabled;
-		toggleSwitch.createEl('span', { cls: 'llmsider-toggle-slider' });
+		const toggleSwitch = actionRow.createDiv({
+			cls: `llmsider-toggle-switch ${allEnabled ? 'active' : ''}`
+		});
+		toggleSwitch.createDiv({ cls: 'llmsider-toggle-thumb' });
 
-		checkbox.addEventListener('change', async () => {
-			const enable = checkbox.checked;
+		toggleSwitch.addEventListener('click', async () => {
+			const enable = !toggleSwitch.hasClass('active');
 
 			if (enable) {
 				// Check limit
 				const allTools = mcpManager.getAllAvailableTools();
 				const maxLimit = this.plugin.settings.maxMCPToolsSelection;
-				
+
 				let count = 0;
 				for (const tool of allTools) {
 					// Check tool override
@@ -195,19 +210,21 @@ export class MCPSettingsRenderer {
 					if (serverPerms && serverPerms.tools && serverPerms.tools[tool.name] === false) {
 						toolEnabled = false;
 					}
-					
+
 					if (toolEnabled) count++;
 				}
-				
+
 				if (count > maxLimit) {
 					new Notice(this.i18n.t('settingsPage.toolManagement.mcpToolsLimitExceeded', {
 						limit: maxLimit.toString(),
 						total: count.toString()
 					}));
-					checkbox.checked = false; // Revert toggle
 					return;
 				}
 			}
+
+			// Update UI
+			toggleSwitch.toggleClass('active', enable);
 
 			for (const serverId of serverIds) {
 				await mcpManager.setServerEnabled(serverId, enable);
@@ -221,10 +238,10 @@ export class MCPSettingsRenderer {
 	 */
 	renderMCPStatus(container: HTMLElement): void {
 		container.empty();
-		
+
 		const mcpManager = this.plugin.getMCPManager();
 		if (!mcpManager) {
-			container.createEl('p', { 
+			container.createEl('p', {
 				text: this.i18n.t('settingsPage.mcpManagerNotInitialized'),
 				cls: 'llmsider-mcp-status-error'
 			});
@@ -233,14 +250,14 @@ export class MCPSettingsRenderer {
 
 		const connectedServers = mcpManager.getConnectedServers();
 		const statusEl = container.createEl('div', { cls: 'llmsider-mcp-status-info' });
-		
+
 		if (connectedServers.length === 0) {
-			statusEl.createEl('span', { 
+			statusEl.createEl('span', {
 				text: this.i18n.t('settingsPage.noServersConnected'),
 				cls: 'llmsider-mcp-status-disconnected'
 			});
 		} else {
-			statusEl.createEl('span', { 
+			statusEl.createEl('span', {
 				text: `🟢 ${connectedServers.length} server(s) connected`,
 				cls: 'llmsider-mcp-status-connected'
 			});
@@ -368,7 +385,7 @@ export class MCPSettingsRenderer {
 
 		// Server cards grid (similar to built-in tools)
 		const serverGrid = mcpToolsSection.createDiv({ cls: 'llmsider-builtin-category-grid' });
-		
+
 		// State tracking
 		let activeServer: string | null = null;
 		let detailsContainer: HTMLElement | null = null;
@@ -381,7 +398,7 @@ export class MCPSettingsRenderer {
 						detailsContainer.remove();
 						detailsContainer = null;
 					}
-					
+
 					activeServer = serverId;
 					// Create details container after the card
 					detailsContainer = createDiv({ cls: 'llmsider-builtin-tools-details-container' });

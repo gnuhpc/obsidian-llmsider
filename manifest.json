@@ -1,10 +1,10 @@
 {
 	"id": "llmsider",
 	"name": "LLMSider",
-	"version": "1.0.9",
+	"version": "1.0.10",
 	"minAppVersion": "0.15.0",
 	"description": "AI Copilot for Obsidian - Brings VS Code Copilot-like capabilities with multi-LLM support, Action/Ask modes, and MCP integration.",
-	"author": "LLMSider Team",
+	"author": "gnuhpc",
 	"authorUrl": "https://github.com/gnuhpc/obsidian-llmsider",
 	"fundingUrl": "https://github.com/sponsors/llmsider",
 	"isDesktopOnly": false

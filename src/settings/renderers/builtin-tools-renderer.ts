@@ -3,7 +3,7 @@ import LLMSiderPlugin from '../../main';
 import { I18nManager } from '../../i18n/i18n-manager';
 import { ToolButtonControls } from '../components/tool-button-controls';
 import { ToolPermissionHandler } from '../handlers/tool-permission-handler';
-import { getAllBuiltInTools, BuiltInTool, getLocalizedBuiltInTools } from '../../tools/built-in-tools';
+import { getAllBuiltInTools, BuiltInTool } from '../../tools/built-in-tools';
 import { getCategoryDisplayName } from '../utils/category-utils';
 import { getCategoryIcon } from '../utils/tool-icons';
 import { TOOL_CATEGORIES } from '../../types/tool-categories';
@@ -15,6 +15,16 @@ interface Tool {
 	description?: string;
 	category?: string;
 	inputSchema?: Record<string, unknown>;
+}
+
+interface ToolCardOptions {
+	name: string;
+	description?: string;
+	inputSchema?: Record<string, unknown>;
+	isEnabled: boolean;
+	requireConfirmation: boolean;
+	onEnableChange: (enabled: boolean) => Promise<boolean>;
+	onConfirmationChange: (requireConfirm: boolean) => Promise<void>;
 }
 
 // System tools that are always enabled and hidden from UI
@@ -39,7 +49,7 @@ export class BuiltInToolsRenderer {
 		private i18n: I18nManager,
 		private toolButtonControls: ToolButtonControls,
 		private toolPermissionHandler: ToolPermissionHandler
-	) {}
+	) { }
 
 	/**
 	 * Render the main built-in tools management section
@@ -47,7 +57,7 @@ export class BuiltInToolsRenderer {
 	renderBuiltInToolsManagement(container: HTMLDivElement, filterText: string = ''): void {
 		// Import built-in tools with localization
 		const allBuiltInToolsUnfiltered = getAllBuiltInTools({ i18n: this.i18n, asArray: true }) as BuiltInTool[];
-		
+
 		// Filter out hidden system tools and hidden categories (like 'meta')
 		const allBuiltInTools = allBuiltInToolsUnfiltered.filter((tool: BuiltInTool) => {
 			const toolId = tool.id || tool.name;
@@ -56,15 +66,11 @@ export class BuiltInToolsRenderer {
 		});
 
 		if (allBuiltInTools.length === 0) {
-			const emptyState = container.createDiv({ cls: 'llmsider-mcp-tool-empty' });
-			emptyState.style.padding = '20px';
-			emptyState.style.textAlign = 'center';
-			emptyState.style.background = 'var(--background-secondary)';
-			emptyState.style.borderRadius = '4px';
+			const emptyState = container.createDiv({ cls: 'llmsider-mcp-tool-empty llmsider-settings-empty-state' });
 			emptyState.createEl('p', {
 				text: this.i18n.t('settingsPage.noBuiltInTools'),
 				cls: 'llmsider-empty-text'
-			}).style.color = 'var(--text-muted)';
+			});
 			return;
 		}
 
@@ -77,7 +83,7 @@ export class BuiltInToolsRenderer {
 			}
 			toolsByCategory.get(category)!.push(tool);
 		});
-		
+
 		// Filter tools if search text provided
 		const filteredToolsByCategory = new Map<string, typeof allBuiltInTools>();
 		if (filterText) {
@@ -97,93 +103,111 @@ export class BuiltInToolsRenderer {
 				filteredToolsByCategory.set(category, tools);
 			});
 		}
-		
+
 		// Show no results message if nothing matches
 		if (filteredToolsByCategory.size === 0) {
-			const noResultsState = container.createDiv({ cls: 'llmsider-mcp-tool-empty' });
-			noResultsState.style.padding = '20px';
-			noResultsState.style.textAlign = 'center';
-			noResultsState.style.background = 'var(--background-secondary)';
-			noResultsState.style.borderRadius = '4px';
+			const noResultsState = container.createDiv({ cls: 'llmsider-mcp-tool-empty llmsider-settings-empty-state' });
 			noResultsState.createEl('p', {
 				text: this.i18n.t('ui.noMatchingTools'),
 				cls: 'llmsider-empty-text'
-			}).style.color = 'var(--text-muted)';
+			});
 			return;
 		}
 
-	// Category cards grid
-	const categoryGrid = container.createDiv({ cls: 'llmsider-builtin-category-grid' });
-	
-	// Create details row that will be moved dynamically
-	const toolDetailsRow = categoryGrid.createDiv({ cls: 'llmsider-builtin-tools-details-row' });
-	toolDetailsRow.style.display = 'none';
-	
-	let currentExpandedCard: HTMLDivElement | null = null;
+		// Category cards grid
+		const categoryGrid = container.createDiv({ cls: 'llmsider-builtin-category-grid' });
 
-	// Sort categories according to TOOL_CATEGORIES order (note-management and search-web first)
-	const categoryOrder = TOOL_CATEGORIES.map(cat => cat.key);
-	const sortedCategories = Array.from(filteredToolsByCategory.keys()).sort((a, b) => {
-		const indexA = categoryOrder.indexOf(a as any);
-		const indexB = categoryOrder.indexOf(b as any);
-		// If category not in defined order, put at end
-		if (indexA === -1 && indexB === -1) return 0;
-		if (indexA === -1) return 1;
-		if (indexB === -1) return -1;
-		return indexA - indexB;
-	});
+		// Create details row that will be moved dynamically
+		const toolDetailsRow = categoryGrid.createDiv({ cls: 'llmsider-builtin-tools-details-row' });
+		toolDetailsRow.style.display = 'none';
 
-	// Render category cards in sorted order
-	sortedCategories.forEach(category => {
-		const tools = filteredToolsByCategory.get(category)!;
-		const isCategoryEnabled = this.isCategoryEnabled(category, tools);
-		const categoryCard = categoryGrid.createDiv({ 
-			cls: `llmsider-builtin-category-card ${!isCategoryEnabled ? 'category-disabled' : ''}` 
+		let currentExpandedCard: HTMLDivElement | null = null;
+
+		// Sort categories according to TOOL_CATEGORIES order (note-management and search-web first)
+		const categoryOrder = TOOL_CATEGORIES.map(cat => cat.key);
+		const sortedCategories = Array.from(filteredToolsByCategory.keys()).sort((a, b) => {
+			const indexA = categoryOrder.indexOf(a as any);
+			const indexB = categoryOrder.indexOf(b as any);
+			// If category not in defined order, put at end
+			if (indexA === -1 && indexB === -1) return 0;
+			if (indexA === -1) return 1;
+			if (indexB === -1) return -1;
+			return indexA - indexB;
 		});
-		categoryCard.style.cursor = 'pointer';			// Category icon and name
-			const categoryHeader = categoryCard.createDiv({ cls: 'llmsider-category-header' });
-			const categoryIcon = categoryHeader.createDiv({ cls: 'llmsider-category-icon' });
+
+		// Render category cards in sorted order
+		sortedCategories.forEach(category => {
+			const tools = filteredToolsByCategory.get(category)!;
+			const isCategoryEnabled = this.isCategoryEnabled(category, tools);
+			const enabledToolCount = this.getEnabledToolCount(tools);
+			const categoryCard = categoryGrid.createDiv({
+				cls: `llmsider-builtin-category-card ${!isCategoryEnabled ? 'category-disabled' : ''}`
+			});
+			categoryCard.style.cursor = 'pointer';
+
+			const cardMain = categoryCard.createDiv({ cls: 'llmsider-settings-card-main' });
+			const categoryIcon = cardMain.createDiv({ cls: 'llmsider-category-icon' });
 			categoryIcon.innerHTML = getCategoryIcon(category);
-			
-			const categoryName = categoryHeader.createEl('h3', {
-				text: getCategoryDisplayName(category, this.i18n),
-				cls: 'llmsider-category-name'
+
+			const categoryBody = cardMain.createDiv({ cls: 'llmsider-settings-card-body' });
+
+			// Name row - truncated to 23 chars
+			const categoryName = getCategoryDisplayName(category, this.i18n);
+			const displayName = categoryName.length > 23 ? categoryName.substring(0, 23) + '...' : categoryName;
+			categoryBody.createEl('div', {
+				text: displayName,
+				cls: 'llmsider-category-name',
+				title: categoryName // Show full name on hover
 			});
-			
-			const toolCount = categoryHeader.createEl('span', {
+
+			// Stats row - chips
+			const statsRow = categoryBody.createDiv({ cls: 'llmsider-mcp-card-stats-row' });
+
+			statsRow.createEl('span', {
 				text: `${tools.length} ${this.i18n.t('settingsPage.toolCount')}`,
-				cls: 'llmsider-category-tool-count'
+				cls: 'llmsider-settings-card-chip llmsider-category-tool-count'
 			});
-			
+
+			const enabledStateChip = statsRow.createEl('span', {
+				text: `${enabledToolCount}/${tools.length} ${this.i18n.t('settingsPage.toolManagement.enabled')}`,
+				cls: `llmsider-settings-card-chip ${isCategoryEnabled ? 'is-active' : 'is-muted'}`
+			});
+
+			const controls = categoryCard.createDiv({ cls: 'llmsider-settings-card-controls' });
+
 			// Category toggle (enable/disable all tools in category)
-			const toggleContainer = categoryCard.createDiv({ cls: 'llmsider-category-toggle' });
-			
+			const toggleContainer = controls.createDiv({ cls: 'llmsider-category-toggle' });
+
 			const toggleSwitch = toggleContainer.createDiv({ cls: `llmsider-toggle-switch ${isCategoryEnabled ? 'active' : ''}` });
 			const toggleThumb = toggleSwitch.createDiv({ cls: 'llmsider-toggle-thumb' });
-			
+
 			toggleSwitch.addEventListener('click', async (e: MouseEvent) => {
 				e.stopPropagation(); // Prevent card click
 				const newState = !toggleSwitch.hasClass('active');
-				
+
 				// Store original state to check if it actually changed
 				const originalState = toggleSwitch.hasClass('active');
-				
+
 				// Pass localized category name for error messages
 				const categoryDisplayName = getCategoryDisplayName(category, this.i18n);
 				const result = await this.toolPermissionHandler.toggleCategoryTools(categoryDisplayName, tools, newState);
-				
+
 				// If operation failed (e.g. limit reached), do not update UI
 				if (!result) {
 					return;
 				}
-				
+
 				// Check if operation was successful by checking actual tool states
 				// Use same logic as isCategoryEnabled: at least one tool enabled = category enabled
 				const actuallyEnabled = tools.some((tool: unknown) => {
 					const toolId = (tool as { id?: string; name: string }).id || (tool as { name: string }).name;
 					return this.plugin.configDb.isBuiltInToolEnabled(toolId);
 				});
-				
+				const actualEnabledCount = this.getEnabledToolCount(tools);
+				enabledStateChip.setText(`${actualEnabledCount}/${tools.length} ${this.i18n.t('settingsPage.toolManagement.enabled')}`);
+				enabledStateChip.toggleClass('is-active', actuallyEnabled);
+				enabledStateChip.toggleClass('is-muted', !actuallyEnabled);
+
 				// Update UI to reflect actual state
 				if (actuallyEnabled) {
 					toggleSwitch.addClass('active');
@@ -205,54 +229,53 @@ export class BuiltInToolsRenderer {
 					}
 				}
 			});
-			
+
 			// Expand arrow indicator
-			const expandArrow = categoryCard.createDiv({ cls: 'llmsider-category-expand-arrow' });
+			const expandArrow = controls.createDiv({ cls: 'llmsider-category-expand-arrow' });
 			expandArrow.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<polyline points="6 9 12 15 18 9"></polyline>
 			</svg>`;
-			
+
 			// Click to expand/collapse
 			categoryCard.addEventListener('click', (e: MouseEvent) => {
 				// Don't expand if clicking toggle
 				if ((e.target as HTMLElement).closest('.llmsider-category-toggle')) {
 					return;
 				}
-				
+
 				const wasExpanded = categoryCard.hasClass('expanded');
-				
+
 				// Collapse any previously expanded card
 				if (currentExpandedCard && currentExpandedCard !== categoryCard) {
 					currentExpandedCard.removeClass('expanded');
 				}
-				
+
 				if (wasExpanded) {
 					// Collapse this card
 					categoryCard.removeClass('expanded');
 					toolDetailsRow.style.display = 'none';
 					currentExpandedCard = null;
-			} else {
-				// Expand this card
-				categoryCard.addClass('expanded');
-				currentExpandedCard = categoryCard;
-				
-				// Move details row to appear right after the clicked card using DOM manipulation
-				// Since Obsidian filters out the 'order' CSS property, we need to physically move the element
-				toolDetailsRow.style.display = 'block';
-				
-				// Find the next sibling after the clicked card
-				const nextSibling = categoryCard.nextSibling;
-				
-				// If the next sibling is not the details row, insert it after the card
-				if (nextSibling !== toolDetailsRow) {
-					categoryCard.parentElement?.insertBefore(toolDetailsRow, nextSibling);
+				} else {
+					// Expand this card
+					categoryCard.addClass('expanded');
+					currentExpandedCard = categoryCard;
+
+					// Move details row to appear right after the clicked card using DOM manipulation
+					// Since Obsidian filters out the 'order' CSS property, we need to physically move the element
+					toolDetailsRow.style.display = 'block';
+
+					// Find the next sibling after the clicked card
+					const nextSibling = categoryCard.nextSibling;
+
+					// If the next sibling is not the details row, insert it after the card
+					if (nextSibling !== toolDetailsRow) {
+						categoryCard.parentElement?.insertBefore(toolDetailsRow, nextSibling);
+					}
+
+					// Render tools in details row
+					this.renderCategoryDetails(toolDetailsRow, category, tools);
 				}
-				
-				
-				// Render tools in details row
-				this.renderCategoryDetails(toolDetailsRow, category, tools);
-			}
-		});
+			});
 		});
 	}
 
@@ -300,10 +323,10 @@ export class BuiltInToolsRenderer {
 				toolToggleInput.checked = toggleInput.checked;
 			});
 
-				new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsInCategoryToggled', {
-					category: getCategoryDisplayName(category, this.i18n),
-					status: toggleInput.checked ? this.i18n.t('settingsPage.toolManagement.enabled') : this.i18n.t('settingsPage.toolManagement.disabled')
-				}));
+			new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsInCategoryToggled', {
+				category: getCategoryDisplayName(category, this.i18n),
+				status: toggleInput.checked ? this.i18n.t('settingsPage.toolManagement.enabled') : this.i18n.t('settingsPage.toolManagement.disabled')
+			}));
 		});
 
 		// Tools list for this category (collapsible, collapsed by default)
@@ -328,76 +351,21 @@ export class BuiltInToolsRenderer {
 		const toolId = typedTool.id || typedTool.name;
 		const isToolEnabled = this.plugin.configDb.isBuiltInToolEnabled(toolId);
 		const requireConfirmation = this.plugin.configDb.isBuiltInToolRequireConfirmation(toolId);
-		
-		// Tool card container with hover effect - full width
-		const toolItem = container.createDiv({ cls: 'llmsider-modern-tool-card' });
-		toolItem.style.cssText = `
-			position: relative !important;
-			overflow: hidden !important;
-			border-radius: 8px !important;
-			border: 1px solid var(--background-modifier-border) !important;
-			background: var(--background-primary) !important;
-			padding: 16px !important;
-			transition: all 0.2s ease !important;
-			margin-bottom: 12px !important;
-			display: block !important;
-			width: 100% !important;
-			box-sizing: border-box !important;
-		`;
-		
-		// Add hover effect
-		toolItem.addEventListener('mouseenter', () => {
-			toolItem.style.borderColor = 'var(--interactive-accent)';
-			toolItem.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
-		});
-		toolItem.addEventListener('mouseleave', () => {
-			toolItem.style.borderColor = 'var(--background-modifier-border)';
-			toolItem.style.boxShadow = 'none';
-		});
 
-		// Main content container (flex row)
-		const mainContent = toolItem.createDiv({ cls: 'llmsider-modern-tool-main' });
-		mainContent.style.cssText = 'display: flex !important; align-items: start !important; justify-content: space-between !important; gap: 16px !important;';
-
-		// Left side: Tool info
-		const toolInfo = mainContent.createDiv({ cls: 'llmsider-modern-tool-info' });
-		toolInfo.style.cssText = 'flex: 1 !important; min-width: 0 !important;';
-
-		const toolName = toolInfo.createEl('h3', { text: typedTool.name });
-		toolName.style.cssText = 'margin: 0 0 4px 0 !important; font-size: 14px !important; font-weight: 600 !important; color: var(--text-normal) !important;';
-
-		if (typedTool.description) {
-			const toolDesc = toolInfo.createEl('p', { text: typedTool.description });
-			toolDesc.style.cssText = 'margin: 0 !important; font-size: 13px !important; line-height: 1.5 !important; color: var(--text-muted) !important;';
-		}
-
-		// Tool schema info (collapsible)
-		if (typedTool.inputSchema) {
-			const schemaToggle = toolInfo.createEl('details', { cls: 'llmsider-mcp-tool-schema' });
-			schemaToggle.style.cssText = 'margin-top: 12px;';
-			schemaToggle.createEl('summary', { text: this.i18n.t('settingsPage.viewInputSchema') });
-			const schemaContent = schemaToggle.createEl('pre', { cls: 'llmsider-mcp-tool-schema-content' });
-			schemaContent.textContent = JSON.stringify(typedTool.inputSchema, null, 2);
-		}
-
-		// Right side: Controls with button groups
-		const controlsContainer = mainContent.createDiv({ cls: 'llmsider-modern-tool-controls' });
-		controlsContainer.style.cssText = 'display: flex !important; flex-direction: column !important; gap: 10px !important; flex-shrink: 0 !important;';
-
-		// Use helper method to create button controls
-		this.toolButtonControls.create(
-			controlsContainer,
-			isToolEnabled,
+		this.renderToolCard(container, {
+			name: typedTool.name,
+			description: typedTool.description,
+			inputSchema: typedTool.inputSchema,
+			isEnabled: isToolEnabled,
 			requireConfirmation,
-			async (enabled) => {
-				// Check limit when enabling
+			onEnableChange: async (enabled) => {
 				if (enabled && !this.toolPermissionHandler.canEnableBuiltInTool()) {
 					new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsLimitReached', {
 						limit: this.plugin.settings.maxBuiltInToolsSelection.toString()
 					}));
 					return false;
 				}
-				
+
 				this.plugin.configDb.setBuiltInToolEnabled(toolId, enabled);
 				await this.plugin.saveSettings();
 				new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolToggled', {
@@ -406,10 +374,10 @@ export class BuiltInToolsRenderer {
 				}));
 				return true;
 			},
-			async (requireConfirm) => {
+			onConfirmationChange: async (requireConfirm) => {
 				this.plugin.configDb.setBuiltInToolRequireConfirmation(toolId, requireConfirm);
 			}
-		);
+		});
 	}
 
 	/**
@@ -418,90 +386,57 @@ export class BuiltInToolsRenderer {
 	renderCategoryDetails(container: HTMLDivElement, category: string, tools: unknown[]): void {
 		// Clear existing content
 		container.empty();
-		
+
+		const detailHeader = container.createDiv({ cls: 'llmsider-settings-detail-header' });
+		const detailCopy = detailHeader.createDiv({ cls: 'llmsider-settings-detail-copy' });
+		detailCopy.createEl('h4', {
+			text: getCategoryDisplayName(category, this.i18n),
+			cls: 'llmsider-settings-detail-title'
+		});
+		detailCopy.createEl('p', {
+			text: this.i18n.t('settingsPage.toolManagement.availableTools'),
+			cls: 'llmsider-settings-detail-caption'
+		});
+		detailHeader.createEl('span', {
+			text: `${tools.length} ${this.i18n.t('settingsPage.toolCount')}`,
+			cls: 'llmsider-settings-detail-count'
+		});
+
 		// Tools list (no header needed when expanded)
-		const toolsList = container.createDiv({ cls: 'llmsider-tools-list' });
-		
+		const toolsList = container.createDiv({ cls: 'llmsider-settings-tool-grid' });
+
 		// Get localized tools
 		const localizedTools = getAllBuiltInTools({ i18n: this.i18n });
-		
+
 		tools.forEach(tool => {
-			// Use same modern card design as renderBuiltInToolItem
 			const typedTool = tool as Tool;
 			const toolId = typedTool.id || typedTool.name;
 			const isToolEnabled = this.plugin.configDb.isBuiltInToolEnabled(toolId);
 			const requireConfirmation = this.plugin.configDb.isBuiltInToolRequireConfirmation(toolId);
 			const localizedTool = localizedTools[typedTool.name] || tool;
-			
-			// Tool card container with hover effect - full width
-			const toolItem = toolsList.createDiv({ cls: 'llmsider-modern-tool-card' });
-			toolItem.style.cssText = `
-				position: relative !important;
-				overflow: hidden !important;
-				border-radius: 8px !important;
-				border: 1px solid var(--background-modifier-border) !important;
-				background: var(--background-primary) !important;
-				padding: 16px !important;
-				transition: all 0.2s ease !important;
-				margin-bottom: 12px !important;
-				display: block !important;
-				width: 100% !important;
-				box-sizing: border-box !important;
-			`;
-			
-			toolItem.addEventListener('mouseenter', () => {
-				toolItem.style.borderColor = 'var(--interactive-accent)';
-				toolItem.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
-			});
-			toolItem.addEventListener('mouseleave', () => {
-				toolItem.style.borderColor = 'var(--background-modifier-border)';
-				toolItem.style.boxShadow = 'none';
-			});
 
-			// Main content container
-			const mainContent = toolItem.createDiv({ cls: 'llmsider-modern-tool-main' });
-			mainContent.style.cssText = 'display: flex !important; align-items: start !important; justify-content: space-between !important; gap: 16px !important;';
-
-			// Left side: Tool info
-			const toolInfo = mainContent.createDiv({ cls: 'llmsider-modern-tool-info' });
-			toolInfo.style.cssText = 'flex: 1 !important; min-width: 0 !important;';
-
-			const toolName = toolInfo.createEl('h3', { text: localizedTool.name });
-			toolName.style.cssText = 'margin: 0 0 4px 0 !important; font-size: 14px !important; font-weight: 600 !important; color: var(--text-normal) !important;';
-
-			if (localizedTool.description) {
-				const toolDesc = toolInfo.createEl('p', { text: localizedTool.description });
-				toolDesc.style.cssText = 'margin: 0 !important; font-size: 13px !important; line-height: 1.5 !important; color: var(--text-muted) !important;';
-			}
-
-			// Remove the info box - will be replaced with tooltip icon
-
-			// Right side: Controls with button groups
-			const controlsContainer = mainContent.createDiv({ cls: 'llmsider-modern-tool-controls' });
-			controlsContainer.style.cssText = 'display: flex !important; flex-direction: column !important; gap: 10px !important; flex-shrink: 0 !important;';
-
-			// Use helper method to create button controls
-			this.toolButtonControls.create(
-				controlsContainer,
-				isToolEnabled,
+			this.renderToolCard(toolsList, {
+				name: localizedTool.name,
+				description: localizedTool.description,
+				inputSchema: typedTool.inputSchema,
+				isEnabled: isToolEnabled,
 				requireConfirmation,
-				async (enabled) => {
-					// Check limit when enabling
+				onEnableChange: async (enabled) => {
 					if (enabled && !this.toolPermissionHandler.canEnableBuiltInTool()) {
 						new Notice(this.i18n.t('settingsPage.toolManagement.builtInToolsLimitReached', {
 							limit: this.plugin.settings.maxBuiltInToolsSelection.toString()
 						}));
 						return false;
 					}
-					
+
 					this.plugin.configDb.setBuiltInToolEnabled(toolId, enabled);
 					await this.plugin.saveSettings();
 					return true;
 				},
-				async (requireConfirm) => {
+				onConfirmationChange: async (requireConfirm) => {
 					this.plugin.configDb.setBuiltInToolRequireConfirmation(toolId, requireConfirm);
 				}
-			);
+			});
 		});
 	}
 
@@ -512,38 +447,38 @@ export class BuiltInToolsRenderer {
 		const typedTool = tool as Tool;
 		const modal = document.createElement('div');
 		modal.addClass('llmsider-modal-overlay');
-		
+
 		const modalContent = modal.createDiv({ cls: 'llmsider-modal-content' });
-		
+
 		// Get localized tool info
 		const localizedTools = getAllBuiltInTools({ i18n: this.i18n });
 		const localizedTool = localizedTools[typedTool.name] || tool;
-		
+
 		// Modal header
 		const modalHeader = modalContent.createDiv({ cls: 'llmsider-modal-header' });
-		
+
 		const modalTitle = modalHeader.createEl('h2', {
 			text: localizedTool.name,
 			cls: 'llmsider-modal-title'
 		});
-		
+
 		const closeBtn = modalHeader.createDiv({ cls: 'llmsider-modal-close' });
 		closeBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<line x1="18" y1="6" x2="6" y2="18"></line>
 			<line x1="6" y1="6" x2="18" y2="18"></line>
 		</svg>`;
 		closeBtn.onclick = () => modal.remove();
-		
+
 		// Modal body
 		const modalBody = modalContent.createDiv({ cls: 'llmsider-modal-body' });
-		
+
 		// Description section
 		if (localizedTool.description) {
 			const descSection = modalBody.createDiv({ cls: 'llmsider-modal-section' });
 			descSection.createEl('h3', { text: this.i18n.t('settingsPage.description') });
 			descSection.createEl('p', { text: localizedTool.description });
 		}
-		
+
 		// Input schema section
 		if (typedTool.inputSchema) {
 			const schemaSection = modalBody.createDiv({ cls: 'llmsider-modal-section' });
@@ -551,14 +486,14 @@ export class BuiltInToolsRenderer {
 			const schemaContent = schemaSection.createEl('pre', { cls: 'llmsider-modal-code' });
 			schemaContent.textContent = JSON.stringify(typedTool.inputSchema, null, 2);
 		}
-		
+
 		// Close on overlay click
 		modal.onclick = (e) => {
 			if (e.target === modal) {
 				modal.remove();
 			}
 		};
-		
+
 		// Add to DOM
 		document.body.appendChild(modal);
 	}
@@ -567,46 +502,41 @@ export class BuiltInToolsRenderer {
 	 * Render action buttons for built-in tools section
 	 */
 	renderBuiltInToolsActions(container: HTMLDivElement): void {
-		container.style.display = 'flex';
-		container.style.gap = '12px';
-		container.style.alignItems = 'center';
+		// Check if all tools are enabled (excluding system tools)
+		const allBuiltInToolsUnfiltered = getAllBuiltInTools({ asArray: true }) as BuiltInTool[];
+		const allBuiltInTools = allBuiltInToolsUnfiltered.filter((tool: BuiltInTool) => {
+			const toolId = (tool as Tool).id || (tool as Tool).name;
+			return !HIDDEN_SYSTEM_TOOLS.includes(toolId);
+		});
+		const allEnabled = allBuiltInTools.every(tool => {
+			const toolId = (tool as Tool).id || (tool as Tool).name;
+			return this.plugin.configDb.isBuiltInToolEnabled(toolId);
+		});
 
-	// Check if all tools are enabled (excluding system tools)
-	const allBuiltInToolsUnfiltered = getAllBuiltInTools({ asArray: true }) as BuiltInTool[];
-	const allBuiltInTools = allBuiltInToolsUnfiltered.filter((tool: BuiltInTool) => {
-		const toolId = (tool as Tool).id || (tool as Tool).name;
-		return !HIDDEN_SYSTEM_TOOLS.includes(toolId);
-	});
-	const allEnabled = allBuiltInTools.every(tool => {
-		const toolId = (tool as Tool).id || (tool as Tool).name;
-		return this.plugin.configDb.isBuiltInToolEnabled(toolId);
-	});		// Toggle all label and switch
+		// Toggle all label and switch
 		const toggleAllContainer = container.createDiv({ cls: 'llmsider-tools-toggle-all-container' });
-		
+
 		const toggleLabel = toggleAllContainer.createEl('span', {
 			text: this.i18n.t('ui.allBuiltInTools'),
 			cls: 'llmsider-tools-toggle-all-label'
 		});
-		toggleLabel.style.fontSize = '13px';
-		toggleLabel.style.color = 'var(--text-muted)';
-		toggleLabel.style.marginRight = '8px';
-		
-		const toggleSwitch = toggleAllContainer.createDiv({ 
-			cls: `llmsider-toggle-switch ${allEnabled ? 'active' : ''}` 
+
+		const toggleSwitch = toggleAllContainer.createDiv({
+			cls: `llmsider-toggle-switch ${allEnabled ? 'active' : ''}`
 		});
 		const toggleThumb = toggleSwitch.createDiv({ cls: 'llmsider-toggle-thumb' });
-		
+
 		toggleSwitch.addEventListener('click', async (e: MouseEvent) => {
 			e.stopPropagation();
 			const newState = !toggleSwitch.hasClass('active');
-			
+
 			let result = false;
 			if (newState) {
 				result = await this.toolPermissionHandler.enableAllBuiltInTools();
 			} else {
 				result = await this.toolPermissionHandler.disableAllBuiltInTools();
 			}
-			
+
 			// Only update UI if operation succeeded
 			if (result) {
 				if (newState) {
@@ -638,5 +568,43 @@ export class BuiltInToolsRenderer {
 		// Category is considered enabled if at least one tool is enabled
 		const result = tools.some(tool => this.plugin.configDb.isBuiltInToolEnabled((tool as Tool).id || (tool as Tool).name));
 		return result;
+	}
+
+	private getEnabledToolCount(tools: unknown[]): number {
+		return tools.filter((tool) => this.plugin.configDb.isBuiltInToolEnabled((tool as Tool).id || (tool as Tool).name)).length;
+	}
+
+	private renderToolCard(container: HTMLElement, options: ToolCardOptions): void {
+		const toolItem = container.createDiv({ cls: 'llmsider-settings-tool-card' });
+		const mainContent = toolItem.createDiv({ cls: 'llmsider-settings-tool-card-main' });
+		const toolInfo = mainContent.createDiv({ cls: 'llmsider-settings-tool-card-info' });
+
+		toolInfo.createEl('h3', {
+			text: options.name,
+			cls: 'llmsider-settings-tool-card-title'
+		});
+
+		if (options.description) {
+			toolInfo.createEl('p', {
+				text: options.description,
+				cls: 'llmsider-settings-tool-card-desc'
+			});
+		}
+
+		if (options.inputSchema) {
+			const schemaToggle = toolInfo.createEl('details', { cls: 'llmsider-mcp-tool-schema' });
+			schemaToggle.createEl('summary', { text: this.i18n.t('settingsPage.viewInputSchema') });
+			const schemaContent = schemaToggle.createEl('pre', { cls: 'llmsider-mcp-tool-schema-content' });
+			schemaContent.textContent = JSON.stringify(options.inputSchema, null, 2);
+		}
+
+		const controlsContainer = mainContent.createDiv({ cls: 'llmsider-settings-tool-card-actions' });
+		this.toolButtonControls.create(
+			controlsContainer,
+			options.isEnabled,
+			options.requireConfirmation,
+			options.onEnableChange,
+			options.onConfirmationChange
+		);
 	}
 }

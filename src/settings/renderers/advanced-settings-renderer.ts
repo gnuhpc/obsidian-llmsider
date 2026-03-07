@@ -1,7 +1,6 @@
 import { Notice, Setting } from 'obsidian';
-import LLMSiderPlugin from '../../main';
+import type LLMSiderPlugin from '../../main';
 import type { I18nManager } from '../../i18n/i18n-manager';
-import { UpdateConfirmModal } from '../../ui/update-confirm-modal';
 import type { ConnectionModelRenderer } from './connection-model-renderer';
 
 /**
@@ -66,10 +65,7 @@ export class AdvancedSettingsRenderer {
 			cls: 'llmsider-subsection-header'
 		});
 
-		let showOnSelectionSetting: Setting;
 		let enableDiffPreviewSetting: Setting;
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		let showOnSelectionToggle: any;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		let enableDiffPreviewToggle: any;
 
@@ -83,12 +79,7 @@ export class AdvancedSettingsRenderer {
 					this.plugin.settings.inlineQuickChat.enabled = value;
 					await this.plugin.saveSettings();
 					
-					// Update disabled state of other settings
-					if (showOnSelectionSetting) showOnSelectionSetting.setDisabled(!value);
 					if (enableDiffPreviewSetting) enableDiffPreviewSetting.setDisabled(!value);
-					
-					// Explicitly disable toggles to ensure visual feedback
-					if (showOnSelectionToggle) showOnSelectionToggle.setDisabled(!value);
 					if (enableDiffPreviewToggle) enableDiffPreviewToggle.setDisabled(!value);
 
 					if (value) {
@@ -97,21 +88,6 @@ export class AdvancedSettingsRenderer {
 					} else {
 						new Notice(this.i18n.t('quickChat.disabledNotice'));
 					}
-				});
-			});
-
-		// Show on selection toggle (also controls Quick Chat button visibility)
-		showOnSelectionSetting = new Setting(quickChatContainer)
-			.setName(this.i18n.t('quickChat.showOnSelection'))
-			.setDesc(this.i18n.t('quickChat.showOnSelectionDesc'))
-			.setDisabled(!this.plugin.settings.inlineQuickChat.enabled)
-			.addToggle(toggle => {
-				showOnSelectionToggle = toggle;
-				toggle.setValue(this.plugin.settings.inlineQuickChat.showOnSelection);
-				toggle.setDisabled(!this.plugin.settings.inlineQuickChat.enabled);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.inlineQuickChat.showOnSelection = value;
-					await this.plugin.saveSettings();
 				});
 			});
 
@@ -140,22 +116,53 @@ export class AdvancedSettingsRenderer {
 		});
 
 		new Setting(contextContainer)
-			.setName(this.i18n.t('contextSettings.autoAddActiveNote'))
-			.setDesc(this.i18n.t('contextSettings.autoAddActiveNoteDesc'))
+			.setName(this.i18n.t('contextSettings.autoReference'))
+			.setDesc(this.i18n.t('contextSettings.autoReferenceDesc'))
 			.addToggle(toggle => {
-				toggle.setValue(this.plugin.settings.contextSettings?.autoAddActiveNote ?? true);
+				toggle.setValue(this.plugin.settings.contextSettings?.autoReference ?? true);
 				toggle.onChange(async (value) => {
 					if (!this.plugin.settings.contextSettings) {
-						this.plugin.settings.contextSettings = { autoAddActiveNote: value };
+						this.plugin.settings.contextSettings = { autoReference: value, includeExtrasWithContext: false };
 					} else {
-						this.plugin.settings.contextSettings.autoAddActiveNote = value;
+						this.plugin.settings.contextSettings.autoReference = value;
 					}
 					await this.plugin.saveSettings();
 					
 					const message = value 
-						? this.i18n.t('contextSettings.autoAddEnabledNotice')
-						: this.i18n.t('contextSettings.autoAddDisabledNotice');
+						? this.i18n.t('contextSettings.autoReferenceEnabledNotice')
+						: this.i18n.t('contextSettings.autoReferenceDisabledNotice');
 					new Notice(message);
+				});
+			});
+
+		new Setting(contextContainer)
+			.setName(this.i18n.t('contextSettings.includeExtrasWithContext'))
+			.setDesc(this.i18n.t('contextSettings.includeExtrasWithContextDesc'))
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.contextSettings?.includeExtrasWithContext ?? false);
+				toggle.onChange(async (value) => {
+					if (!this.plugin.settings.contextSettings) {
+						this.plugin.settings.contextSettings = { autoReference: true, includeExtrasWithContext: value };
+					} else {
+						this.plugin.settings.contextSettings.includeExtrasWithContext = value;
+					}
+					await this.plugin.saveSettings();
+					
+					const message = value 
+						? this.i18n.t('contextSettings.includeExtrasEnabledNotice')
+						: this.i18n.t('contextSettings.includeExtrasDisabledNotice');
+					new Notice(message);
+				});
+			});
+
+		new Setting(contextContainer)
+			.setName(this.i18n.t('selectionPopup.showAddToContextButton'))
+			.setDesc(this.i18n.t('selectionPopup.showAddToContextButtonDesc'))
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.selectionPopup.showAddToContext);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.selectionPopup.showAddToContext = value;
+					await this.plugin.saveSettings();
 				});
 			});
 	}
@@ -201,18 +208,7 @@ export class AdvancedSettingsRenderer {
 					await settingsTab.display();
 			}
 		});
-	})
-		// Show "Add to Context" button when text is selected
-		new Setting(otherContainer)
-			.setName(this.i18n.t('selectionPopup.showAddToContextButton'))
-			.setDesc(this.i18n.t('selectionPopup.showAddToContextButtonDesc'))
-			.addToggle(toggle => {
-				toggle.setValue(this.plugin.settings.selectionPopup.showAddToContext);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.selectionPopup.showAddToContext = value;
-					await this.plugin.saveSettings();
-				});
-			});
+	});
 
 		new Setting(otherContainer)
 			.setName(this.i18n.t('settingsPage.updateNotifications'))
@@ -232,36 +228,24 @@ export class AdvancedSettingsRenderer {
 						button.setButtonText(this.i18n.t('settingsPage.checkingForUpdates'));
 						button.setDisabled(true);
 						
-				try {
-					const result = await this.plugin.checkForUpdatesWithResult();
-					if (result.error) {
-						new Notice(this.i18n.t('settingsPage.updateCheckFailed'));
-					} else if (result.hasUpdate) {
-						const updateInfo = {
-							currentVersion: result.currentVersion,
-							latestVersion: result.latestVersion,
-							releaseUrl: `https://github.com/gnuhpc/obsidian-llmsider/releases/tag/${result.latestVersion}`
-						};
-						
-						const modal = new UpdateConfirmModal(
-							this.plugin.app,
-							this.i18n,
-							updateInfo,
-							async () => {
-								new Notice(this.i18n.t('ui.downloadingUpdate'));
-								await this.plugin.performUpdate(result.latestVersion);
+						try {
+							const result = await this.plugin.checkForUpdatesWithResult();
+							if (result.error) {
+								new Notice(this.i18n.t('settingsPage.updateCheckFailed'));
+							} else if (result.hasUpdate) {
+								const prompted = await this.plugin.promptForUpdateIfAvailable(result, true);
+								if (!prompted) {
+									new Notice(this.i18n.t('settingsPage.updateAvailable', { version: result.latestVersion }));
+								}
+							} else {
+								new Notice(this.i18n.t('settingsPage.noUpdateAvailable', { version: result.currentVersion }));
 							}
-						);
-						modal.open();
-					} else {
-						new Notice(this.i18n.t('settingsPage.noUpdateAvailable', { version: result.currentVersion }));
-					}
-				} catch (e) {
-					new Notice(this.i18n.t('settingsPage.updateCheckFailed'));
-				} finally {
-					button.setButtonText(this.i18n.t('settingsPage.checkForUpdates'));
-					button.setDisabled(false);
-				}
+						} catch (e) {
+							new Notice(this.i18n.t('settingsPage.updateCheckFailed'));
+						} finally {
+							button.setButtonText(this.i18n.t('settingsPage.checkForUpdates'));
+							button.setDisabled(false);
+						}
 					});
 			});
 

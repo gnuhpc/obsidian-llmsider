@@ -45,7 +45,7 @@ export class SpeedReadingDrawer {
 	private scrollListener: ((e: Event) => void) | null = null; // 滚动监听器
 	private markdownComponents: Component[] = []; // Track all markdown components for cleanup
 
-	constructor(private app: App, private plugin: LLMSiderPlugin, private containerEl: HTMLElement) {}
+	constructor(private app: App, private plugin: LLMSiderPlugin, private containerEl: HTMLElement) { }
 
 	/**
 	 * Validate if mindmap JSON structure is complete
@@ -56,25 +56,25 @@ export class SpeedReadingDrawer {
 		if (!json || json.length < 50) {
 			return false; // Too short to be a valid mindmap
 		}
-		
+
 		// Quick check: JSON must end with } and have balanced braces
 		const trimmed = json.trim();
 		if (!trimmed.endsWith('}')) {
 			return false;
 		}
-		
+
 		// Count braces to check if JSON might be complete
 		let braceCount = 0;
 		for (const char of trimmed) {
 			if (char === '{') braceCount++;
 			else if (char === '}') braceCount--;
 		}
-		
+
 		// If braces don't match, JSON is incomplete
 		if (braceCount !== 0) {
 			return false;
 		}
-		
+
 		// Now try to parse
 		try {
 			const parsed = JSON.parse(json);
@@ -92,13 +92,13 @@ export class SpeedReadingDrawer {
 		try {
 			// Close the drawer first
 			this.close();
-			
+
 			// Wait a bit for drawer animation
 			await new Promise(resolve => setTimeout(resolve, 100));
-			
+
 			// Activate chat view
 			await this.plugin.activateChatView();
-			
+
 			// Get the chat view and send message
 			const leaves = this.app.workspace.getLeavesOfType('llmsider-chat-view');
 			if (leaves.length > 0) {
@@ -146,15 +146,15 @@ export class SpeedReadingDrawer {
 		const pluginContainer = this.containerEl.closest('.llmsider-container') as HTMLElement;
 		const targetContainer = pluginContainer || this.containerEl;
 		const isFullScreen = !pluginContainer;
-		
+
 		// Ensure plugin container has position relative for absolute positioning
 		if (!isFullScreen && getComputedStyle(targetContainer).position === 'static') {
 			targetContainer.style.setProperty('position', 'relative', 'important');
 		}
-		
+
 		// Create drawer container with modern design
 		this.drawerEl = targetContainer.createDiv({ cls: 'llmsider-speed-reading-drawer' });
-		
+
 		// Modern drawer positioning and styling
 		if (isFullScreen) {
 			// Full screen mode: fixed positioning
@@ -173,7 +173,7 @@ export class SpeedReadingDrawer {
 		this.drawerEl.style.setProperty('display', 'flex', 'important');
 		this.drawerEl.style.setProperty('align-items', 'stretch', 'important');
 		this.drawerEl.style.setProperty('justify-content', 'flex-end', 'important');
-		
+
 		// Create backdrop without blur and click-to-close
 		const backdrop = this.drawerEl.createDiv({ cls: 'speed-reading-drawer-backdrop' });
 		backdrop.style.setProperty('position', 'absolute', 'important');
@@ -183,7 +183,7 @@ export class SpeedReadingDrawer {
 
 		// Create modern drawer panel with card-like design
 		const panel = this.drawerEl.createDiv({ cls: 'speed-reading-drawer-panel' });
-		
+
 		// Modern panel styling inspired by shadcn/ui
 		panel.style.setProperty('position', 'relative', 'important');
 		panel.style.setProperty('width', '420px', 'important');
@@ -202,7 +202,7 @@ export class SpeedReadingDrawer {
 		panel.style.setProperty('pointer-events', 'auto', 'important');
 		panel.style.setProperty('z-index', '2', 'important');
 		panel.style.setProperty('user-select', 'text', 'important');
-		
+
 		// Create resize handle on the left edge
 		const resizeHandle = panel.createDiv({ cls: 'speed-reading-resize-handle' });
 		resizeHandle.style.setProperty('position', 'absolute', 'important');
@@ -219,7 +219,7 @@ export class SpeedReadingDrawer {
 		resizeHandle.style.setProperty('justify-content', 'center', 'important');
 		resizeHandle.style.setProperty('pointer-events', 'auto', 'important');
 		resizeHandle.style.setProperty('user-select', 'none', 'important');
-		
+
 		// Add visual indicator
 		const indicator = resizeHandle.createDiv();
 		indicator.style.setProperty('width', '3px', 'important');
@@ -229,7 +229,7 @@ export class SpeedReadingDrawer {
 		indicator.style.setProperty('opacity', '0.5', 'important');
 		indicator.style.setProperty('transition', 'all 0.15s ease', 'important');
 		indicator.style.setProperty('pointer-events', 'none', 'important');
-		
+
 		// Resize handle hover effect
 		resizeHandle.onmouseover = () => {
 			resizeHandle.style.setProperty('background', 'var(--background-modifier-hover)', 'important');
@@ -241,39 +241,39 @@ export class SpeedReadingDrawer {
 			indicator.style.setProperty('opacity', '0.4', 'important');
 			indicator.style.setProperty('background', 'var(--background-modifier-border)', 'important');
 		};
-		
+
 		// Add resize functionality
 		let isResizing = false;
 		let startX = 0;
 		let startWidth = 0;
-		
+
 		resizeHandle.addEventListener('mousedown', (e) => {
 			isResizing = true;
 			startX = e.clientX;
 			startWidth = panel.offsetWidth;
 			e.preventDefault();
-			
+
 			// Add resizing class for visual feedback
 			panel.addClass('speed-reading-panel-resizing');
 			document.body.style.cursor = 'col-resize';
 			document.body.style.userSelect = 'none';
 		});
 		Logger.debug('[ResizeHandle] Mousedown listener registered');
-		
+
 		const mouseMoveHandler = (e: MouseEvent) => {
 			if (!isResizing) return;
-			
+
 			const deltaX = startX - e.clientX;
 			const newWidth = Math.max(320, Math.min(window.innerWidth * 0.9, startWidth + deltaX));
 			panel.style.setProperty('width', `${newWidth}px`, 'important');
 			panel.style.setProperty('max-width', 'none', 'important');
-			
+
 			// Trigger layout recalculation for responsive content
 			window.dispatchEvent(new Event('resize'));
 		};
-		
+
 		document.addEventListener('mousemove', mouseMoveHandler);
-		
+
 		const mouseUpHandler = () => {
 			if (isResizing) {
 				isResizing = false;
@@ -282,12 +282,12 @@ export class SpeedReadingDrawer {
 				document.body.style.userSelect = '';
 			}
 		};
-		
+
 		document.addEventListener('mouseup', mouseUpHandler);
-		
+
 		// Store handlers for cleanup
 		(panel as any)._resizeHandlers = { mouseMoveHandler, mouseUpHandler };
-		
+
 		// Add ESC key listener to close drawer
 		const handleEscKey = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
@@ -295,17 +295,17 @@ export class SpeedReadingDrawer {
 			}
 		};
 		document.addEventListener('keydown', handleEscKey);
-		
+
 		// Store the handler so we can remove it later
 		(panel as any)._escKeyHandler = handleEscKey;
-		
+
 		// Store resize handle reference before renderContent (which calls panel.empty())
 		(panel as any)._resizeHandle = resizeHandle;
-		
+
 		// Save panel reference for updates
 		this.contentEl = panel;
 		this.renderContent(panel, result);
-		
+
 		// Trigger animation
 		setTimeout(() => {
 			this.drawerEl?.addClass('speed-reading-drawer-open');
@@ -323,6 +323,12 @@ export class SpeedReadingDrawer {
 	close(): void {
 		if (!this.isOpen || !this.drawerEl) return;
 
+		// Stop analysis if streaming
+		const speedReadingManager = this.plugin.getSpeedReadingManager();
+		if (speedReadingManager && this.isStreaming) {
+			speedReadingManager.stopAnalysis();
+		}
+
 		// Remove ESC key listener
 		if (this.contentEl && (this.contentEl as any)._escKeyHandler) {
 			document.removeEventListener('keydown', (this.contentEl as any)._escKeyHandler);
@@ -339,7 +345,7 @@ export class SpeedReadingDrawer {
 				document.removeEventListener('mouseup', panelWithHandlers._resizeHandlers.mouseUpHandler);
 				delete panelWithHandlers._resizeHandlers;
 			}
-			
+
 			// Trigger close animation
 			panel.style.setProperty('transform', 'translateX(100%)', 'important');
 		}
@@ -354,7 +360,7 @@ export class SpeedReadingDrawer {
 		}
 
 		this.drawerEl.removeClass('speed-reading-drawer-open');
-		
+
 		// Wait for animation to complete before cleanup
 		setTimeout(() => {
 			// Clean up all markdown components
@@ -362,7 +368,7 @@ export class SpeedReadingDrawer {
 				component.unload();
 			});
 			this.markdownComponents = [];
-			
+
 			this.drawerEl?.remove();
 			this.drawerEl = null;
 			this.contentEl = null;
@@ -402,8 +408,8 @@ export class SpeedReadingDrawer {
 			if (!match) continue;
 
 			const [, prefix, topic] = match;
-			const level = prefix.startsWith('#') ? prefix.length : 
-			             (line.match(/^\s*/)?.[0].length || 0) / 2 + 1;
+			const level = prefix.startsWith('#') ? prefix.length :
+				(line.match(/^\s*/)?.[0].length || 0) / 2 + 1;
 
 			const id = nodeId === 0 ? 'root' : `node_${nodeId}`;
 			nodeId++;
@@ -414,11 +420,11 @@ export class SpeedReadingDrawer {
 			}
 
 			const parentId = stack.length > 0 ? stack[stack.length - 1].id : undefined;
-			
+
 			const node: JsMindNode = {
 				id,
 				topic: topic.replace(/\*\*/g, '').trim(),
-				...(id === 'root' ? { isroot: true } : { 
+				...(id === 'root' ? { isroot: true } : {
 					parentid: parentId,
 					direction: nodes.length % 2 === 0 ? 'right' : 'left'
 				})
@@ -443,29 +449,29 @@ export class SpeedReadingDrawer {
 	 * Update content for streaming
 	 */
 	updateContent(result: SpeedReadingResult, streaming?: boolean): void {
-		if (!this.contentEl) {
+		if (!this.contentEl || !this.isOpen) {
 			return;
 		}
-		
+
 		// Update streaming state
 		if (streaming !== undefined) {
 			const wasStreaming = this.isStreaming;
 			this.isStreaming = streaming;
-			
+
 			// Reset user scroll flag when streaming starts
 			if (streaming && !wasStreaming) {
 				this.userScrolledUp = false;
 			}
 		}
-		
+
 		// Re-render content
 		this.renderContent(this.contentEl, result);
-		
+
 		// Auto-scroll to bottom during streaming unless user scrolled up
 		if (this.isStreaming && !this.userScrolledUp) {
 			this.scrollToBottom();
 		}
-		
+
 		// If streaming just ended, force final mindmap render
 		if (streaming === false && this.mindMapRenderDebounceTimer) {
 			clearTimeout(this.mindMapRenderDebounceTimer);
@@ -495,10 +501,10 @@ export class SpeedReadingDrawer {
 		// Create new listener
 		this.scrollListener = () => {
 			if (!this.isStreaming) return;
-			
+
 			// Check if user is scrolled away from bottom
 			const distanceFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
-			
+
 			// If user is more than 50px from bottom, they scrolled up manually
 			if (distanceFromBottom > 50) {
 				this.userScrolledUp = true;
@@ -516,7 +522,7 @@ export class SpeedReadingDrawer {
 	 */
 	private scrollToBottom(): void {
 		if (!this.contentEl) return;
-		
+
 		const scrollContainer = this.contentEl.querySelector('.speed-reading-report-content') as HTMLElement;
 		if (scrollContainer) {
 			// Use requestAnimationFrame for smoother scroll
@@ -534,10 +540,10 @@ export class SpeedReadingDrawer {
 	private renderContent(panel: HTMLElement, result: SpeedReadingResult): void {
 		// Save resize handle before clearing panel
 		const savedResizeHandle = (panel as any)._resizeHandle as HTMLElement | undefined;
-		
+
 		panel.empty();
 		panel.addClass('llmsider-speed-reading-modal');
-		
+
 		// Re-add resize handle if it was saved
 		if (savedResizeHandle) {
 			panel.prepend(savedResizeHandle);
@@ -551,7 +557,7 @@ export class SpeedReadingDrawer {
 		header.style.setProperty('flex-shrink', '0', 'important');
 		header.style.setProperty('position', 'relative', 'important');
 		header.style.setProperty('z-index', '1', 'important');
-		
+
 		// Title row with label and buttons
 		const titleRow = header.createDiv({ cls: 'speed-reading-title-row' });
 		titleRow.style.setProperty('display', 'flex', 'important');
@@ -559,9 +565,9 @@ export class SpeedReadingDrawer {
 		titleRow.style.setProperty('align-items', 'center', 'important');
 		titleRow.style.setProperty('gap', '12px', 'important');
 		titleRow.style.setProperty('margin-bottom', '16px', 'important');
-		
+
 		// Label badge style (on the left)
-		const label = titleRow.createEl('div', { 
+		const label = titleRow.createEl('div', {
 			text: this.plugin.i18n.t('ui.speedReadingSmartAnalysis'),
 			cls: 'speed-reading-report-label'
 		});
@@ -574,51 +580,49 @@ export class SpeedReadingDrawer {
 		label.style.setProperty('background', 'var(--interactive-accent)', 'important');
 		label.style.setProperty('color', 'var(--text-on-accent)', 'important');
 		label.style.setProperty('width', 'fit-content', 'important');
-		
+
 		// Button group with action buttons (on the right)
 		const buttonGroup = titleRow.createDiv({ cls: 'speed-reading-button-group' });
 		buttonGroup.style.setProperty('display', 'flex', 'important');
 		buttonGroup.style.setProperty('gap', '8px', 'important');
 		buttonGroup.style.setProperty('flex-shrink', '0', 'important');
-		
+
 		// Copy as markdown button
 		const copyMarkdownBtn = buttonGroup.createEl('button', {
 			cls: 'llmsider-input-btn',
-			attr: { 
-				'aria-label': this.plugin.i18n.t('ui.speedReadingCopyMarkdown'), 
-				'title': this.plugin.i18n.t('ui.speedReadingCopyMarkdownTooltip') 
+			attr: {
+				'aria-label': this.plugin.i18n.t('ui.speedReadingCopyMarkdown'),
+				'title': this.plugin.i18n.t('ui.speedReadingCopyMarkdownTooltip')
 			}
 		});
 		copyMarkdownBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
 		copyMarkdownBtn.onclick = async () => {
 			await this.copyToClipboard(result);
 		};
-		
+
 		// Export to note button
 		const exportNoteBtn = buttonGroup.createEl('button', {
 			cls: 'llmsider-input-btn',
-			attr: { 
-				'aria-label': this.plugin.i18n.t('ui.speedReadingExportNote'), 
-				'title': this.plugin.i18n.t('ui.speedReadingExportNoteTooltip') 
+			attr: {
+				'aria-label': this.plugin.i18n.t('ui.speedReadingExportNote'),
+				'title': this.plugin.i18n.t('ui.speedReadingExportNoteTooltip')
 			}
 		});
 		exportNoteBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
 		exportNoteBtn.onclick = async () => {
 			await this.exportToNote(result);
 		};
-		
+
 		// Regenerate button
 		const regenerateBtn = buttonGroup.createEl('button', {
 			cls: 'llmsider-input-btn',
-			attr: { 
-				'aria-label': this.plugin.i18n.t('ui.speedReadingRegenerate'), 
-				'title': this.plugin.i18n.t('ui.speedReadingRegenerateTooltip') 
+			attr: {
+				'aria-label': this.plugin.i18n.t('ui.speedReadingRegenerate'),
+				'title': this.plugin.i18n.t('ui.speedReadingRegenerateTooltip')
 			}
 		});
 		regenerateBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`;
 		regenerateBtn.onclick = async () => {
-			// Close current drawer
-			this.close();
 			// Trigger regeneration via speed reading manager
 			const speedReadingManager = this.plugin.getSpeedReadingManager();
 			if (speedReadingManager) {
@@ -627,26 +631,26 @@ export class SpeedReadingDrawer {
 				new Notice(this.plugin.i18n.t('ui.speedReadingNotInitialized'));
 			}
 		};
-		
+
 		// Close button
 		const closeBtn = buttonGroup.createEl('button', {
 			cls: 'llmsider-input-btn',
-			attr: { 
-				'aria-label': this.plugin.i18n.t('ui.speedReadingClose'), 
-				'title': this.plugin.i18n.t('ui.speedReadingCloseDrawer') 
+			attr: {
+				'aria-label': this.plugin.i18n.t('ui.speedReadingClose'),
+				'title': this.plugin.i18n.t('ui.speedReadingCloseDrawer')
 			}
 		});
 		closeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
 		closeBtn.onclick = () => {
 			this.close();
 		};
-		
+
 		// Title section below buttons (full width)
 		const titleSection = header.createDiv();
 		titleSection.style.setProperty('width', '100%', 'important');
-		
+
 		// Title with modern typography
-		const title = titleSection.createEl('h2', { 
+		const title = titleSection.createEl('h2', {
 			text: result.noteTitle,
 			cls: 'speed-reading-report-title'
 		});
@@ -656,7 +660,7 @@ export class SpeedReadingDrawer {
 		title.style.setProperty('margin', '0', 'important');
 		title.style.setProperty('color', 'var(--text-normal)', 'important');
 		title.style.setProperty('width', '100%', 'important');
-		
+
 		// Scrollable content container
 		const content = panel.createDiv({ cls: 'speed-reading-report-content' });
 		content.style.setProperty('flex', '1', 'important');
@@ -669,8 +673,8 @@ export class SpeedReadingDrawer {
 		this.setupScrollListener(content);
 
 		// Loading state indicator (only show when streaming but no real content yet)
-		const hasRealContent = (result.summary && !result.summary.includes('⏳') && !result.summary.includes('正在分析')) 
-			|| result.keyPoints.length > 0 
+		const hasRealContent = (result.summary && !result.summary.includes('⏳') && !result.summary.includes('正在分析'))
+			|| result.keyPoints.length > 0
 			|| (result.mindMap && !result.mindMap.includes('⏳'));
 		if (this.isStreaming && !hasRealContent) {
 			const loadingIndicator = content.createDiv({ cls: 'speed-reading-loading' });
@@ -680,7 +684,7 @@ export class SpeedReadingDrawer {
 			loadingIndicator.style.setProperty('justify-content', 'center', 'important');
 			loadingIndicator.style.setProperty('padding', '40px', 'important');
 			loadingIndicator.style.setProperty('gap', '12px', 'important');
-			
+
 			const spinner = loadingIndicator.createDiv();
 			spinner.style.setProperty('width', '40px', 'important');
 			spinner.style.setProperty('height', '40px', 'important');
@@ -688,7 +692,7 @@ export class SpeedReadingDrawer {
 			spinner.style.setProperty('border-top-color', 'var(--interactive-accent)', 'important');
 			spinner.style.setProperty('border-radius', '50%', 'important');
 			spinner.style.setProperty('animation', 'spin 1s linear infinite', 'important');
-			
+
 			const loadingText = loadingIndicator.createDiv({ text: this.plugin.i18n.t('ui.speedReadingAnalyzingDocumentContent') });
 			loadingText.style.setProperty('font-size', '14px', 'important');
 			loadingText.style.setProperty('color', 'var(--text-muted)', 'important');
@@ -697,18 +701,18 @@ export class SpeedReadingDrawer {
 
 		// Executive Summary Section with modern card design (only show if has actual content)
 		const hasSummary = result.summary && result.summary.trim().length > 0 && !result.summary.includes('⏳') && !result.summary.includes('正在分析');
-		
+
 		if (hasSummary) {
 			const summaryWrapper = content.createDiv({ cls: 'speed-reading-section' });
 			summaryWrapper.style.setProperty('margin-bottom', '20px', 'important');
-			
+
 			// Header outside the card
 			const summaryHeader = summaryWrapper.createDiv({ cls: 'speed-reading-section-header' });
 			summaryHeader.style.setProperty('display', 'flex', 'important');
 			summaryHeader.style.setProperty('align-items', 'center', 'important');
 			summaryHeader.style.setProperty('gap', '8px', 'important');
 			summaryHeader.style.setProperty('margin-bottom', '12px', 'important');
-			
+
 			const sectionNumber = summaryHeader.createEl('div', { text: '01', cls: 'speed-reading-section-number' });
 			sectionNumber.style.setProperty('display', 'flex', 'important');
 			sectionNumber.style.setProperty('align-items', 'center', 'important');
@@ -720,26 +724,29 @@ export class SpeedReadingDrawer {
 			sectionNumber.style.setProperty('color', 'var(--text-on-accent)', 'important');
 			sectionNumber.style.setProperty('font-size', '11px', 'important');
 			sectionNumber.style.setProperty('font-weight', '600', 'important');
-			
+
 			const sectionTitle = summaryHeader.createEl('h3', { text: this.plugin.i18n.t('ui.speedReadingExecutiveSummary'), cls: 'speed-reading-section-title' });
 			sectionTitle.style.setProperty('font-size', '15px', 'important');
 			sectionTitle.style.setProperty('font-weight', '600', 'important');
 			sectionTitle.style.setProperty('margin', '0', 'important');
 			sectionTitle.style.setProperty('color', 'var(--text-normal)', 'important');
-			
+
+			// Add copy button to header
+			this.createSectionCopyButton(summaryHeader, this.plugin.i18n.t('ui.speedReadingExecutiveSummary'), result.summary);
+
 			// Card with content
 			const summaryCard = summaryWrapper.createDiv({ cls: 'speed-reading-summary-card' });
 			summaryCard.style.setProperty('padding', '16px', 'important');
 			summaryCard.style.setProperty('background', 'var(--background-secondary)', 'important');
 			summaryCard.style.setProperty('border-radius', '12px', 'important');
 			summaryCard.style.setProperty('border', '1px solid var(--background-modifier-border)', 'important');
-			
+
 			const summaryText = summaryCard.createDiv({ cls: 'speed-reading-summary-text' });
 			summaryText.style.setProperty('font-size', '13px', 'important');
 			summaryText.style.setProperty('line-height', '1.6', 'important');
 			summaryText.style.setProperty('color', 'var(--text-muted)', 'important');
 			summaryText.style.setProperty('margin', '0', 'important');
-			
+
 			// Use MarkdownRenderer to render the summary content
 			const summaryComponent = new Component();
 			this.markdownComponents.push(summaryComponent);
@@ -757,7 +764,7 @@ export class SpeedReadingDrawer {
 					htmlP.style.setProperty('margin', '0', 'important');
 					htmlP.style.setProperty('margin-bottom', '8px', 'important');
 				});
-				
+
 				// Style bold/strong elements
 				const summaryStrongElements = summaryText.querySelectorAll('strong, b');
 				summaryStrongElements.forEach((strong) => {
@@ -772,13 +779,13 @@ export class SpeedReadingDrawer {
 		if (hasSummary && result.keyPoints && result.keyPoints.length > 0) {
 			const keyPointsSection = content.createDiv({ cls: 'speed-reading-section' });
 			keyPointsSection.style.setProperty('margin-bottom', '20px', 'important');
-			
+
 			const keyPointsHeader = keyPointsSection.createDiv({ cls: 'speed-reading-section-header' });
 			keyPointsHeader.style.setProperty('display', 'flex', 'important');
 			keyPointsHeader.style.setProperty('align-items', 'center', 'important');
 			keyPointsHeader.style.setProperty('gap', '8px', 'important');
 			keyPointsHeader.style.setProperty('margin-bottom', '12px', 'important');
-			
+
 			const sectionNumber = keyPointsHeader.createEl('div', { text: '02', cls: 'speed-reading-section-number' });
 			sectionNumber.style.setProperty('display', 'flex', 'important');
 			sectionNumber.style.setProperty('align-items', 'center', 'important');
@@ -790,18 +797,21 @@ export class SpeedReadingDrawer {
 			sectionNumber.style.setProperty('color', 'var(--text-on-accent)', 'important');
 			sectionNumber.style.setProperty('font-size', '11px', 'important');
 			sectionNumber.style.setProperty('font-weight', '600', 'important');
-			
+
 			const sectionTitle = keyPointsHeader.createEl('h3', { text: this.plugin.i18n.t('ui.speedReadingCorePoints'), cls: 'speed-reading-section-title' });
 			sectionTitle.style.setProperty('font-size', '15px', 'important');
 			sectionTitle.style.setProperty('font-weight', '600', 'important');
 			sectionTitle.style.setProperty('margin', '0', 'important');
 			sectionTitle.style.setProperty('color', 'var(--text-normal)', 'important');
-			
+
+			// Add copy button to header
+			this.createSectionCopyButton(keyPointsHeader, this.plugin.i18n.t('ui.speedReadingCorePoints'), result.keyPoints);
+
 			const keyPointsList = keyPointsSection.createDiv({ cls: 'speed-reading-points-list' });
 			keyPointsList.style.setProperty('display', 'flex', 'important');
 			keyPointsList.style.setProperty('flex-direction', 'column', 'important');
 			keyPointsList.style.setProperty('gap', '8px', 'important');
-			
+
 			result.keyPoints.forEach((point, index) => {
 				const pointItem = keyPointsList.createDiv({ cls: 'speed-reading-point-item' });
 				pointItem.style.setProperty('display', 'flex', 'important');
@@ -816,7 +826,7 @@ export class SpeedReadingDrawer {
 				pointItem.style.setProperty('box-shadow', '0 2px 4px rgba(0, 0, 0, 0.05)', 'important');
 				pointItem.style.setProperty('transition', 'all 0.2s', 'important');
 				pointItem.style.setProperty('position', 'relative', 'important');
-				
+
 				// Add subtle highlight bar on the left
 				const highlightBar = pointItem.createDiv();
 				highlightBar.style.setProperty('position', 'absolute', 'important');
@@ -827,10 +837,10 @@ export class SpeedReadingDrawer {
 				highlightBar.style.setProperty('background', 'var(--interactive-accent)', 'important');
 				highlightBar.style.setProperty('border-radius', '8px 0 0 8px', 'important');
 				highlightBar.style.setProperty('opacity', '0.8', 'important');
-				
-				const pointNumber = pointItem.createEl('div', { 
+
+				const pointNumber = pointItem.createEl('div', {
 					text: (index + 1).toString(),
-					cls: 'speed-reading-point-number' 
+					cls: 'speed-reading-point-number'
 				});
 				pointNumber.style.setProperty('flex-shrink', '0', 'important');
 				pointNumber.style.setProperty('width', '24px', 'important');
@@ -844,14 +854,14 @@ export class SpeedReadingDrawer {
 				pointNumber.style.setProperty('font-size', '12px', 'important');
 				pointNumber.style.setProperty('font-weight', '700', 'important');
 				pointNumber.style.setProperty('box-shadow', '0 2px 4px rgba(0, 0, 0, 0.1)', 'important');
-				
+
 				const pointText = pointItem.createDiv({ cls: 'speed-reading-point-text' });
 				pointText.style.setProperty('flex', '1', 'important');
 				pointText.style.setProperty('font-size', '13px', 'important');
 				pointText.style.setProperty('line-height', '1.6', 'important');
 				pointText.style.setProperty('color', 'var(--text-normal)', 'important');
 				pointText.style.setProperty('padding-left', '4px', 'important');
-				
+
 				// Use MarkdownRenderer to support bold text
 				const component = new Component();
 				this.markdownComponents.push(component);
@@ -862,14 +872,14 @@ export class SpeedReadingDrawer {
 					'',
 					component
 				);
-				
+
 				// Remove paragraph margins and add underline to important text
 				const paragraphs = pointText.querySelectorAll('p');
 				paragraphs.forEach((p) => {
 					const htmlP = p as HTMLElement;
 					htmlP.style.setProperty('margin', '0', 'important');
 				});
-				
+
 				// Add underline and highlight to bold/strong text
 				const strongElements = pointText.querySelectorAll('strong, b');
 				strongElements.forEach((strong) => {
@@ -884,7 +894,7 @@ export class SpeedReadingDrawer {
 					htmlStrong.style.setProperty('padding', '2px 4px', 'important');
 					htmlStrong.style.setProperty('border-radius', '3px', 'important');
 				});
-				
+
 				// Hover effect for the entire item
 				pointItem.onmouseover = () => {
 					pointItem.style.setProperty('transform', 'translateX(4px)', 'important');
@@ -904,13 +914,13 @@ export class SpeedReadingDrawer {
 		if (hasSummary && hasKeyPoints && result.mindMap && result.mindMap.trim().length > 0) {
 			const mindMapSection = content.createDiv({ cls: 'speed-reading-section' });
 			mindMapSection.style.setProperty('margin-bottom', '20px', 'important');
-			
+
 			const mindMapHeader = mindMapSection.createDiv({ cls: 'speed-reading-section-header' });
 			mindMapHeader.style.setProperty('display', 'flex', 'important');
 			mindMapHeader.style.setProperty('align-items', 'center', 'important');
 			mindMapHeader.style.setProperty('gap', '8px', 'important');
 			mindMapHeader.style.setProperty('margin-bottom', '12px', 'important');
-			
+
 			const sectionNumber = mindMapHeader.createEl('div', { text: '03', cls: 'speed-reading-section-number' });
 			sectionNumber.style.setProperty('display', 'flex', 'important');
 			sectionNumber.style.setProperty('align-items', 'center', 'important');
@@ -922,19 +932,19 @@ export class SpeedReadingDrawer {
 			sectionNumber.style.setProperty('color', 'var(--text-on-accent)', 'important');
 			sectionNumber.style.setProperty('font-size', '11px', 'important');
 			sectionNumber.style.setProperty('font-weight', '600', 'important');
-			
+
 			const sectionTitle = mindMapHeader.createEl('h3', { text: this.plugin.i18n.t('ui.speedReadingKnowledgeStructure'), cls: 'speed-reading-section-title' });
 			sectionTitle.style.setProperty('font-size', '15px', 'important');
 			sectionTitle.style.setProperty('font-weight', '600', 'important');
 			sectionTitle.style.setProperty('margin', '0', 'important');
 			sectionTitle.style.setProperty('color', 'var(--text-normal)', 'important');
-			
+
 			// Button container for fullscreen button
 			const buttonContainer = mindMapHeader.createDiv();
 			buttonContainer.style.setProperty('margin-left', 'auto', 'important');
 			buttonContainer.style.setProperty('display', 'flex', 'important');
 			buttonContainer.style.setProperty('gap', '8px', 'important');
-			
+
 			// Add fullscreen button with SVG icon
 			const fullscreenBtn = buttonContainer.createEl('button', { cls: 'llmsider-input-btn' });
 			fullscreenBtn.style.setProperty('cursor', 'pointer', 'important');
@@ -944,31 +954,31 @@ export class SpeedReadingDrawer {
 			fullscreenBtn.onclick = () => {
 				this.showFullscreenMindMap(result.mindMap);
 			};
-			
+
 			const mindMapBody = mindMapSection.createDiv({ cls: 'speed-reading-section-body' });
-	mindMapBody.style.setProperty('padding', '20px', 'important');
-	mindMapBody.style.setProperty('background', 'var(--background-primary)', 'important');
-	mindMapBody.style.setProperty('border-radius', '12px', 'important');
-	mindMapBody.style.setProperty('border', '1px solid var(--background-modifier-border)', 'important');
-	mindMapBody.style.setProperty('cursor', 'pointer', 'important');
-	mindMapBody.style.setProperty('position', 'relative', 'important');
-	mindMapBody.setAttribute('title', this.plugin.i18n.t('ui.speedReadingClickToViewFullscreen'));
-	
-	// Add click event for fullscreen
-	mindMapBody.onclick = () => {
-		this.showFullscreenMindMap(result.mindMap);
-	};
-	
-	// Add hover effect
-	mindMapBody.onmouseover = () => {
-		mindMapBody.style.setProperty('border-color', 'var(--interactive-accent)', 'important');
-		mindMapBody.style.setProperty('box-shadow', '0 4px 12px rgba(0, 0, 0, 0.1)', 'important');
-	};
-	mindMapBody.onmouseout = () => {
-		mindMapBody.style.setProperty('border-color', 'var(--background-modifier-border)', 'important');
-		mindMapBody.style.setProperty('box-shadow', 'none', 'important');
-	};
-			
+			mindMapBody.style.setProperty('padding', '20px', 'important');
+			mindMapBody.style.setProperty('background', 'var(--background-primary)', 'important');
+			mindMapBody.style.setProperty('border-radius', '12px', 'important');
+			mindMapBody.style.setProperty('border', '1px solid var(--background-modifier-border)', 'important');
+			mindMapBody.style.setProperty('cursor', 'pointer', 'important');
+			mindMapBody.style.setProperty('position', 'relative', 'important');
+			mindMapBody.setAttribute('title', this.plugin.i18n.t('ui.speedReadingClickToViewFullscreen'));
+
+			// Add click event for fullscreen
+			mindMapBody.onclick = () => {
+				this.showFullscreenMindMap(result.mindMap);
+			};
+
+			// Add hover effect
+			mindMapBody.onmouseover = () => {
+				mindMapBody.style.setProperty('border-color', 'var(--interactive-accent)', 'important');
+				mindMapBody.style.setProperty('box-shadow', '0 4px 12px rgba(0, 0, 0, 0.1)', 'important');
+			};
+			mindMapBody.onmouseout = () => {
+				mindMapBody.style.setProperty('border-color', 'var(--background-modifier-border)', 'important');
+				mindMapBody.style.setProperty('box-shadow', 'none', 'important');
+			};
+
 			if (!result.mindMap || !this.isValidMindMapStructure(result.mindMap)) {
 				// Show loading indicator only during streaming
 				if (this.isStreaming) {
@@ -979,7 +989,7 @@ export class SpeedReadingDrawer {
 					loadingIndicator.style.setProperty('justify-content', 'center', 'important');
 					loadingIndicator.style.setProperty('padding', '60px 20px', 'important');
 					loadingIndicator.style.setProperty('gap', '12px', 'important');
-					
+
 					const spinner = loadingIndicator.createDiv();
 					spinner.style.setProperty('width', '40px', 'important');
 					spinner.style.setProperty('height', '40px', 'important');
@@ -987,7 +997,7 @@ export class SpeedReadingDrawer {
 					spinner.style.setProperty('border-top-color', 'var(--interactive-accent)', 'important');
 					spinner.style.setProperty('border-radius', '50%', 'important');
 					spinner.style.setProperty('animation', 'spin 1s linear infinite', 'important');
-					
+
 					const loadingText = loadingIndicator.createDiv({ text: this.plugin.i18n.t('ui.speedReadingGeneratingMindMap') });
 					loadingText.style.setProperty('font-size', '14px', 'important');
 					loadingText.style.setProperty('color', 'var(--text-muted)', 'important');
@@ -998,7 +1008,7 @@ export class SpeedReadingDrawer {
 				if (!this.isStreaming) {
 					// Generate structural hash: first 100 chars + total length
 					const currentHash = result.mindMap.substring(0, 100) + '|' + result.mindMap.length;
-					
+
 					if (this.lastRenderedMindMapHash !== currentHash) {
 						// Render immediately when not streaming
 						Logger.debug(`[MindMap] Rendering (${result.mindMap.length} chars)`);
@@ -1015,7 +1025,7 @@ export class SpeedReadingDrawer {
 					loadingIndicator.style.setProperty('justify-content', 'center', 'important');
 					loadingIndicator.style.setProperty('padding', '60px 20px', 'important');
 					loadingIndicator.style.setProperty('gap', '12px', 'important');
-					
+
 					const spinner = loadingIndicator.createDiv();
 					spinner.style.setProperty('width', '40px', 'important');
 					spinner.style.setProperty('height', '40px', 'important');
@@ -1023,7 +1033,7 @@ export class SpeedReadingDrawer {
 					spinner.style.setProperty('border-top-color', 'var(--interactive-accent)', 'important');
 					spinner.style.setProperty('border-radius', '50%', 'important');
 					spinner.style.setProperty('animation', 'spin 1s linear infinite', 'important');
-					
+
 					const loadingText = loadingIndicator.createDiv({ text: this.plugin.i18n.t('ui.speedReadingGeneratingMindMap') });
 					loadingText.style.setProperty('font-size', '14px', 'important');
 					loadingText.style.setProperty('color', 'var(--text-muted)', 'important');
@@ -1037,13 +1047,13 @@ export class SpeedReadingDrawer {
 		if (hasSummary && hasKeyPoints && hasMindMap && result.extendedReading && result.extendedReading.length > 0) {
 			const extendedSection = content.createDiv({ cls: 'speed-reading-section' });
 			extendedSection.style.setProperty('margin-bottom', '20px', 'important');
-			
+
 			const extendedHeader = extendedSection.createDiv({ cls: 'speed-reading-section-header' });
 			extendedHeader.style.setProperty('display', 'flex', 'important');
 			extendedHeader.style.setProperty('align-items', 'center', 'important');
 			extendedHeader.style.setProperty('gap', '8px', 'important');
 			extendedHeader.style.setProperty('margin-bottom', '12px', 'important');
-			
+
 			const sectionNumber = extendedHeader.createEl('div', { text: '04', cls: 'speed-reading-section-number' });
 			sectionNumber.style.setProperty('display', 'flex', 'important');
 			sectionNumber.style.setProperty('align-items', 'center', 'important');
@@ -1055,18 +1065,21 @@ export class SpeedReadingDrawer {
 			sectionNumber.style.setProperty('color', 'var(--text-on-accent)', 'important');
 			sectionNumber.style.setProperty('font-size', '11px', 'important');
 			sectionNumber.style.setProperty('font-weight', '600', 'important');
-			
+
 			const sectionTitle = extendedHeader.createEl('h3', { text: this.plugin.i18n.t('ui.speedReadingExtendedReading'), cls: 'speed-reading-section-title' });
 			sectionTitle.style.setProperty('font-size', '15px', 'important');
 			sectionTitle.style.setProperty('font-weight', '600', 'important');
 			sectionTitle.style.setProperty('margin', '0', 'important');
 			sectionTitle.style.setProperty('color', 'var(--text-normal)', 'important');
-			
+
+			// Add copy button to header
+			this.createSectionCopyButton(extendedHeader, this.plugin.i18n.t('ui.speedReadingExtendedReading'), result.extendedReading);
+
 			const extendedList = extendedSection.createDiv({ cls: 'speed-reading-reading-list' });
 			extendedList.style.setProperty('display', 'flex', 'important');
 			extendedList.style.setProperty('flex-direction', 'column', 'important');
 			extendedList.style.setProperty('gap', '8px', 'important');
-			
+
 			result.extendedReading.forEach((reading, index) => {
 				const readingItem = extendedList.createDiv({ cls: 'speed-reading-reading-item' });
 				readingItem.style.setProperty('padding', '12px', 'important');
@@ -1079,7 +1092,7 @@ export class SpeedReadingDrawer {
 				readingItem.style.setProperty('transition', 'all 0.2s', 'important');
 				readingItem.style.setProperty('cursor', 'pointer', 'important');
 				readingItem.setText(reading);
-				
+
 				// Hover effect
 				readingItem.onmouseover = () => {
 					readingItem.style.background = 'var(--background-modifier-hover)';
@@ -1089,10 +1102,10 @@ export class SpeedReadingDrawer {
 					readingItem.style.background = 'var(--background-secondary)';
 					readingItem.style.borderColor = 'var(--background-modifier-border)';
 				};
-				
+
 				// Click delay timer to distinguish from double click
 				let clickTimer: NodeJS.Timeout | null = null;
-				
+
 				// Click handler: send to chat (delayed to check for double click)
 				readingItem.onclick = async (e) => {
 					e.preventDefault();
@@ -1104,7 +1117,7 @@ export class SpeedReadingDrawer {
 						clickTimer = null;
 					}, 300);
 				};
-				
+
 				// Double click handler: search in Google
 				readingItem.ondblclick = (e) => {
 					e.preventDefault();
@@ -1124,13 +1137,13 @@ export class SpeedReadingDrawer {
 		if (hasSummary && hasKeyPoints && hasMindMap && hasExtendedReading && result.guessYouCareAbout && result.guessYouCareAbout.length > 0) {
 			const guessSection = content.createDiv({ cls: 'speed-reading-section' });
 			guessSection.style.setProperty('margin-bottom', '20px', 'important');
-			
+
 			const guessHeader = guessSection.createDiv({ cls: 'speed-reading-section-header' });
 			guessHeader.style.setProperty('display', 'flex', 'important');
 			guessHeader.style.setProperty('align-items', 'center', 'important');
 			guessHeader.style.setProperty('gap', '8px', 'important');
 			guessHeader.style.setProperty('margin-bottom', '12px', 'important');
-			
+
 			const sectionNumber = guessHeader.createEl('div', { text: '05', cls: 'speed-reading-section-number' });
 			sectionNumber.style.setProperty('display', 'flex', 'important');
 			sectionNumber.style.setProperty('align-items', 'center', 'important');
@@ -1142,18 +1155,21 @@ export class SpeedReadingDrawer {
 			sectionNumber.style.setProperty('color', 'var(--text-on-accent)', 'important');
 			sectionNumber.style.setProperty('font-size', '11px', 'important');
 			sectionNumber.style.setProperty('font-weight', '600', 'important');
-			
+
 			const sectionTitle = guessHeader.createEl('h3', { text: this.plugin.i18n.t('ui.speedReadingGuessYouCareAbout'), cls: 'speed-reading-section-title' });
 			sectionTitle.style.setProperty('font-size', '15px', 'important');
 			sectionTitle.style.setProperty('font-weight', '600', 'important');
 			sectionTitle.style.setProperty('margin', '0', 'important');
 			sectionTitle.style.setProperty('color', 'var(--text-normal)', 'important');
-			
+
+			// Add copy button to header
+			this.createSectionCopyButton(guessHeader, this.plugin.i18n.t('ui.speedReadingGuessYouCareAbout'), result.guessYouCareAbout);
+
 			const guessList = guessSection.createDiv({ cls: 'speed-reading-guess-list' });
 			guessList.style.setProperty('display', 'flex', 'important');
 			guessList.style.setProperty('flex-direction', 'column', 'important');
 			guessList.style.setProperty('gap', '8px', 'important');
-			
+
 			result.guessYouCareAbout.forEach((guess, index) => {
 				const guessItem = guessList.createDiv({ cls: 'speed-reading-guess-item' });
 				guessItem.style.setProperty('padding', '12px', 'important');
@@ -1166,7 +1182,7 @@ export class SpeedReadingDrawer {
 				guessItem.style.setProperty('transition', 'all 0.2s', 'important');
 				guessItem.style.setProperty('cursor', 'pointer', 'important');
 				guessItem.setText(guess);
-				
+
 				// Hover effect
 				guessItem.onmouseover = () => {
 					guessItem.style.background = 'var(--background-modifier-hover)';
@@ -1176,10 +1192,10 @@ export class SpeedReadingDrawer {
 					guessItem.style.background = 'var(--background-secondary)';
 					guessItem.style.borderColor = 'var(--background-modifier-border)';
 				};
-				
+
 				// Click delay timer to distinguish from double click
 				let clickTimer: NodeJS.Timeout | null = null;
-				
+
 				// Click handler: send to chat (delayed to check for double click)
 				guessItem.onclick = async (e) => {
 					e.preventDefault();
@@ -1191,7 +1207,7 @@ export class SpeedReadingDrawer {
 						clickTimer = null;
 					}, 300);
 				};
-				
+
 				// Double click handler: search in Google
 				guessItem.ondblclick = (e) => {
 					e.preventDefault();
@@ -1206,6 +1222,71 @@ export class SpeedReadingDrawer {
 			});
 		}
 
+		// Custom Sections
+		if (result.customSections && result.customSections.length > 0) {
+			result.customSections.forEach((section, index) => {
+				const customSection = content.createDiv({ cls: 'speed-reading-section' });
+				customSection.style.setProperty('margin-bottom', '24px', 'important');
+
+				const customHeader = customSection.createDiv({ cls: 'speed-reading-section-header' });
+				customHeader.style.setProperty('display', 'flex', 'important');
+				customHeader.style.setProperty('align-items', 'center', 'important');
+				customHeader.style.setProperty('gap', '10px', 'important');
+				customHeader.style.setProperty('margin-bottom', '10px', 'important');
+
+				const sectionNumberText = (6 + index).toString().padStart(2, '0');
+				const sectionNumber = customHeader.createEl('div', { text: sectionNumberText, cls: 'speed-reading-section-number' });
+				sectionNumber.style.setProperty('display', 'flex', 'important');
+				sectionNumber.style.setProperty('align-items', 'center', 'important');
+				sectionNumber.style.setProperty('justify-content', 'center', 'important');
+				sectionNumber.style.setProperty('width', '22px', 'important');
+				sectionNumber.style.setProperty('height', '22px', 'important');
+				sectionNumber.style.setProperty('border-radius', '4px', 'important');
+				sectionNumber.style.setProperty('background', 'var(--background-modifier-border)', 'important');
+				sectionNumber.style.setProperty('color', 'var(--text-muted)', 'important');
+				sectionNumber.style.setProperty('font-size', '10px', 'important');
+				sectionNumber.style.setProperty('font-weight', '700', 'important');
+				sectionNumber.style.setProperty('border', '1px solid var(--background-modifier-border-focus)', 'important');
+
+				const sectionTitle = customHeader.createEl('h3', { text: section.title, cls: 'speed-reading-section-title' });
+				sectionTitle.style.setProperty('font-size', '14px', 'important');
+				sectionTitle.style.setProperty('font-weight', '600', 'important');
+				sectionTitle.style.setProperty('margin', '0', 'important');
+				sectionTitle.style.setProperty('color', 'var(--text-normal)', 'important');
+				sectionTitle.style.setProperty('letter-spacing', '0.02em', 'important');
+
+				// Add copy button to header
+				this.createSectionCopyButton(customHeader, section.title, [section.content]);
+
+				const sectionContent = customSection.createDiv({ cls: 'speed-reading-custom-content' });
+				sectionContent.style.setProperty('font-size', '12.5px', 'important');
+				sectionContent.style.setProperty('line-height', '1.7', 'important');
+				sectionContent.style.setProperty('color', 'var(--text-normal)', 'important');
+				sectionContent.style.setProperty('background', 'var(--background-primary-alt)', 'important');
+				sectionContent.style.setProperty('padding', '14px 18px', 'important');
+				sectionContent.style.setProperty('border-radius', '10px', 'important');
+				sectionContent.style.setProperty('border', '1px solid var(--background-modifier-border)', 'important');
+				sectionContent.style.setProperty('box-shadow', 'inset 0 1px 3px rgba(0,0,0,0.02)', 'important');
+
+				// Use MarkdownRenderer
+				const component = new Component();
+				this.markdownComponents.push(component);
+				MarkdownRenderer.render(
+					this.app,
+					section.content,
+					sectionContent,
+					'',
+					component
+				);
+
+				// Process tags or special content if needed (optional refinement)
+				const paragraphs = sectionContent.querySelectorAll('p');
+				paragraphs.forEach(p => {
+					(p as HTMLElement).style.setProperty('margin', '0', 'important');
+				});
+			});
+		}
+
 		// Modern footer
 		const footer = panel.createDiv({ cls: 'speed-reading-report-footer' });
 		footer.style.setProperty('flex-shrink', '0', 'important');
@@ -1215,14 +1296,14 @@ export class SpeedReadingDrawer {
 		footer.style.setProperty('display', 'flex', 'important');
 		footer.style.setProperty('justify-content', 'space-between', 'important');
 		footer.style.setProperty('align-items', 'center', 'important');
-		
-		const footerText = footer.createEl('div', { 
+
+		const footerText = footer.createEl('div', {
 			text: this.plugin.i18n.t('ui.speedReadingAIGenerated'),
 			cls: 'speed-reading-footer-text'
 		});
 		footerText.style.setProperty('font-size', '11px', 'important');
 		footerText.style.setProperty('color', 'var(--text-muted)', 'important');
-		
+
 		// Date in footer
 		const footerDate = footer.createEl('div', { cls: 'speed-reading-footer-date' });
 		footerDate.style.setProperty('font-size', '11px', 'important');
@@ -1234,6 +1315,7 @@ export class SpeedReadingDrawer {
 	 * Render jsMind mindmap (webchat-inspired approach)
 	 */
 	private async renderJsMindMap(container: HTMLElement, mindMapText: string): Promise<void> {
+		if (!this.isOpen) return;
 		try {
 			if (!this.checkJsMind()) {
 				throw new Error('jsMind library not loaded');
@@ -1263,13 +1345,14 @@ export class SpeedReadingDrawer {
 			jsmindContainer.style.setProperty('overflow', 'hidden', 'important');
 			jsmindContainer.style.setProperty('background', 'var(--background-primary)', 'important');
 			jsmindContainer.style.setProperty('position', 'relative', 'important');
-			
+
 			// Generate unique ID
 			const containerId = `jsmind-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 			jsmindContainer.id = containerId;
-			
+
 			// Ensure container is fully in DOM before proceeding
 			await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+			if (!this.isOpen) return;
 
 			// Determine if mindMapText is already a JSON string or needs parsing from Markdown
 			let mindData: any;
@@ -1335,14 +1418,14 @@ export class SpeedReadingDrawer {
 		try {
 			// Create a wrapper with webchat-inspired styling
 			const wrapper = container.createDiv({ cls: 'speed-reading-mindmap-mermaid' });
-			
+
 			// Base typography matching webchat's prose
 			wrapper.style.setProperty('font-size', '13px', 'important');
 			wrapper.style.setProperty('line-height', '1.625', 'important');
 			wrapper.style.setProperty('color', 'var(--text-normal)', 'important');
 			wrapper.style.setProperty('max-width', '100%', 'important');
 			wrapper.style.setProperty('word-break', 'break-words', 'important');
-			
+
 			// Use Obsidian's markdown renderer
 			const component = new Component();
 			this.markdownComponents.push(component);
@@ -1353,7 +1436,7 @@ export class SpeedReadingDrawer {
 				'',
 				component
 			);
-			
+
 			// Apply mermaid-like mindmap styling (webchat style)
 			this.applyMermaidMindmapStyles(wrapper);
 		} catch (error) {
@@ -1378,10 +1461,10 @@ export class SpeedReadingDrawer {
 		wrapper.style.setProperty('justify-content', 'flex-start', 'important');
 		wrapper.style.setProperty('padding', '20px', 'important');
 		wrapper.style.setProperty('overflow-x', 'auto', 'important');
-		
+
 		// Get all lists
 		const allLists = wrapper.querySelectorAll('ul, ol');
-		
+
 		// Style root level list (mindmap root - leftmost)
 		const rootLists = wrapper.querySelectorAll(':scope > ul, :scope > ol');
 		rootLists.forEach((list) => {
@@ -1394,27 +1477,27 @@ export class SpeedReadingDrawer {
 			htmlList.style.setProperty('align-items', 'flex-start', 'important');
 			htmlList.style.setProperty('gap', '0', 'important');
 		});
-		
+
 		// Style all lists to remove default styling
 		allLists.forEach((list) => {
 			const htmlList = list as HTMLElement;
 			htmlList.style.setProperty('list-style', 'none', 'important');
 			htmlList.style.setProperty('padding-left', '0', 'important');
 		});
-		
+
 		// Style list items as mindmap nodes with horizontal expansion
 		const items = wrapper.querySelectorAll('li');
 		items.forEach((item) => {
 			const htmlItem = item as HTMLElement;
 			const depth = this.getListDepth(htmlItem);
-			
+
 			// Container for each node - horizontal layout
 			htmlItem.style.setProperty('position', 'relative', 'important');
 			htmlItem.style.setProperty('display', 'flex', 'important');
 			htmlItem.style.setProperty('flex-direction', 'row', 'important');
 			htmlItem.style.setProperty('align-items', 'center', 'important');
 			htmlItem.style.setProperty('margin', '8px 0', 'important');
-			
+
 			// Find direct text content (not in nested lists)
 			const textNode = this.getDirectTextContent(htmlItem);
 			if (textNode) {
@@ -1432,7 +1515,7 @@ export class SpeedReadingDrawer {
 				nodeWrapper.style.setProperty('box-shadow', '0 2px 6px rgba(0, 0, 0, 0.06)', 'important');
 				nodeWrapper.style.setProperty('min-width', 'fit-content', 'important');
 				nodeWrapper.style.setProperty('flex-shrink', '0', 'important');
-				
+
 				// Depth-based styling
 				if (depth === 0) {
 					// Root node - leftmost, largest
@@ -1455,7 +1538,7 @@ export class SpeedReadingDrawer {
 					nodeWrapper.style.setProperty('font-weight', '500', 'important');
 					nodeWrapper.style.setProperty('opacity', '0.95', 'important');
 				}
-				
+
 				// Hover effect
 				nodeWrapper.onmouseover = () => {
 					nodeWrapper.style.transform = 'scale(1.05)';
@@ -1467,20 +1550,20 @@ export class SpeedReadingDrawer {
 					nodeWrapper.style.boxShadow = depth === 0 ? '0 3px 10px rgba(0, 0, 0, 0.12)' : '0 2px 6px rgba(0, 0, 0, 0.06)';
 					nodeWrapper.style.borderColor = depth === 0 ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
 				};
-				
+
 				// Wrap the text content
 				nodeWrapper.textContent = textNode;
-				
+
 				// Replace the text with the wrapped version
 				const textElements = Array.from(htmlItem.childNodes).filter(
 					node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
 				);
 				textElements.forEach(node => node.remove());
-				
+
 				// Add node at the beginning
 				htmlItem.insertBefore(nodeWrapper, htmlItem.firstChild);
 			}
-			
+
 			// Style nested lists (children) - horizontal expansion to the right
 			const nestedLists = htmlItem.querySelectorAll(':scope > ul, :scope > ol');
 			nestedLists.forEach((nestedList, listIndex) => {
@@ -1492,12 +1575,12 @@ export class SpeedReadingDrawer {
 				htmlNestedList.style.setProperty('margin-left', '30px', 'important');
 				htmlNestedList.style.setProperty('position', 'relative', 'important');
 				htmlNestedList.style.setProperty('padding-left', '20px', 'important');
-				
+
 				// Count real child items (excluding connector elements)
-				const childItems = Array.from(htmlNestedList.children).filter(child => 
+				const childItems = Array.from(htmlNestedList.children).filter(child =>
 					child.tagName === 'LI'
 				);
-				
+
 				// Add vertical line connecting all children (if more than one)
 				if (childItems.length > 1) {
 					const vertConnector = document.createElement('div');
@@ -1511,7 +1594,7 @@ export class SpeedReadingDrawer {
 					vertConnector.style.setProperty('z-index', '0', 'important');
 					htmlNestedList.appendChild(vertConnector);
 				}
-				
+
 				// Add horizontal connector from parent to each child
 				childItems.forEach((childItem, childIndex) => {
 					const htmlChildItem = childItem as HTMLElement;
@@ -1525,14 +1608,14 @@ export class SpeedReadingDrawer {
 					connector.style.setProperty('height', '2px', 'important');
 					connector.style.setProperty('background', 'var(--background-modifier-border)', 'important');
 					connector.style.setProperty('z-index', '1', 'important');
-					
+
 					// Make child item position relative for absolute positioning of connector
 					htmlChildItem.style.setProperty('position', 'relative', 'important');
 					htmlChildItem.insertBefore(connector, htmlChildItem.firstChild);
 				});
 			});
 		});
-		
+
 		// Remove empty paragraphs
 		const paragraphs = wrapper.querySelectorAll('li > p');
 		paragraphs.forEach((p) => {
@@ -1550,14 +1633,14 @@ export class SpeedReadingDrawer {
 	 */
 	private getDirectTextContent(element: HTMLElement): string {
 		let text = '';
-		
+
 		// Get all direct child nodes
 		element.childNodes.forEach((node) => {
 			// Skip nested lists
 			if (node.nodeName === 'UL' || node.nodeName === 'OL') {
 				return;
 			}
-			
+
 			// Get text from text nodes and elements (like <p>)
 			if (node.nodeType === Node.TEXT_NODE) {
 				text += node.textContent || '';
@@ -1569,7 +1652,7 @@ export class SpeedReadingDrawer {
 				}
 			}
 		});
-		
+
 		return text.trim();
 	}
 
@@ -1579,14 +1662,14 @@ export class SpeedReadingDrawer {
 	private getListDepth(element: HTMLElement): number {
 		let depth = 0;
 		let parent = element.parentElement;
-		
+
 		while (parent) {
 			if (parent.tagName === 'UL' || parent.tagName === 'OL') {
 				depth++;
 			}
 			parent = parent.parentElement;
 		}
-		
+
 		return depth - 1; // Subtract 1 because we count from the wrapper
 	}
 
@@ -1597,10 +1680,10 @@ export class SpeedReadingDrawer {
 		try {
 			// Sanitize mermaid code to fix common syntax errors
 			const sanitizedCode = this.sanitizeMermaidCode(mermaidCode);
-			
+
 			// Create container for mermaid diagram with full width
 			const mermaidContainer = container.createDiv({ cls: 'speed-reading-mermaid-container' });
-			
+
 			// Set large size for better visibility
 			mermaidContainer.style.setProperty('min-height', '400px', 'important');
 			mermaidContainer.style.setProperty('width', '100%', 'important');
@@ -1608,7 +1691,7 @@ export class SpeedReadingDrawer {
 			mermaidContainer.style.setProperty('align-items', 'center', 'important');
 			mermaidContainer.style.setProperty('justify-content', 'center', 'important');
 			mermaidContainer.style.setProperty('overflow', 'auto', 'important');
-			
+
 			// Use Obsidian's markdown renderer to render mermaid
 			const component = new Component();
 			this.markdownComponents.push(component);
@@ -1619,7 +1702,7 @@ export class SpeedReadingDrawer {
 				'',
 				component
 			);
-			
+
 			// Scale up the SVG for better visibility
 			const svg = mermaidContainer.querySelector('svg');
 			if (svg) {
@@ -1630,13 +1713,13 @@ export class SpeedReadingDrawer {
 				svg.style.setProperty('transform', 'scale(1.2)', 'important');
 				svg.style.setProperty('transform-origin', 'center', 'important');
 			}
-			
+
 			// Make diagram clickable to open in fullscreen modal
 			mermaidContainer.style.cursor = 'pointer';
 			mermaidContainer.onclick = () => {
 				this.openMermaidModal(sanitizedCode);
 			};
-			
+
 		} catch (error) {
 			Logger.error('[SpeedReading] Mermaid rendering failed:', error);
 			// Show error message
@@ -1660,7 +1743,7 @@ export class SpeedReadingDrawer {
 			return `[${sanitizedContent}]`;
 		});
 	}
-	
+
 	/**
 	 * Open mermaid diagram in fullscreen modal with zoom and pan
 	 */
@@ -1678,7 +1761,7 @@ export class SpeedReadingDrawer {
 		modal.style.setProperty('display', 'flex', 'important');
 		modal.style.setProperty('align-items', 'center', 'important');
 		modal.style.setProperty('justify-content', 'center', 'important');
-		
+
 		// Create backdrop
 		const backdrop = modal.createEl('div', {
 			cls: 'llmsider-mermaid-backdrop'
@@ -1690,7 +1773,7 @@ export class SpeedReadingDrawer {
 		backdrop.style.setProperty('bottom', '0', 'important');
 		backdrop.style.setProperty('background', 'rgba(0, 0, 0, 0.85)', 'important');
 		backdrop.style.setProperty('backdrop-filter', 'blur(8px)', 'important');
-		
+
 		// Create modal content container - full screen
 		const modalContent = modal.createEl('div', {
 			cls: 'llmsider-mermaid-modal-content'
@@ -1702,7 +1785,7 @@ export class SpeedReadingDrawer {
 		modalContent.style.setProperty('flex-direction', 'column', 'important');
 		modalContent.style.setProperty('background', 'var(--background-primary)', 'important');
 		modalContent.style.setProperty('z-index', '1', 'important');
-		
+
 		// Add toolbar at top with buttons
 		const toolbar = modalContent.createEl('div', {
 			cls: 'llmsider-mermaid-toolbar'
@@ -1713,7 +1796,7 @@ export class SpeedReadingDrawer {
 		toolbar.style.setProperty('padding', '16px 24px', 'important');
 		toolbar.style.setProperty('border-bottom', '1px solid var(--background-modifier-border)', 'important');
 		toolbar.style.setProperty('flex-shrink', '0', 'important');
-		
+
 		// Left side - hint text
 		const hint = toolbar.createEl('div', {
 			cls: 'llmsider-mermaid-hint',
@@ -1721,12 +1804,12 @@ export class SpeedReadingDrawer {
 		});
 		hint.style.setProperty('font-size', '13px', 'important');
 		hint.style.setProperty('color', 'var(--text-muted)', 'important');
-		
+
 		// Right side - button group
 		const buttonGroup = toolbar.createEl('div');
 		buttonGroup.style.setProperty('display', 'flex', 'important');
 		buttonGroup.style.setProperty('gap', '8px', 'important');
-		
+
 		// Export button
 		const exportBtn = buttonGroup.createEl('button', {
 			cls: 'llmsider-input-btn',
@@ -1734,7 +1817,7 @@ export class SpeedReadingDrawer {
 		});
 		exportBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
 		exportBtn.onclick = () => this.exportMermaidAsImage(mermaidContainer);
-		
+
 		// Close button
 		const closeBtn = buttonGroup.createEl('button', {
 			cls: 'llmsider-input-btn',
@@ -1742,7 +1825,7 @@ export class SpeedReadingDrawer {
 		});
 		closeBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
 		closeBtn.onclick = () => modal.remove();
-		
+
 		// Create a container for the mermaid diagram - full screen
 		const mermaidContainer = modalContent.createEl('div', {
 			cls: 'llmsider-mermaid-container'
@@ -1753,7 +1836,7 @@ export class SpeedReadingDrawer {
 		mermaidContainer.style.setProperty('align-items', 'center', 'important');
 		mermaidContainer.style.setProperty('justify-content', 'center', 'important');
 		mermaidContainer.style.setProperty('position', 'relative', 'important');
-		
+
 		// Render using Obsidian's markdown renderer
 		const component = new Component();
 		this.markdownComponents.push(component);
@@ -1770,12 +1853,12 @@ export class SpeedReadingDrawer {
 				// Get SVG natural dimensions
 				const svgRect = svg.getBoundingClientRect();
 				const containerRect = mermaidContainer.getBoundingClientRect();
-				
+
 				// Calculate scale to fit
 				const scaleX = (containerRect.width * 0.9) / svgRect.width;
 				const scaleY = (containerRect.height * 0.9) / svgRect.height;
 				const fitScale = Math.min(scaleX, scaleY);
-				
+
 				// Set initial scale to fit container
 				currentScale = fitScale;
 				applyTransform();
@@ -1789,7 +1872,7 @@ export class SpeedReadingDrawer {
 		const minScale = 0.1;
 		const maxScale = 5;
 		const zoomSpeed = 0.1;
-		
+
 		let isPanning = false;
 		let startX = 0;
 		let startY = 0;
@@ -1816,29 +1899,29 @@ export class SpeedReadingDrawer {
 				applyTransform();
 			}
 		}, { passive: false });
-		
+
 		// Add drag/pan functionality
 		mermaidContainer.style.cursor = 'grab';
-		
+
 		mermaidContainer.addEventListener('mousedown', (e: MouseEvent) => {
 			if (e.button !== 0) return; // Only left mouse button
-			
+
 			isPanning = true;
 			mermaidContainer.style.cursor = 'grabbing';
 			startX = e.clientX - translateX;
 			startY = e.clientY - translateY;
 			e.preventDefault();
 		});
-		
+
 		document.addEventListener('mousemove', (e: MouseEvent) => {
 			if (!isPanning) return;
 			e.preventDefault();
-			
+
 			translateX = e.clientX - startX;
 			translateY = e.clientY - startY;
 			applyTransform();
 		});
-		
+
 		document.addEventListener('mouseup', () => {
 			if (isPanning) {
 				isPanning = false;
@@ -1878,7 +1961,7 @@ export class SpeedReadingDrawer {
 			// Get SVG data
 			const svgData = new XMLSerializer().serializeToString(svg);
 			const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-			
+
 			// Create download link
 			const url = URL.createObjectURL(svgBlob);
 			const link = document.createElement('a');
@@ -1888,7 +1971,7 @@ export class SpeedReadingDrawer {
 			link.click();
 			document.body.removeChild(link);
 			URL.revokeObjectURL(url);
-			
+
 			new Notice(this.plugin.i18n.t('ui.speedReadingMindMapExported'));
 		} catch (error) {
 			Logger.error('[SpeedReading] Export failed:', error);
@@ -1901,7 +1984,7 @@ export class SpeedReadingDrawer {
 	 */
 	private async copyToClipboard(result: SpeedReadingResult) {
 		const markdown = this.generateMarkdown(result);
-		
+
 		try {
 			await navigator.clipboard.writeText(markdown);
 			// Update button icon temporarily to show success
@@ -1968,7 +2051,7 @@ export class SpeedReadingDrawer {
 							}
 							return md;
 						};
-						
+
 						if (jsonData.data) {
 							if (Array.isArray(jsonData.data)) {
 								// node_array format
@@ -2052,16 +2135,16 @@ export class SpeedReadingDrawer {
 				new Notice(this.plugin.i18n.t('ui.speedReadingOriginalNoteNotFound'));
 				return;
 			}
-			
+
 			// Get parent folder path
 			const parentPath = originalFile.parent?.path || '';
-			
+
 			// Generate new filename with timestamp to avoid conflicts
 			const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
 			const baseFileName = result.noteTitle.replace(/\.(md|markdown)$/i, '');
 			const newFileName = `${baseFileName}-${this.plugin.i18n.t('ui.speedReadingReportSuffix')}-${timestamp}.md`;
 			const newFilePath = parentPath ? `${parentPath}/${newFileName}` : newFileName;
-			
+
 			// Generate SVG file for mind map if exists
 			let svgFileName = '';
 			if (result.mindMap) {
@@ -2070,22 +2153,22 @@ export class SpeedReadingDrawer {
 				const svgContent = this.convertMindMapToSVG(result.mindMap);
 				await this.app.vault.create(svgFilePath, svgContent);
 			}
-			
+
 			// Generate markdown content with SVG reference
 			const markdown = this.generateMarkdown(result, svgFileName);
-			
+
 			// Create the new file
 			const newFile = await this.app.vault.create(newFilePath, markdown);
-			
+
 			// Show success message
 			new Notice(this.plugin.i18n.t('ui.speedReadingReportExported', { fileName: newFileName }));
-			
+
 			// Optional: Open the new file
 			const leaf = this.app.workspace.getLeaf(false);
 			if (leaf) {
 				await leaf.openFile(newFile);
 			}
-			
+
 			// Close the drawer
 			this.close();
 		} catch (error) {
@@ -2110,7 +2193,7 @@ export class SpeedReadingDrawer {
 		overlay.style.setProperty('display', 'flex', 'important');
 		overlay.style.setProperty('flex-direction', 'column', 'important');
 		overlay.style.setProperty('overflow', 'hidden', 'important');
-		
+
 		// Header with close button and controls
 		const header = overlay.createDiv({ cls: 'fullscreen-header' });
 		header.style.setProperty('display', 'flex', 'important');
@@ -2120,46 +2203,46 @@ export class SpeedReadingDrawer {
 		header.style.setProperty('border-bottom', '1px solid var(--background-modifier-border)', 'important');
 		header.style.setProperty('background', 'var(--background-secondary)', 'important');
 		header.style.setProperty('gap', '12px', 'important');
-		
+
 		const title = header.createEl('h2', { text: this.plugin.i18n.t('ui.speedReadingFullscreenTitle') });
 		title.style.setProperty('margin', '0', 'important');
 		title.style.setProperty('font-size', '18px', 'important');
 		title.style.setProperty('font-weight', '600', 'important');
-		
+
 		// Button container
 		const controls = header.createDiv();
 		controls.style.setProperty('display', 'flex', 'important');
 		controls.style.setProperty('gap', '8px', 'important');
 		controls.style.setProperty('align-items', 'center', 'important');
-		
+
 		// Zoom controls
 		const zoomControls = controls.createDiv();
 		zoomControls.style.setProperty('display', 'flex', 'important');
 		zoomControls.style.setProperty('gap', '4px', 'important');
-		
+
 		// Zoom out button with SVG
 		const zoomOutBtn = zoomControls.createEl('button', { cls: 'llmsider-input-btn' });
 		zoomOutBtn.setAttribute('aria-label', this.plugin.i18n.t('ui.speedReadingZoomOut'));
 		zoomOutBtn.setAttribute('title', this.plugin.i18n.t('ui.speedReadingZoomOut'));
 		zoomOutBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>`;
-		
+
 		// Zoom in button with SVG
 		const zoomInBtn = zoomControls.createEl('button', { cls: 'llmsider-input-btn' });
 		zoomInBtn.setAttribute('aria-label', this.plugin.i18n.t('ui.speedReadingZoomIn'));
 		zoomInBtn.setAttribute('title', this.plugin.i18n.t('ui.speedReadingZoomIn'));
 		zoomInBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>`;
-		
+
 		// Export button with dropdown
 		const exportWrapper = controls.createDiv();
 		exportWrapper.style.setProperty('position', 'relative', 'important');
-		
+
 		// Export button with SVG
 		const exportBtn = exportWrapper.createEl('button', { cls: 'llmsider-input-btn' });
 		exportBtn.style.setProperty('cursor', 'pointer', 'important');
 		exportBtn.setAttribute('aria-label', this.plugin.i18n.t('ui.speedReadingExportMindMap'));
 		exportBtn.setAttribute('title', this.plugin.i18n.t('ui.speedReadingExportMindMap'));
 		exportBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
-		
+
 		// Export dropdown menu
 		let exportMenu: HTMLElement | null = null;
 		const hideExportMenu = () => {
@@ -2168,7 +2251,7 @@ export class SpeedReadingDrawer {
 				exportMenu = null;
 			}
 		};
-		
+
 		const exportFormats = [
 			{ name: 'JSMind', ext: 'jm' },
 			{ name: 'Text', ext: 'txt' },
@@ -2178,16 +2261,16 @@ export class SpeedReadingDrawer {
 			{ name: 'SVG', ext: 'svg' },
 			{ name: 'PNG', ext: 'png' }
 		];
-		
+
 		exportBtn.addEventListener('click', (e: MouseEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
-			
+
 			if (exportMenu) {
 				hideExportMenu();
 				return;
 			}
-			
+
 			exportMenu = document.body.createDiv({ cls: 'mindmap-export-menu' });
 			exportMenu.style.setProperty('position', 'fixed', 'important');
 			exportMenu.style.setProperty('background', 'var(--background-primary)', 'important');
@@ -2197,7 +2280,7 @@ export class SpeedReadingDrawer {
 			exportMenu.style.setProperty('padding', '4px', 'important');
 			exportMenu.style.setProperty('z-index', '10000000', 'important');
 			exportMenu.style.setProperty('min-width', '120px', 'important');
-			
+
 			exportFormats.forEach(format => {
 				const item = exportMenu!.createEl('button', { text: format.name, cls: 'mindmap-export-item' });
 				item.style.setProperty('display', 'block', 'important');
@@ -2210,14 +2293,14 @@ export class SpeedReadingDrawer {
 				item.style.setProperty('cursor', 'pointer', 'important');
 				item.style.setProperty('transition', 'background 0.2s', 'important');
 				item.style.setProperty('color', 'var(--text-normal)', 'important');
-				
+
 				item.addEventListener('mouseover', () => {
 					item.style.background = 'var(--background-modifier-hover)';
 				});
 				item.addEventListener('mouseout', () => {
 					item.style.background = 'transparent';
 				});
-				
+
 				item.addEventListener('click', (itemEvent: MouseEvent) => {
 					itemEvent.preventDefault();
 					itemEvent.stopPropagation();
@@ -2225,38 +2308,38 @@ export class SpeedReadingDrawer {
 					hideExportMenu();
 				});
 			});
-			
+
 			const btnRect = exportBtn.getBoundingClientRect();
 			const menuWidth = 140; // min-width of menu
 			const menuHeight = exportFormats.length * 40; // approximate height
-			
+
 			// Calculate position, avoiding screen edges
 			let top = btnRect.bottom + 5;
 			let left = btnRect.left;
-			
+
 			// Check if menu goes off right edge
 			if (left + menuWidth > window.innerWidth) {
 				left = window.innerWidth - menuWidth - 10;
 			}
-			
+
 			// Check if menu goes off bottom edge
 			if (top + menuHeight > window.innerHeight) {
 				top = btnRect.top - menuHeight - 5; // Show above button
 			}
-			
+
 			// Check if menu goes off left edge
 			if (left < 10) {
 				left = 10;
 			}
-			
+
 			// Check if menu goes off top edge
 			if (top < 10) {
 				top = 10;
 			}
-			
+
 			exportMenu.style.top = `${top}px`;
 			exportMenu.style.left = `${left}px`;
-			
+
 			// Close menu when clicking outside
 			const handleClickOutside = (clickEvent: MouseEvent) => {
 				if (exportMenu && !exportMenu.contains(clickEvent.target as Node) && clickEvent.target !== exportBtn) {
@@ -2264,12 +2347,12 @@ export class SpeedReadingDrawer {
 					document.removeEventListener('click', handleClickOutside);
 				}
 			};
-			
+
 			setTimeout(() => {
 				document.addEventListener('click', handleClickOutside);
 			}, 0);
 		});
-		
+
 		// Close button with SVG
 		const closeBtn = controls.createEl('button', { cls: 'llmsider-input-btn' });
 		closeBtn.setAttribute('aria-label', this.plugin.i18n.t('ui.speedReadingClose'));
@@ -2280,23 +2363,23 @@ export class SpeedReadingDrawer {
 			overlay.remove();
 			document.removeEventListener('keydown', handleKeyDown, true);
 		};
-		
+
 		// Content container
 		const content = overlay.createDiv({ cls: 'fullscreen-content' });
 		content.style.setProperty('flex', '1', 'important');
 		content.style.setProperty('overflow', 'auto', 'important');
 		content.style.setProperty('padding', '40px', 'important');
 		content.style.setProperty('position', 'relative', 'important');
-		
+
 		// Create jsMind container
 		const jsmindContainer = content.createDiv({ cls: 'jsmind-fullscreen-container' });
 		jsmindContainer.style.setProperty('width', '100%', 'important');
 		jsmindContainer.style.setProperty('height', '100%', 'important');
 		jsmindContainer.style.setProperty('min-height', '600px', 'important');
-		
+
 		const containerId = `jsmind-fullscreen-${Date.now()}`;
 		jsmindContainer.id = containerId;
-		
+
 		// Initialize jsMind or fallback to text rendering
 		if (this.jsMindLoaded && window.jsMind) {
 			try {
@@ -2311,7 +2394,7 @@ export class SpeedReadingDrawer {
 				} else {
 					mindData = this.parseMarkdownToJsMind(mindMapContent);
 				}
-				
+
 				const options = {
 					container: containerId,
 					theme: 'primary',
@@ -2333,23 +2416,23 @@ export class SpeedReadingDrawer {
 						pspace: 15
 					}
 				};
-				
+
 				this.jsMindInstance = new window.jsMind(options);
 				this.jsMindInstance.show(mindData);
-				
+
 				// Zoom functionality for jsMind
 				zoomInBtn.onclick = () => {
 					if (this.jsMindInstance) {
 						this.jsMindInstance.view.zoomIn();
 					}
 				};
-				
+
 				zoomOutBtn.onclick = () => {
 					if (this.jsMindInstance) {
 						this.jsMindInstance.view.zoomOut();
 					}
 				};
-				
+
 			} catch (error) {
 				Logger.error('[SpeedReading] jsMind fullscreen failed:', error);
 				// Fallback to text rendering
@@ -2362,7 +2445,7 @@ export class SpeedReadingDrawer {
 			this.renderTextMindMap(jsmindContainer, mindMapContent);
 			this.setupTextZoom(content, zoomInBtn, zoomOutBtn);
 		}
-		
+
 		// Close on ESC key - use capture phase to intercept before drawer handler
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
@@ -2376,7 +2459,7 @@ export class SpeedReadingDrawer {
 			}
 		};
 		document.addEventListener('keydown', handleKeyDown, true); // Use capture phase
-		
+
 		// Close on overlay click (but not on content)
 		overlay.onclick = (e) => {
 			if (e.target === overlay) {
@@ -2386,7 +2469,7 @@ export class SpeedReadingDrawer {
 				document.removeEventListener('keydown', handleKeyDown, true);
 			}
 		};
-		
+
 		// Prevent overlay clicks from reaching drawer
 		overlay.addEventListener('click', (e) => {
 			e.stopPropagation();
@@ -2401,19 +2484,19 @@ export class SpeedReadingDrawer {
 		const minZoom = 0.5;
 		const maxZoom = 2;
 		const zoomStep = 0.1;
-		
+
 		const updateZoom = () => {
 			content.style.setProperty('transform', `scale(${zoomLevel})`, 'important');
 			content.style.setProperty('transform-origin', 'top left', 'important');
 		};
-		
+
 		zoomInBtn.onclick = () => {
 			if (zoomLevel < maxZoom) {
 				zoomLevel = Math.min(zoomLevel + zoomStep, maxZoom);
 				updateZoom();
 			}
 		};
-		
+
 		zoomOutBtn.onclick = () => {
 			if (zoomLevel > minZoom) {
 				zoomLevel = Math.max(zoomLevel - zoomStep, minZoom);
@@ -2427,7 +2510,7 @@ export class SpeedReadingDrawer {
 	 */
 	private async copyMindMapToClipboard(content: string, formatName: string, ext: string): Promise<void> {
 		let exportContent: string;
-		
+
 		switch (ext) {
 			case 'json':
 				exportContent = this.convertMindMapToJSON(content);
@@ -2460,7 +2543,7 @@ export class SpeedReadingDrawer {
 			default:
 				exportContent = content;
 		}
-		
+
 		try {
 			await navigator.clipboard.writeText(exportContent);
 			new Notice(this.plugin.i18n.t('ui.speedReadingCopiedAs', { formatName }));
@@ -2474,7 +2557,7 @@ export class SpeedReadingDrawer {
 	 */
 	private exportMindMap(content: string, formatName: string, ext: string): void {
 		let exportContent: string;
-		
+
 		switch (ext) {
 			case 'json':
 				exportContent = this.convertMindMapToJSON(content);
@@ -2501,7 +2584,7 @@ export class SpeedReadingDrawer {
 			default:
 				exportContent = content;
 		}
-		
+
 		const mimeType = ext === 'jm' ? 'application/json' : ext === 'svg' ? 'image/svg+xml' : 'text/plain';
 		const blob = new Blob([exportContent], { type: mimeType });
 		const url = URL.createObjectURL(blob);
@@ -2527,37 +2610,37 @@ export class SpeedReadingDrawer {
 				// Invalid JSON, fallback to markdown parsing
 			}
 		}
-		
+
 		// Parse from markdown format
 		const lines = content.split('\n').filter(line => line.trim());
 		const root: any = { topic: '', children: [] };
 		const stack: Array<{ node: any; level: number }> = [];
-		
+
 		lines.forEach(line => {
 			const match = line.match(/^(\s*)-\s+(.+)$/);
 			if (!match) {
 				if (!root.topic) root.topic = line.trim();
 				return;
 			}
-			
+
 			const indent = match[1].length;
 			const topic = match[2].trim();
 			const level = Math.floor(indent / 2);
 			const node = { topic, children: [] };
-			
+
 			while (stack.length > 0 && stack[stack.length - 1].level >= level) {
 				stack.pop();
 			}
-			
+
 			if (stack.length === 0) {
 				root.children.push(node);
 			} else {
 				stack[stack.length - 1].node.children.push(node);
 			}
-			
+
 			stack.push({ node, level });
 		});
-		
+
 		return JSON.stringify({ meta: { name: 'Mind Map', version: '1.0' }, data: root }, null, 2);
 	}
 
@@ -2570,18 +2653,18 @@ export class SpeedReadingDrawer {
 			try {
 				const jsonData = JSON.parse(content);
 				let text = '';
-				
+
 				const convertNode = (node: any, indent: number = 0) => {
 					const prefix = '  '.repeat(indent);
 					text += `${prefix}${node.topic}\n`;
-					
+
 					if (node.children && node.children.length > 0) {
 						node.children.forEach((child: any) => {
 							convertNode(child, indent + 1);
 						});
 					}
 				};
-				
+
 				if (jsonData.data) {
 					if (Array.isArray(jsonData.data)) {
 						// node_array format
@@ -2591,7 +2674,7 @@ export class SpeedReadingDrawer {
 							jsonData.data.forEach((node: any) => {
 								nodeMap.set(node.id, { ...node, children: [] });
 							});
-							
+
 							jsonData.data.forEach((node: any) => {
 								if (!node.isroot && node.parentid) {
 									const parent = nodeMap.get(node.parentid);
@@ -2600,7 +2683,7 @@ export class SpeedReadingDrawer {
 									}
 								}
 							});
-							
+
 							convertNode(nodeMap.get(rootNode.id), 0);
 						}
 					} else {
@@ -2608,13 +2691,13 @@ export class SpeedReadingDrawer {
 						convertNode(jsonData.data, 0);
 					}
 				}
-				
+
 				return text;
 			} catch (e) {
 				// Invalid JSON, return as is
 			}
 		}
-		
+
 		// Already text/markdown format
 		return content;
 	}
@@ -2628,7 +2711,7 @@ export class SpeedReadingDrawer {
 			try {
 				const jsonData = JSON.parse(content);
 				let markdown = '';
-				
+
 				const convertNode = (node: any, level: number = 0) => {
 					const indent = '  '.repeat(level);
 					if (level === 0) {
@@ -2636,14 +2719,14 @@ export class SpeedReadingDrawer {
 					} else {
 						markdown += `${indent}- ${node.topic}\n`;
 					}
-					
+
 					if (node.children && node.children.length > 0) {
 						node.children.forEach((child: any) => {
 							convertNode(child, level + 1);
 						});
 					}
 				};
-				
+
 				if (jsonData.data) {
 					if (Array.isArray(jsonData.data)) {
 						// node_array format
@@ -2653,7 +2736,7 @@ export class SpeedReadingDrawer {
 							jsonData.data.forEach((node: any) => {
 								nodeMap.set(node.id, { ...node, children: [] });
 							});
-							
+
 							jsonData.data.forEach((node: any) => {
 								if (!node.isroot && node.parentid) {
 									const parent = nodeMap.get(node.parentid);
@@ -2662,7 +2745,7 @@ export class SpeedReadingDrawer {
 									}
 								}
 							});
-							
+
 							convertNode(nodeMap.get(rootNode.id), 0);
 						}
 					} else {
@@ -2670,13 +2753,13 @@ export class SpeedReadingDrawer {
 						convertNode(jsonData.data, 0);
 					}
 				}
-				
+
 				return markdown;
 			} catch (e) {
 				// Invalid JSON, return as is
 			}
 		}
-		
+
 		// Already markdown format
 		return content;
 	}
@@ -2686,23 +2769,23 @@ export class SpeedReadingDrawer {
 	 */
 	private convertMindMapToMermaid(content: string): string {
 		let mermaid = 'mindmap\n';
-		
+
 		// If JSON, convert to mermaid
 		if (content.trim().startsWith('{')) {
 			try {
 				const jsonData = JSON.parse(content);
-				
+
 				const convertNode = (node: any, level: number = 0) => {
 					const indent = '  '.repeat(level + 1);
 					mermaid += `${indent}${node.topic}\n`;
-					
+
 					if (node.children && node.children.length > 0) {
 						node.children.forEach((child: any) => {
 							convertNode(child, level + 1);
 						});
 					}
 				};
-				
+
 				if (jsonData.data) {
 					if (Array.isArray(jsonData.data)) {
 						// node_array format
@@ -2712,7 +2795,7 @@ export class SpeedReadingDrawer {
 							jsonData.data.forEach((node: any) => {
 								nodeMap.set(node.id, { ...node, children: [] });
 							});
-							
+
 							jsonData.data.forEach((node: any) => {
 								if (!node.isroot && node.parentid) {
 									const parent = nodeMap.get(node.parentid);
@@ -2721,7 +2804,7 @@ export class SpeedReadingDrawer {
 									}
 								}
 							});
-							
+
 							convertNode(nodeMap.get(rootNode.id), 0);
 						}
 					} else {
@@ -2729,16 +2812,16 @@ export class SpeedReadingDrawer {
 						convertNode(jsonData.data, 0);
 					}
 				}
-				
+
 				return mermaid;
 			} catch (e) {
 				// Invalid JSON, fallback to markdown parsing
 			}
 		}
-		
+
 		// Parse from markdown format
 		const lines = content.split('\n').filter(line => line.trim());
-		
+
 		lines.forEach(line => {
 			const match = line.match(/^(\s*)-\s+(.+)$/);
 			if (match) {
@@ -2750,7 +2833,7 @@ export class SpeedReadingDrawer {
 				mermaid += `  ${line.trim()}\n`;
 			}
 		});
-		
+
 		return mermaid;
 	}
 
@@ -2770,29 +2853,29 @@ export class SpeedReadingDrawer {
 				}
 			});
 		};
-		
+
 		let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<map version="1.0">\n';
 		let rootTopic = 'Mind Map';
-		
+
 		// If JSON, convert to Freemind
 		if (content.trim().startsWith('{')) {
 			try {
 				const jsonData = JSON.parse(content);
-				
+
 				const convertNode = (node: any, depth: number = 1) => {
 					const indent = '  '.repeat(depth);
 					let nodeXml = `${indent}<node TEXT="${escapeXml(node.topic)}">\n`;
-					
+
 					if (node.children && node.children.length > 0) {
 						node.children.forEach((child: any) => {
 							nodeXml += convertNode(child, depth + 1);
 						});
 					}
-					
+
 					nodeXml += `${indent}</node>\n`;
 					return nodeXml;
 				};
-				
+
 				if (jsonData.data) {
 					if (Array.isArray(jsonData.data)) {
 						// node_array format
@@ -2803,7 +2886,7 @@ export class SpeedReadingDrawer {
 							jsonData.data.forEach((node: any) => {
 								nodeMap.set(node.id, { ...node, children: [] });
 							});
-							
+
 							jsonData.data.forEach((node: any) => {
 								if (!node.isroot && node.parentid) {
 									const parent = nodeMap.get(node.parentid);
@@ -2812,7 +2895,7 @@ export class SpeedReadingDrawer {
 									}
 								}
 							});
-							
+
 							xml += `<node TEXT="${escapeXml(rootTopic)}">\n`;
 							const rootData = nodeMap.get(rootNode.id);
 							if (rootData.children && rootData.children.length > 0) {
@@ -2840,44 +2923,44 @@ export class SpeedReadingDrawer {
 				// Invalid JSON, fallback to markdown parsing
 			}
 		}
-		
+
 		// Parse from markdown format
 		const lines = content.split('\n').filter(line => line.trim());
-		
+
 		if (lines.length > 0 && !lines[0].match(/^\s*-/)) {
 			rootTopic = lines.shift()!.trim();
 		}
-		
+
 		xml += `<node TEXT="${escapeXml(rootTopic)}">\n`;
-		
+
 		const stack: Array<{ level: number; closed: boolean }> = [{ level: -1, closed: false }];
-		
+
 		lines.forEach(line => {
 			const match = line.match(/^(\s*)-\s+(.+)$/);
 			if (!match) return;
-			
+
 			const indent = match[1].length;
 			const topic = match[2].trim();
 			const level = Math.floor(indent / 2);
-			
+
 			while (stack.length > 1 && stack[stack.length - 1].level >= level) {
 				if (!stack[stack.length - 1].closed) {
 					xml += '  '.repeat(stack.length) + '</node>\n';
 				}
 				stack.pop();
 			}
-			
+
 			xml += '  '.repeat(stack.length + 1) + `<node TEXT="${escapeXml(topic)}">\n`;
 			stack.push({ level, closed: false });
 		});
-		
+
 		while (stack.length > 1) {
 			if (!stack[stack.length - 1].closed) {
 				xml += '  '.repeat(stack.length) + '</node>\n';
 			}
 			stack.pop();
 		}
-		
+
 		xml += '</node>\n</map>';
 		return xml;
 	}
@@ -2894,7 +2977,7 @@ export class SpeedReadingDrawer {
 		const verticalSpacing = 60;
 		const fontSize = 14;
 		const padding = 24; // Horizontal padding (12px on each side)
-		
+
 		// Parse tree structure
 		interface TreeNode {
 			topic: string;
@@ -2904,9 +2987,9 @@ export class SpeedReadingDrawer {
 			level?: number;
 			width?: number;
 		}
-		
+
 		let root: TreeNode = { topic: 'Mind Map', children: [] };
-		
+
 		// Try to parse as JSON first (jsMind format)
 		if (content.trim().startsWith('{')) {
 			try {
@@ -2920,13 +3003,13 @@ export class SpeedReadingDrawer {
 						if (rootNode) {
 							root = { topic: rootNode.topic, children: [] };
 							nodeMap.set(rootNode.id, root);
-							
+
 							// Build tree from node array
 							jsonData.data.forEach((node: any) => {
 								if (node.isroot) return;
 								const treeNode: TreeNode = { topic: node.topic, children: [] };
 								nodeMap.set(node.id, treeNode);
-								
+
 								const parent = nodeMap.get(node.parentid);
 								if (parent) {
 									parent.children.push(treeNode);
@@ -2946,7 +3029,7 @@ export class SpeedReadingDrawer {
 			// Parse as markdown
 			root = this.parseMarkdownToTree(content);
 		}
-		
+
 		// Calculate node widths based on text length
 		const calculateTextWidth = (text: string): number => {
 			// More accurate width calculation for mixed Chinese/English text
@@ -2962,16 +3045,16 @@ export class SpeedReadingDrawer {
 			}
 			return width + padding; // Add padding
 		};
-		
+
 		const calculateNodeWidth = (node: TreeNode) => {
 			const textWidth = calculateTextWidth(node.topic);
 			const calculatedWidth = Math.min(maxNodeWidth, Math.max(minNodeWidth, textWidth));
 			node.width = calculatedWidth;
 			node.children.forEach(child => calculateNodeWidth(child));
 		};
-		
+
 		calculateNodeWidth(root);
-		
+
 		// Calculate max width per level for alignment
 		const levelWidths = new Map<number, number>();
 		const calculateLevelWidths = (node: TreeNode, level: number) => {
@@ -2979,15 +3062,15 @@ export class SpeedReadingDrawer {
 			levelWidths.set(level, Math.max(currentMax, node.width!));
 			node.children.forEach(child => calculateLevelWidths(child, level + 1));
 		};
-		
+
 		calculateLevelWidths(root, 0);
-		
+
 		// Calculate positions
 		let maxY = 0;
 		let maxX = 0;
 		const calculateLayout = (node: TreeNode, level: number, yOffset: number): number => {
 			node.level = level;
-			
+
 			// Calculate x position based on accumulated widths of previous levels
 			let xPos = 50;
 			for (let i = 0; i < level; i++) {
@@ -2995,28 +3078,28 @@ export class SpeedReadingDrawer {
 			}
 			node.x = xPos;
 			maxX = Math.max(maxX, xPos + node.width!);
-			
+
 			if (node.children.length === 0) {
 				node.y = yOffset;
 				maxY = Math.max(maxY, yOffset);
 				return yOffset + verticalSpacing;
 			}
-			
+
 			let currentY = yOffset;
 			node.children.forEach(child => {
 				currentY = calculateLayout(child, level + 1, currentY);
 			});
-			
+
 			// Center parent between children
 			const firstChildY = node.children[0].y!;
 			const lastChildY = node.children[node.children.length - 1].y!;
 			node.y = (firstChildY + lastChildY) / 2;
-			
+
 			return currentY;
 		};
-		
+
 		calculateLayout(root, 0, 50);
-		
+
 		// Helper function to get all nodes
 		const getAllNodes = (node: TreeNode): TreeNode[] => {
 			const nodes = [node];
@@ -3025,13 +3108,13 @@ export class SpeedReadingDrawer {
 			});
 			return nodes;
 		};
-		
+
 		// Generate SVG
 		const allNodes = getAllNodes(root);
 		const maxLevel = Math.max(...allNodes.map(n => n.level || 0));
 		const svgWidth = maxX + 100;
 		const svgHeight = maxY + 100;
-		
+
 		let svg = `<?xml version="1.0" encoding="UTF-8"?>\n`;
 		svg += `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">\n`;
 		svg += `  <defs>\n`;
@@ -3042,30 +3125,30 @@ export class SpeedReadingDrawer {
 		svg += `      .connection { stroke: #95a5a6; stroke-width: 2; fill: none; }\n`;
 		svg += `    </style>\n`;
 		svg += `  </defs>\n`;
-		
+
 		// Draw connections first
 		const drawConnections = (node: TreeNode) => {
 			node.children.forEach(child => {
-				svg += `  <path class="connection" d="M ${node.x! + node.width!} ${node.y!} C ${node.x! + node.width! + horizontalSpacing/2} ${node.y!}, ${child.x! - horizontalSpacing/2} ${child.y!}, ${child.x!} ${child.y!}" />\n`;
+				svg += `  <path class="connection" d="M ${node.x! + node.width!} ${node.y!} C ${node.x! + node.width! + horizontalSpacing / 2} ${node.y!}, ${child.x! - horizontalSpacing / 2} ${child.y!}, ${child.x!} ${child.y!}" />\n`;
 				drawConnections(child);
 			});
 		};
-		
+
 		drawConnections(root);
-		
+
 		// Draw nodes
 		const drawNode = (node: TreeNode) => {
 			const isRoot = node.level === 0;
 			const rectClass = isRoot ? 'root-rect' : 'node-rect';
-			
-			svg += `  <rect class="${rectClass}" x="${node.x}" y="${node.y! - nodeHeight/2}" width="${node.width}" height="${nodeHeight}" />\n`;
-			svg += `  <text class="node-text" x="${node.x! + node.width!/2}" y="${node.y}">${this.escapeXml(node.topic)}</text>\n`;
-			
+
+			svg += `  <rect class="${rectClass}" x="${node.x}" y="${node.y! - nodeHeight / 2}" width="${node.width}" height="${nodeHeight}" />\n`;
+			svg += `  <text class="node-text" x="${node.x! + node.width! / 2}" y="${node.y}">${this.escapeXml(node.topic)}</text>\n`;
+
 			node.children.forEach(child => drawNode(child));
 		};
-		
+
 		drawNode(root);
-		
+
 		svg += `</svg>`;
 		return svg;
 	}
@@ -3086,13 +3169,13 @@ export class SpeedReadingDrawer {
 			topic: node.topic,
 			children: []
 		};
-		
+
 		if (node.children) {
 			node.children.forEach((child: any) => {
 				treeNode.children.push(this.convertJsMindNodeToTree(child));
 			});
 		}
-		
+
 		return treeNode;
 	}
 
@@ -3103,32 +3186,32 @@ export class SpeedReadingDrawer {
 		const lines = content.split('\n').filter(line => line.trim());
 		const root: any = { topic: '', children: [] };
 		const stack: Array<{ node: any; level: number }> = [];
-		
+
 		lines.forEach(line => {
 			const match = line.match(/^(\s*)-\s+(.+)$/);
 			if (!match) {
 				if (!root.topic) root.topic = line.trim();
 				return;
 			}
-			
+
 			const indent = match[1].length;
 			const topic = match[2].trim();
 			const level = Math.floor(indent / 2);
 			const node: any = { topic, children: [] };
-			
+
 			while (stack.length > 0 && stack[stack.length - 1].level >= level) {
 				stack.pop();
 			}
-			
+
 			if (stack.length === 0) {
 				root.children.push(node);
 			} else {
 				stack[stack.length - 1].node.children.push(node);
 			}
-			
+
 			stack.push({ node, level });
 		});
-		
+
 		return root;
 	}
 
@@ -3139,28 +3222,28 @@ export class SpeedReadingDrawer {
 		try {
 			// First convert to SVG
 			const svgContent = this.convertMindMapToSVG(content);
-			
+
 			// Create an image element from SVG
 			const img = new Image();
 			const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
 			const url = URL.createObjectURL(svgBlob);
-			
+
 			img.onload = () => {
 				// Create canvas with the same dimensions as SVG
 				const canvas = document.createElement('canvas');
 				canvas.width = img.width;
 				canvas.height = img.height;
-				
+
 				const ctx = canvas.getContext('2d');
 				if (!ctx) {
 					new Notice(this.plugin.i18n.t('ui.speedReadingCanvasContextFailed'));
 					URL.revokeObjectURL(url);
 					return;
 				}
-				
+
 				// Draw the image on canvas
 				ctx.drawImage(img, 0, 0);
-				
+
 				// Convert canvas to PNG blob
 				canvas.toBlob((blob) => {
 					if (!blob) {
@@ -3168,7 +3251,7 @@ export class SpeedReadingDrawer {
 						URL.revokeObjectURL(url);
 						return;
 					}
-					
+
 					// Download the PNG file
 					const pngUrl = URL.createObjectURL(blob);
 					const a = document.createElement('a');
@@ -3179,16 +3262,16 @@ export class SpeedReadingDrawer {
 					document.body.removeChild(a);
 					URL.revokeObjectURL(pngUrl);
 					URL.revokeObjectURL(url);
-					
+
 					new Notice(this.plugin.i18n.t('ui.speedReadingPNGExportSuccess'));
 				}, 'image/png');
 			};
-			
+
 			img.onerror = () => {
 				new Notice(this.plugin.i18n.t('ui.speedReadingSVGLoadFailed'));
 				URL.revokeObjectURL(url);
 			};
-			
+
 			img.src = url;
 		} catch (error) {
 			Logger.error('[MindMap] PNG export error:', error);
@@ -3210,5 +3293,53 @@ export class SpeedReadingDrawer {
 				default: return char;
 			}
 		});
+	}
+	/**
+	 * Create a copy button for a section header
+	 */
+	private createSectionCopyButton(header: HTMLElement, title: string, content: string | string[]): void {
+		const copyBtn = header.createEl('button', {
+			cls: 'llmsider-input-btn',
+			attr: {
+				'aria-label': this.plugin.i18n.t('ui.speedReadingCopyMarkdown'),
+				'title': this.plugin.i18n.t('ui.speedReadingCopyMarkdownTooltip')
+			}
+		});
+		copyBtn.style.setProperty('margin-left', 'auto', 'important');
+		copyBtn.style.setProperty('padding', '2px 6px', 'important');
+		copyBtn.style.setProperty('height', '24px', 'important');
+		copyBtn.style.setProperty('width', '24px', 'important');
+		copyBtn.style.setProperty('display', 'flex', 'important');
+		copyBtn.style.setProperty('align-items', 'center', 'important');
+		copyBtn.style.setProperty('justify-content', 'center', 'important');
+
+		copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+
+		copyBtn.onclick = async (e) => {
+			e.stopPropagation();
+			await this.copySectionToClipboard(title, content);
+		};
+	}
+
+	/**
+	 * Copy a specific section of the report to clipboard
+	 */
+	private async copySectionToClipboard(title: string, content: string | string[]): Promise<void> {
+		let markdown = `## ${title}\n\n`;
+		if (Array.isArray(content)) {
+			content.forEach(item => {
+				markdown += `- ${item}\n`;
+			});
+		} else {
+			markdown += `${content}\n`;
+		}
+
+		try {
+			await navigator.clipboard.writeText(markdown.trim());
+			new Notice(this.plugin.i18n.t('ui.contentCopied') || 'Copied to clipboard');
+		} catch (error) {
+			Logger.error('[SpeedReading] Failed to copy section to clipboard:', error);
+			new Notice(this.plugin.i18n.t('ui.speedReadingCopyFailed') || 'Failed to copy');
+		}
 	}
 }

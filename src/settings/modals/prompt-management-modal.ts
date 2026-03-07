@@ -1,135 +1,180 @@
-import { App, Modal, Setting } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import type LLMSiderPlugin from '../../main';
 import type { I18nManager } from '../../i18n/i18n-manager';
 import { PromptTemplate } from '../../types';
 
 /**
- * Modal for creating and editing custom prompts
+ * Modal for creating and editing custom prompts.
  */
 export class PromptManagementModal extends Modal {
 	private plugin: LLMSiderPlugin;
 	private i18n: I18nManager;
 	private prompt: PromptTemplate | null;
+	private promptType: 'chat' | 'speed-reading';
 	private onSaveCallback: () => Promise<void>;
-	
+
 	private titleInput: HTMLInputElement | null = null;
 	private descriptionInput: HTMLTextAreaElement | null = null;
 	private contentInput: HTMLTextAreaElement | null = null;
+	private errorEl: HTMLElement | null = null;
+	private saveButton: HTMLButtonElement | null = null;
 
 	constructor(
 		app: App,
 		plugin: LLMSiderPlugin,
 		i18n: I18nManager,
 		prompt: PromptTemplate | null,
+		promptType: 'chat' | 'speed-reading' = 'chat',
 		onSaveCallback: () => Promise<void>
 	) {
 		super(app);
 		this.plugin = plugin;
 		this.i18n = i18n;
 		this.prompt = prompt;
+		this.promptType = promptType;
 		this.onSaveCallback = onSaveCallback;
 	}
 
-	onOpen() {
+	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass('llmsider-prompt-modal');
+		this.modalEl.addClass('llmsider-prompt-modal-shell');
 
-		// Modal title
-		const title = this.prompt 
+		const title = this.prompt
 			? this.i18n.t('settingsPage.promptManagement.editPromptTitle')
 			: this.i18n.t('settingsPage.promptManagement.createPromptTitle');
-		
-		contentEl.createEl('h2', { text: title });
 
-		// Title input
-		new Setting(contentEl)
-			.setName(this.i18n.t('settingsPage.promptManagement.promptName'))
-			.setDesc(this.i18n.t('settingsPage.promptManagement.promptNameDesc'))
-			.addText(text => {
-				this.titleInput = text.inputEl;
-				text
-					.setPlaceholder(this.i18n.t('settingsPage.promptManagement.promptNamePlaceholder'))
-					.setValue(this.prompt?.title || '')
-					.inputEl.style.width = '100%';
-			});
-
-		// Description input
-		new Setting(contentEl)
-			.setName(this.i18n.t('settingsPage.promptManagement.promptDescription'))
-			.setDesc(this.i18n.t('settingsPage.promptManagement.promptDescriptionDesc'))
-			.addTextArea(text => {
-				this.descriptionInput = text.inputEl;
-				text
-					.setPlaceholder(this.i18n.t('settingsPage.promptManagement.promptDescriptionPlaceholder'))
-					.setValue(this.prompt?.description || '');
-				text.inputEl.rows = 3;
-				text.inputEl.style.width = '100%';
-			});
-
-		// Content input
-		const contentSetting = new Setting(contentEl)
-			.setName(this.i18n.t('settingsPage.promptManagement.promptContent'))
-			.setDesc(this.i18n.t('settingsPage.promptManagement.promptContentDesc'));
-		
-		const contentContainer = contentSetting.controlEl.createDiv({ cls: 'llmsider-prompt-content-container' });
-		this.contentInput = contentContainer.createEl('textarea', {
-			placeholder: this.i18n.t('settingsPage.promptManagement.promptContentPlaceholder'),
-			cls: 'llmsider-prompt-content-input'
-		});
-		this.contentInput.value = this.prompt?.content || '';
-		this.contentInput.rows = 12;
-		this.contentInput.style.width = '100%';
-		this.contentInput.style.fontFamily = 'monospace';
-
-		// Placeholder info
-		const infoDiv = contentContainer.createDiv({ cls: 'llmsider-prompt-info' });
-		infoDiv.createEl('p', { 
-			text: this.i18n.t('settingsPage.promptManagement.promptContentInfo'),
-			cls: 'setting-item-description'
+		contentEl.createEl('h2', {
+			text: title,
+			cls: 'llmsider-prompt-modal-title'
 		});
 
-		// Button container
-		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-		
-		// Cancel button
-		const cancelButton = buttonContainer.createEl('button', { 
-			text: this.i18n.t('settingsPage.promptManagement.cancel')
+		this.errorEl = contentEl.createDiv({ cls: 'llmsider-prompt-error is-hidden' });
+
+		const form = contentEl.createDiv({ cls: 'llmsider-prompt-form' });
+
+		this.titleInput = this.createTextInput(
+			form,
+			this.i18n.t('settingsPage.promptManagement.promptName'),
+			this.i18n.t('settingsPage.promptManagement.promptNameDesc'),
+			this.i18n.t('settingsPage.promptManagement.promptNamePlaceholder'),
+			this.prompt?.title || ''
+		);
+
+		this.descriptionInput = this.createTextAreaInput(
+			form,
+			this.i18n.t('settingsPage.promptManagement.promptDescription'),
+			this.i18n.t('settingsPage.promptManagement.promptDescriptionDesc'),
+			this.i18n.t('settingsPage.promptManagement.promptDescriptionPlaceholder'),
+			this.prompt?.description || '',
+			3,
+			'llmsider-prompt-description-input'
+		);
+
+		this.contentInput = this.createTextAreaInput(
+			form,
+			this.i18n.t('settingsPage.promptManagement.promptContent'),
+			this.i18n.t('settingsPage.promptManagement.promptContentDesc'),
+			this.i18n.t('settingsPage.promptManagement.promptContentPlaceholder'),
+			this.prompt?.content || '',
+			8,
+			'llmsider-prompt-content-input'
+		);
+
+		const footer = contentEl.createDiv({ cls: 'llmsider-prompt-modal-actions' });
+		const cancelButton = footer.createEl('button', {
+			text: this.i18n.t('settingsPage.promptManagement.cancel'),
+			attr: { type: 'button' }
 		});
 		cancelButton.addEventListener('click', () => {
 			this.close();
 		});
 
-		// Save button
-		const saveButton = buttonContainer.createEl('button', { 
-			text: this.prompt 
+		this.saveButton = footer.createEl('button', {
+			text: this.prompt
 				? this.i18n.t('settingsPage.promptManagement.saveChanges')
 				: this.i18n.t('settingsPage.promptManagement.createPrompt'),
-			cls: 'mod-cta'
+			cls: 'mod-cta llmsider-prompt-save-btn',
+			attr: { type: 'button' }
 		});
-		saveButton.addEventListener('click', async () => {
-			await this.savePrompt();
+		this.saveButton.addEventListener('click', () => {
+			void this.savePrompt();
 		});
+
+		[this.titleInput, this.descriptionInput, this.contentInput].forEach((input) => {
+			input?.addEventListener('input', () => {
+				this.clearError();
+			});
+		});
+		window.setTimeout(() => this.titleInput?.focus(), 0);
 	}
 
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+	onClose(): void {
+		this.contentEl.empty();
+		this.contentEl.removeClass('llmsider-prompt-modal');
+		this.modalEl.removeClass('llmsider-prompt-modal-shell');
 	}
 
-	/**
-	 * Save the prompt
-	 */
+	private createTextInput(
+		container: HTMLElement,
+		label: string,
+		description: string,
+		placeholder: string,
+		value: string
+	): HTMLInputElement {
+		const field = this.createFieldShell(container, label, description);
+		const input = field.createEl('input', {
+			type: 'text',
+			placeholder,
+			cls: 'llmsider-prompt-field-input'
+		});
+		input.value = value;
+		return input;
+	}
+
+	private createTextAreaInput(
+		container: HTMLElement,
+		label: string,
+		description: string,
+		placeholder: string,
+		value: string,
+		rows: number,
+		extraClass = ''
+	): HTMLTextAreaElement {
+		const field = this.createFieldShell(container, label, description);
+		const input = field.createEl('textarea', {
+			placeholder,
+			cls: `llmsider-prompt-field-input llmsider-prompt-field-textarea ${extraClass}`.trim()
+		});
+		input.value = value;
+		input.rows = rows;
+		return input;
+	}
+
+	private createFieldShell(container: HTMLElement, label: string, description: string): HTMLElement {
+		const field = container.createDiv({ cls: 'llmsider-prompt-field' });
+		field.createEl('label', {
+			text: label,
+			cls: 'llmsider-prompt-field-label'
+		});
+		field.createEl('p', {
+			text: description,
+			cls: 'llmsider-prompt-field-description'
+		});
+		return field;
+	}
+
 	private async savePrompt(): Promise<void> {
-		if (!this.titleInput || !this.contentInput) return;
+		if (!this.titleInput || !this.contentInput) {
+			return;
+		}
 
 		const title = this.titleInput.value.trim();
 		const description = this.descriptionInput?.value.trim() || '';
 		const content = this.contentInput.value.trim();
 
-		// Validation
 		if (!title) {
-			// Show error
 			this.showError(this.i18n.t('settingsPage.promptManagement.errorEmptyTitle'));
 			return;
 		}
@@ -139,56 +184,61 @@ export class PromptManagementModal extends Modal {
 			return;
 		}
 
+		this.setSavingState(true);
+
 		try {
 			if (this.prompt) {
-				// Update existing prompt
 				await this.plugin.configDb.updatePrompt(this.prompt.id, {
 					title,
 					description,
 					content
 				});
 			} else {
-				// Create new prompt
 				const newPrompt: PromptTemplate = {
 					id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
 					title,
 					description,
 					content,
 					isBuiltIn: false,
-					order: 9999
+					order: 9999,
+					type: this.promptType
 				};
 				await this.plugin.configDb.createPrompt(newPrompt);
 			}
 
-			// Call the callback to refresh the list
 			await this.onSaveCallback();
-			
 			this.close();
 		} catch (error) {
 			console.error('Error saving prompt:', error);
 			this.showError(this.i18n.t('settingsPage.promptManagement.errorSaving'));
+		} finally {
+			this.setSavingState(false);
 		}
 	}
 
-	/**
-	 * Show error message
-	 */
-	private showError(message: string): void {
-		const { contentEl } = this;
-		
-		// Remove existing error
-		const existingError = contentEl.querySelector('.llmsider-prompt-error');
-		if (existingError) {
-			existingError.remove();
+	private setSavingState(isSaving: boolean): void {
+		if (this.saveButton) {
+			this.saveButton.disabled = isSaving;
+			this.saveButton.toggleClass('is-loading', isSaving);
+		}
+	}
+
+	private clearError(): void {
+		if (!this.errorEl) {
+			return;
 		}
 
-		// Add new error
-		const errorDiv = contentEl.createDiv({ cls: 'llmsider-prompt-error' });
-		errorDiv.createEl('p', { text: message });
-		
-		// Auto-remove after 3 seconds
-		setTimeout(() => {
-			errorDiv.remove();
-		}, 3000);
+		this.errorEl.empty();
+		this.errorEl.addClass('is-hidden');
+	}
+
+	private showError(message: string): void {
+		if (!this.errorEl) {
+			return;
+		}
+
+		this.errorEl.empty();
+		this.errorEl.removeClass('is-hidden');
+		this.errorEl.createEl('p', { text: message });
 	}
 }

@@ -13,6 +13,7 @@ export interface SpeedReadingResult {
 	mindMap: string;
 	extendedReading: string[];
 	guessYouCareAbout: string[];
+	customSections?: { title: string; content: string }[];
 	createdAt: number;
 	updatedAt: number;
 }
@@ -25,8 +26,9 @@ export class SpeedReadingManager {
 	private streamingContent = '';
 	private lastParsedNodeCount = 0;
 	private lastParsedMindMapLength = 0;
+	private abortController: AbortController | null = null;
 
-	constructor(private plugin: LLMSiderPlugin) {}
+	constructor(private plugin: LLMSiderPlugin) { }
 
 	/**
 	 * Initialize drawer
@@ -90,8 +92,26 @@ export class SpeedReadingManager {
 			}
 		}
 
-		// Now call processActiveNote which will create a new analysis
-		await this.processActiveNote();
+		try {
+			// Ensure drawer exists and keep it open while regenerating
+			this.ensureDrawerInitialized();
+
+			// Stop any existing stream before starting a fresh run
+			if (this.isStreaming) {
+				this.stopAnalysis();
+			}
+
+			this.currentFilePath = file.path;
+			this.streamingContent = '';
+
+			const content = await this.plugin.app.vault.read(file);
+			await this.analyzeContentStreaming(file, content);
+		} catch (error) {
+			Logger.error('[SpeedReading] Error regenerating report:', error);
+			new Notice(this.plugin.i18n.t('ui.speedReadingProcessFailed') + ': ' + (error instanceof Error ? error.message : String(error)));
+			this.isStreaming = false;
+			this.currentFilePath = null;
+		}
 	}
 
 	/**
@@ -100,9 +120,9 @@ export class SpeedReadingManager {
 	async processActiveNote(): Promise<void> {
 		// Ensure drawer is initialized (reuse existing instance if available)
 		this.ensureDrawerInitialized();
-		
+
 		const activeFile = this.plugin.app.workspace.getActiveFile();
-		
+
 		if (!activeFile || activeFile.extension !== 'md') {
 			new Notice(this.plugin.i18n.t('ui.speedReadingPleaseOpenNoteFirst'));
 			return;
@@ -114,7 +134,8 @@ export class SpeedReadingManager {
 			if (this.isStreaming && this.currentFilePath === activeFile.path) {
 				return;
 			}
-			// Otherwise close the drawer
+			// Otherwise stop analysis and close the drawer
+			this.stopAnalysis();
 			this.drawer.close();
 			return;
 		}
@@ -139,6 +160,7 @@ export class SpeedReadingManager {
 				mindMap: this.streamingContent,
 				extendedReading: [],
 				guessYouCareAbout: [],
+				customSections: [],
 				createdAt: Date.now(),
 				updatedAt: Date.now()
 			};
@@ -150,11 +172,11 @@ export class SpeedReadingManager {
 		new Notice(this.plugin.i18n.t('ui.speedReadingAnalyzingDocument'));
 		this.currentFilePath = activeFile.path;
 		this.streamingContent = '';
-		
+
 		try {
 			// Read file content
 			const content = await this.plugin.app.vault.read(activeFile);
-			
+
 			// Start streaming to drawer
 			await this.analyzeContentStreaming(activeFile, content);
 		} catch (error) {
@@ -173,7 +195,7 @@ export class SpeedReadingManager {
 		let similarNotesContext = '';
 		const vectorDBManager = this.plugin.vectorDBManager;
 		const settings = this.plugin.settings;
-		
+
 		if (vectorDBManager && settings.vectorSettings?.enabled && settings.vectorSettings?.showSimilarNotes) {
 			try {
 				const similarNoteFinder = (vectorDBManager as any).similarNoteFinder;
@@ -198,6 +220,17 @@ export class SpeedReadingManager {
 			}
 		}
 
+		// Get custom speed-reading prompts
+		const allPrompts = await this.plugin.configDb.getAllPrompts();
+		const customSRPrompts = allPrompts.filter(p => p.type === 'speed-reading');
+		let customPromptsText = '';
+		if (customSRPrompts.length > 0) {
+			customPromptsText = '\n\nAdditionally, please include the following custom analysis sections. You MUST output exactly "## {Section Title}" as the header for each section, followed by your analysis:\n';
+			for (const cp of customSRPrompts) {
+				customPromptsText += `\n## ${cp.title}\n[Instruction for this section: ${cp.content}]\n`;
+			}
+		}
+
 		const prompt = `Please perform an in-depth analysis of the following article. 
 
 IMPORTANT: Please respond in the SAME LANGUAGE as the article content. If the article is in English, respond in English. If it's in Chinese, respond in Chinese. If it's in another language, respond in that language.
@@ -207,9 +240,7 @@ Article Title: ${file.basename}
 Article Content:
 ${content}${similarNotesContext}
 
-Please return the analysis results in the following strict order (note: must output in 1→2→3→4→5 sequence):
-
-Please return the analysis results in the following strict order (note: must output in 1→2→3→4→5 sequence):
+Please return the analysis results in the following strict order (note: must output in 1→2→3→4→5${customSRPrompts.length > 0 ? `→...→${5 + customSRPrompts.length}` : ''} sequence):
 
 ## Content Summary
 [A 200-300 word summary, this is the first part and must be output first]
@@ -262,7 +293,7 @@ Notes:
 - [Interest 1]
 - [Interest 2]
 - [Interest 3]
-...`;
+...${customPromptsText}`;
 
 		// Get current active provider
 		const provider = this.plugin.getActiveProvider();
@@ -272,9 +303,9 @@ Notes:
 
 		// Prepare messages
 		const messages: ChatMessage[] = [
-			{ 
+			{
 				id: `speed-reading-${Date.now()}`,
-				role: 'user', 
+				role: 'user',
 				content: prompt,
 				timestamp: Date.now()
 			}
@@ -290,29 +321,36 @@ Notes:
 			mindMap: '',
 			extendedReading: [],
 			guessYouCareAbout: [],
+			customSections: [],
 			createdAt: Date.now(),
 			updatedAt: Date.now()
 		};
 		this.drawer?.open(initialResult, true);
+
+		// Initialize AbortController
+		this.abortController = new AbortController();
 
 		// Call LLM API using streaming
 		this.isStreaming = true;
 		this.streamingContent = '';
 		let fullResponse = '';
 		let chunkCount = 0;
-		
+
 		try {
 			await provider.sendStreamingMessage(
 				messages,
 				(chunk) => {
+					if (this.abortController?.signal.aborted) {
+						return;
+					}
 					if (chunk.delta) {
 						chunkCount++;
 						fullResponse += chunk.delta;
 						this.streamingContent = fullResponse;
-						
+
 						// Parse current response in real-time
-						const parsed = this.parseResponse(fullResponse);
-						
+						const parsed = this.parseResponse(fullResponse, customSRPrompts);
+
 						// Update drawer in real-time with parsed content
 						const updatedResult: SpeedReadingResult = {
 							id: initialResult.id,
@@ -321,13 +359,13 @@ Notes:
 							summary: parsed.summary,
 							keyPoints: parsed.keyPoints,
 							mindMap: parsed.mindMap,
-							extendedReading: parsed.extendedReading,						guessYouCareAbout: parsed.guessYouCareAbout,							createdAt: initialResult.createdAt,
+							extendedReading: parsed.extendedReading, guessYouCareAbout: parsed.guessYouCareAbout, customSections: parsed.customSections, createdAt: initialResult.createdAt,
 							updatedAt: Date.now()
 						};
 						this.drawer?.updateContent(updatedResult);
 					}
 				},
-				undefined, // no abort signal
+				this.abortController.signal, // pass abort signal
 				undefined, // no tools
 				undefined  // no system message
 			);
@@ -337,8 +375,8 @@ Notes:
 			}
 
 			// Parse response and save
-			const parsed = this.parseResponse(fullResponse);
-			
+			const parsed = this.parseResponse(fullResponse, customSRPrompts);
+
 			const finalResult: SpeedReadingResult = {
 				id: initialResult.id,
 				noteTitle: file.basename,
@@ -348,23 +386,36 @@ Notes:
 				mindMap: parsed.mindMap,
 				extendedReading: parsed.extendedReading,
 				guessYouCareAbout: parsed.guessYouCareAbout,
+				customSections: parsed.customSections,
 				createdAt: initialResult.createdAt,
 				updatedAt: Date.now()
 			};
 
 			// Save to database
 			await this.saveResult(finalResult);
-			
+
 			// Final update - explicitly mark streaming as complete
 			this.drawer?.updateContent(finalResult, false);
-			
+
 			new Notice(this.plugin.i18n.t('ui.speedReadingComplete'));
 		} catch (error) {
 			Logger.error('[SpeedReading] Streaming error:', error);
 			throw error;
 		} finally {
 			this.isStreaming = false;
+			this.abortController = null;
 		}
+	}
+
+	/**
+	 * Stop ongoing analysis
+	 */
+	stopAnalysis(): void {
+		if (this.abortController) {
+			this.abortController.abort();
+			this.abortController = null;
+		}
+		this.isStreaming = false;
 	}
 
 	/**
@@ -373,11 +424,11 @@ Notes:
 	 */
 	private parseNodeBasedMindMap(rawText: string): string | null {
 		if (!rawText) return null;
-		
+
 		const nodes: any[] = [];
 		const jsonRegex = /\{[\s\S]*?\}/g;
 		const matches = rawText.match(jsonRegex);
-		
+
 		if (matches) {
 			for (const match of matches) {
 				try {
@@ -390,16 +441,16 @@ Notes:
 				}
 			}
 		}
-		
+
 		if (nodes.length === 0) return null;
-		
+
 		if (nodes.length !== this.lastParsedNodeCount) {
 			Logger.debug(`[MindMap] Parsed ${nodes.length} nodes`);
 			this.lastParsedNodeCount = nodes.length;
 		}
 		return this.convertNodesToJsMindTree(nodes);
 	}
-	
+
 	/**
 	 * Convert flat node array to jsMind tree structure
 	 */
@@ -417,42 +468,42 @@ Notes:
 				data: { id: 'root', topic: 'Unknown', children: [] }
 			});
 		}
-		
+
 		// Build tree recursively
 		// depth 0 = root, depth 1 = root's children (need direction), depth 2+ = grandchildren (no direction)
 		const buildTree = (nodeId: string, depth: number = 0): any => {
 			const node = nodes.find(n => n.id === nodeId);
 			if (!node) return null;
-			
+
 			const children = nodes
 				.filter(n => n.parentid === nodeId)
 				.map(child => buildTree(child.id, depth + 1))
 				.filter(c => c !== null);
-			
+
 			const result: any = {
 				id: node.id,
 				topic: node.topic
 			};
-			
+
 			// Only set isroot for the root node (depth 0)
 			if (depth === 0) {
 				result.isroot = true;
 			}
-			
+
 			if (children.length > 0) {
 				result.children = children;
 			}
-			
+
 			// Only add direction for root's direct children (depth 1)
 			if (depth === 1 && node.direction) {
 				result.direction = node.direction;
 			}
-			
+
 			return result;
 		};
-		
+
 		const tree = buildTree(root.id, 0);
-		
+
 		const result = {
 			meta: {
 				name: 'Speed Reading Mind Map',
@@ -462,7 +513,7 @@ Notes:
 			format: 'node_tree',
 			data: tree
 		};
-		
+
 		const jsonStr = JSON.stringify(result, null, 2);
 		if (jsonStr.length !== this.lastParsedMindMapLength) {
 			this.lastParsedMindMapLength = jsonStr.length;
@@ -473,21 +524,23 @@ Notes:
 	/**
 	 * Parse LLM response
 	 */
-	private parseResponse(response: string): {
+	private parseResponse(response: string, customSRPrompts: any[] = []): {
 		summary: string;
 		keyPoints: string[];
 		mindMap: string;
 		extendedReading: string[];
 		guessYouCareAbout: string[];
+		customSections?: { title: string; content: string }[];
 	} {
 		const keyPoints: string[] = [];
 		let summary = '';
 		let mindMap = '';
 		const extendedReading: string[] = [];
 		const guessYouCareAbout: string[] = [];
+		const customSections: { title: string; content: string }[] = [];
 
 		// Extract key points (support both Chinese and English)
-		const keyPointsMatch = response.match(/## (核心要点|Core Points)\s*([\s\S]*?)(?=##|$)/i);
+		const keyPointsMatch = response.match(/## (核心要点|Core Points)\s*([\s\S]*?)(?=\n#+\s|$)/i);
 		if (keyPointsMatch) {
 			const points = keyPointsMatch[2].trim().split('\n');
 			points.forEach(point => {
@@ -497,13 +550,13 @@ Notes:
 		}
 
 		// Extract summary (support both Chinese and English)
-		const summaryMatch = response.match(/## (内容总结|Content Summary)\s*([\s\S]*?)(?=##|$)/i);
+		const summaryMatch = response.match(/## (内容总结|Content Summary)\s*([\s\S]*?)(?=\n#+\s|$)/i);
 		if (summaryMatch) {
 			summary = summaryMatch[2].trim();
 		}
 
 		// Extract knowledge structure (node-based mind map, support both Chinese and English)
-		const mindMapMatch = response.match(/## (知识结构|Knowledge Structure)\s*([\s\S]*?)(?=##|$)/i);
+		const mindMapMatch = response.match(/## (知识结构|Knowledge Structure)\s*([\s\S]*?)(?=\n#+\s|$)/i);
 		if (mindMapMatch) {
 			const rawMindMap = mindMapMatch[2].trim().replace(/```[\s\S]*?```/g, '').trim();
 			// Parse individual node JSONs and construct jsMind data structure
@@ -519,7 +572,7 @@ Notes:
 		}
 
 		// Extract extended reading (support both Chinese and English)
-		const extendedMatch = response.match(/## (拓展阅读建议|Extended Reading Suggestions)\s*([\s\S]*?)(?=##|$)/i);
+		const extendedMatch = response.match(/## (拓展阅读建议|Extended Reading Suggestions)\s*([\s\S]*?)(?=\n#+\s|$)/i);
 		if (extendedMatch) {
 			const readings = extendedMatch[2].trim().split('\n');
 			readings.forEach(reading => {
@@ -529,7 +582,7 @@ Notes:
 		}
 
 		// Extract guess you care about (support both Chinese and English)
-		const guessMatch = response.match(/## (猜你关注|You Might Be Interested In)\s*([\s\S]*?)(?=##|$)/i);
+		const guessMatch = response.match(/## (猜你关注|You Might Be Interested In)\s*([\s\S]*?)(?=\n#+\s|$)/i);
 		if (guessMatch) {
 			const guesses = guessMatch[2].trim().split('\n');
 			guesses.forEach(guess => {
@@ -541,7 +594,18 @@ Notes:
 			});
 		}
 
-		return { summary, keyPoints, mindMap, extendedReading, guessYouCareAbout };
+		for (const cp of customSRPrompts) {
+			const titleEscaped = cp.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const match = response.match(new RegExp(`#+\\s*(${titleEscaped})\\s*([\\s\\S]*?)(?=\\n#+\\s|$)`, 'i'));
+			if (match && match[2].trim()) {
+				customSections.push({
+					title: cp.title,
+					content: match[2].trim()
+				});
+			}
+		}
+
+		return { summary, keyPoints, mindMap, extendedReading, guessYouCareAbout, customSections };
 	}
 
 	/**
@@ -557,8 +621,8 @@ Notes:
 			const sqlDb = db['db'];
 			sqlDb.run(
 				`INSERT OR REPLACE INTO speed_reading_results 
-				(id, note_title, note_path, summary, key_points, mind_map, extended_reading, guess_you_care_about, created_at, updated_at) 
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				(id, note_title, note_path, summary, key_points, mind_map, extended_reading, guess_you_care_about, custom_sections, created_at, updated_at) 
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					result.id,
 					result.noteTitle,
@@ -568,11 +632,12 @@ Notes:
 					result.mindMap || '',
 					JSON.stringify(result.extendedReading || []),
 					JSON.stringify(result.guessYouCareAbout || []),
+					JSON.stringify(result.customSections || []),
 					result.createdAt,
 					result.updatedAt
 				]
 			);
-			
+
 			// Save database to disk
 			await db.saveToFileImmediate();
 		} catch (error) {
@@ -594,12 +659,12 @@ Notes:
 				'SELECT * FROM speed_reading_results WHERE note_path = ? ORDER BY updated_at DESC LIMIT 1'
 			);
 			stmt.bind([notePath]);
-			
+
 			if (!stmt.step()) {
 				stmt.free();
 				return null;
 			}
-			
+
 			const row = stmt.getAsObject();
 			stmt.free();
 
@@ -612,6 +677,7 @@ Notes:
 				mindMap: (row.mind_map as string) || '',
 				extendedReading: row.extended_reading ? JSON.parse(row.extended_reading as string) : [],
 				guessYouCareAbout: row.guess_you_care_about ? JSON.parse(row.guess_you_care_about as string) : [],
+				customSections: row.custom_sections ? JSON.parse(row.custom_sections as string) : [],
 				createdAt: (row.created_at as number) || Date.now(),
 				updatedAt: (row.updated_at as number) || Date.now()
 			};
@@ -642,16 +708,16 @@ Notes:
 		if (!db || !db['db']) {
 			throw new Error('Database not initialized');
 		}
-		
+
 		try {
 			const sqlDb = db['db'];
-			
+
 			// Check if table exists
 			const tableExists = sqlDb.exec(`
 				SELECT name FROM sqlite_master 
 				WHERE type='table' AND name='speed_reading_results'
 			`);
-			
+
 			if (tableExists.length === 0) {
 				// Create new table with all columns including guess_you_care_about
 				sqlDb.run(`
@@ -664,17 +730,18 @@ Notes:
 						mind_map TEXT,
 						extended_reading TEXT,
 						guess_you_care_about TEXT,
+						custom_sections TEXT,
 						created_at INTEGER,
 						updated_at INTEGER
 					)
 				`);
-				
+
 				// Create index for faster lookups
 				sqlDb.run(`
 					CREATE INDEX IF NOT EXISTS idx_speed_reading_note_path 
 					ON speed_reading_results(note_path)
 				`);
-				
+
 				await db.saveToFileImmediate();
 				Logger.debug('[SpeedReading] Database table created with all columns');
 			} else {
@@ -682,10 +749,18 @@ Notes:
 				const columnCheck = sqlDb.exec(`PRAGMA table_info(speed_reading_results)`);
 				const columns = columnCheck[0]?.values || [];
 				const hasGuessColumn = columns.some((col: any[]) => col[1] === 'guess_you_care_about');
-				
+				const hasCustomSectionsColumn = columns.some((col: any[]) => col[1] === 'custom_sections');
+
 				if (!hasGuessColumn) {
 					Logger.debug('[SpeedReading] Adding guess_you_care_about column (migration)...');
 					sqlDb.run(`ALTER TABLE speed_reading_results ADD COLUMN guess_you_care_about TEXT`);
+					await db.saveToFileImmediate();
+					Logger.debug('[SpeedReading] Database migration completed');
+				}
+
+				if (!hasCustomSectionsColumn) {
+					Logger.debug('[SpeedReading] Adding custom_sections column (migration)...');
+					sqlDb.run(`ALTER TABLE speed_reading_results ADD COLUMN custom_sections TEXT`);
 					await db.saveToFileImmediate();
 					Logger.debug('[SpeedReading] Database migration completed');
 				}

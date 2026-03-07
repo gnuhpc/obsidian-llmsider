@@ -28,6 +28,7 @@
         opacity: 0;
         transform: translateY(10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -97,7 +98,8 @@
     font-size: 11px;
     color: var(--text-muted);
     line-height: 1.3;
-    display: none; /* Hide descriptions for more compact view */
+    display: none;
+    /* Hide descriptions for more compact view */
 }
 
 .llmsider-prompt-selector-item-type {
@@ -138,8 +140,8 @@
     top: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(135deg, #007AFF, #5856D6);
-    color: white;
+    background: var(--background-primary-alt);
+    color: var(--text-normal);
     padding: 8px 12px;
     border-radius: 6px;
     font-size: 13px;
@@ -147,9 +149,9 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    box-shadow: 0 3px 12px rgba(0, 122, 255, 0.4);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     animation: slideInDown 0.3s ease-out;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid var(--background-modifier-border);
     margin-bottom: 8px;
 }
 
@@ -158,6 +160,7 @@
         opacity: 0;
         transform: translateY(-10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -175,7 +178,7 @@
 
 .llmsider-prompt-indicator-hint {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--text-muted);
     font-style: italic;
     margin-left: 8px;
 }

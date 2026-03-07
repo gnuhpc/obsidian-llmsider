@@ -1007,7 +1007,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	}
 
 	/**
-	 * Handle input changes - check for # trigger (with debouncing)
+	 * Handle input changes - check for / trigger (with debouncing)
 	 */
 	private handleInputChange(): void {
 		// Clear previous timeout
@@ -1028,12 +1028,12 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		const content = this.inputElement.value;
 		const cursorPosition = this.inputElement.selectionStart;
 
-		// Check if user typed # at the beginning or after whitespace
+		// Check if user typed / at the beginning or after whitespace
 		const beforeCursor = content.substring(0, cursorPosition);
-		const match = beforeCursor.match(/(^|\s)#([^#\s]*)$/);
+		const match = beforeCursor.match(/(^|\s)\/([^\/\s]*)$/);
 
 		if (match) {
-			const query = match[2]; // The text after #
+			const query = match[2]; // The text after /
 
 			// Calculate position for prompt selector - position above input box
 			const inputRect = this.inputElement.getBoundingClientRect();
@@ -1048,7 +1048,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			// Show prompt selector
 			this.promptSelector.show(query, position);
 		} else if (this.promptSelector.isVisible()) {
-			// Hide prompt selector if # is not at cursor
+			// Hide prompt selector if / is not at cursor
 			this.promptSelector.hide();
 		}
 	}
@@ -1059,14 +1059,14 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	private handlePromptSelected(template: PromptTemplate): void {
 		Logger.debug('Prompt selected:', template.title);
 
-		// Remove the # trigger from input
+		// Remove the / trigger from input
 		const content = this.inputElement.value;
 		const cursorPosition = this.inputElement.selectionStart;
 		const beforeCursor = content.substring(0, cursorPosition);
 		const afterCursor = content.substring(cursorPosition);
 
-		// Find and remove the # trigger
-		const match = beforeCursor.match(/(^|\s)#([^#\s]*)$/);
+		// Find and remove the / trigger
+		const match = beforeCursor.match(/(^|\s)\/([^\/\s]*)$/);
 		if (match) {
 			const newBefore = beforeCursor.substring(0, match.index! + match[1].length);
 			this.inputElement.value = newBefore + afterCursor;
@@ -1116,13 +1116,13 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 
 			const text = indicator.createSpan({
 				cls: 'llmsider-prompt-indicator-text',
-				text: `Using: ${this.selectedPrompt.title}`
+				text: `${this.plugin.i18n.t('ui.promptUsing')}${this.selectedPrompt.title}`
 			});
 
 			// Add hint about direct sending
 			const hint = indicator.createSpan({
 				cls: 'llmsider-prompt-indicator-hint',
-				text: '(Press Enter to send directly)'
+				text: this.plugin.i18n.t('ui.promptEnterToSend')
 			});
 
 			const closeBtn = indicator.createSpan({

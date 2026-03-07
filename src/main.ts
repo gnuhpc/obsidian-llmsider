@@ -36,6 +36,8 @@ import { VectorDBManager } from './vector';
 import { SimilarNotesViewManager } from './ui/similar-notes-manager';
 import { memoryMonitor } from './utils/memory-monitor';
 import { OpenCodeServerManager } from './utils/opencode-server-manager';
+import { WebLLMManager } from './core/webllm/webllm-manager';
+import { getDefaultWebLLMModel } from './core/webllm/webllm-models';
 
 type UpdateCheckResult = {
 	hasUpdate: boolean;
@@ -66,6 +68,7 @@ export default class LLMSiderPlugin extends Plugin {
 	speedReadingManager?: import('./features/speed-reading').SpeedReadingManager;
 	githubTokenRefreshService?: unknown; // GitHubTokenRefreshService
 	opencodeServerManager?: OpenCodeServerManager;
+	webllmManager?: WebLLMManager;
 	private isSaving = false;
 	private memoryManager?: import('./core/agent/memory-manager').MemoryManager;
 	private lastAutoAddedNotePath?: string;
@@ -163,6 +166,9 @@ export default class LLMSiderPlugin extends Plugin {
 
 			// Initialize providers
 			await this.initializeProviders();
+
+			// Initialize WebLLM if enabled
+			await this.initializeWebLLM();
 
 			await this.initializeSpeedReadingManager();
 
@@ -491,6 +497,17 @@ export default class LLMSiderPlugin extends Plugin {
 			this.inlineQuickChatHandler = undefined;
 		}		// Clean up views
 
+
+		// Destroy WebLLM Manager
+		if (this.webllmManager) {
+			try {
+				await this.webllmManager.destroy();
+				this.webllmManager = undefined;
+				Logger.debug('WebLLM Manager destroyed');
+			} catch (error) {
+				Logger.error('Error destroying WebLLM Manager:', error);
+			}
+		}
 
 		// Clear providers
 		this.providers.clear();
@@ -1207,6 +1224,11 @@ export default class LLMSiderPlugin extends Plugin {
 		// Create providers from valid combinations
 		for (const { connection, model } of validCombinations) {
 			try {
+				// For WebLLM connections, inject the manager instance
+				if (connection.type === 'webllm' && this.webllmManager) {
+					(connection as any)._webllmManager = this.webllmManager;
+				}
+
 				const { provider, providerId } = ProviderFactory.createProviderWithId(
 					connection,
 					model,
@@ -1286,6 +1308,24 @@ export default class LLMSiderPlugin extends Plugin {
 		Logger.debug('Reinitializing providers...');
 		await this.initializeProviders();
 		Logger.debug('Providers reinitialized');
+	}
+
+	/**
+	 * Initialize WebLLM local inference engine
+	 */
+	private async initializeWebLLM(): Promise<void> {
+		try {
+			// Always create the manager so we can manage WebLLM connections
+			this.webllmManager = new WebLLMManager();
+
+			// Initialize providers to include WebLLM if a connection was manually created
+			await this.initializeProviders();
+
+			Logger.debug('[WebLLM] Manager initialized');
+		} catch (error) {
+			Logger.error('[WebLLM] Failed to initialize WebLLM:', error);
+			// Don't throw - WebLLM is optional
+		}
 	}
 
 	private async initializeGitHubTokenRefreshService() {
@@ -2101,6 +2141,10 @@ export default class LLMSiderPlugin extends Plugin {
 				created: Date.now(),
 				updated: Date.now()
 			};
+
+			if (connection.type === 'webllm' && this.webllmManager) {
+				(connection as any)._webllmManager = this.webllmManager;
+			}
 
 			const provider = ProviderFactory.createProvider(connection, tempModel, this.toolManager);
 

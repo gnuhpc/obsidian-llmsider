@@ -7,6 +7,7 @@ import * as Diff from 'diff';
 import type LLMSiderPlugin from '../main';
 import type { I18nManager } from '../i18n/i18n-manager';
 import type { PromptTemplate } from '../types';
+import { getBuiltInPrompts } from '../data/built-in-prompts';
 
 /**
  * Quick Chat Widget - Similar to Notion AI
@@ -415,8 +416,11 @@ class QuickChatBlockWidget extends WidgetType {
 			e.stopImmediatePropagation();
 		});
 		
-		// Get built-in prompts from database (async)
+		// Get prompts from database (async)
+		let allPrompts: PromptTemplate[] = [];
 		let builtInPrompts: PromptTemplate[] = [];
+		let customPrompts: PromptTemplate[] = [];
+		let promptTitleTypes = new Map<string, { hasChat: boolean; hasSpeedReading: boolean }>();
 		let recentHistoryPrompts: string[] = []; // Store recent 3 history prompts
 		
 		// Add quick prompts section with autocomplete dropdown
@@ -429,11 +433,49 @@ class QuickChatBlockWidget extends WidgetType {
 		const quickPromptsList = quickPromptsSection.createDiv({ cls: 'llmsider-quick-prompts-list' });
 		
 		// Load prompts and history asynchronously
+		const isSpeedReadingPrompt = (prompt: PromptTemplate): boolean => {
+			const type = (prompt.type || '').toString().trim().toLowerCase().replace('_', '-');
+			return type === 'speed-reading';
+		};
+		const builtInFromCode = getBuiltInPrompts();
+		const builtInIdSet = new Set(builtInFromCode.map(prompt => prompt.id));
+		const isBuiltInPrompt = (prompt: PromptTemplate): boolean => {
+			return Boolean(prompt.isBuiltIn) || builtInIdSet.has(prompt.id);
+		};
+
+		const refreshPrompts = async (): Promise<void> => {
+			allPrompts = await this.plugin.configDb.getAllPrompts();
+			promptTitleTypes = new Map();
+			for (const prompt of allPrompts) {
+				const entry = promptTitleTypes.get(prompt.title) || { hasChat: false, hasSpeedReading: false };
+				if (isSpeedReadingPrompt(prompt)) {
+					entry.hasSpeedReading = true;
+				} else {
+					entry.hasChat = true;
+				}
+				promptTitleTypes.set(prompt.title, entry);
+			}
+			// Only show chat prompts in quick chat dropdown (exclude speed-reading prompts)
+			const builtInMap = new Map<string, PromptTemplate>();
+			allPrompts
+				.filter(prompt => isBuiltInPrompt(prompt) && !isSpeedReadingPrompt(prompt))
+				.forEach(prompt => builtInMap.set(prompt.id, prompt));
+			for (const prompt of builtInFromCode) {
+				if (!builtInMap.has(prompt.id)) {
+					builtInMap.set(prompt.id, prompt);
+				}
+			}
+			builtInPrompts = Array.from(builtInMap.values());
+
+			customPrompts = allPrompts.filter(prompt => (
+				!isBuiltInPrompt(prompt) && !isSpeedReadingPrompt(prompt)
+			));
+		};
+
 		Promise.all([
-			this.plugin.configDb.getBuiltInPrompts(),
+			refreshPrompts(),
 			this.plugin.configDb.getPromptHistory(3) // Get recent 3 history
-		]).then(([prompts, history]) => {
-			builtInPrompts = prompts;
+		]).then(([, history]) => {
 			recentHistoryPrompts = history;
 			// Initial render with all prompts
 			renderPrompts();
@@ -525,11 +567,15 @@ class QuickChatBlockWidget extends WidgetType {
 			const lowerFilter = filter.toLowerCase();
 			
 			// Filter history prompts (only show when no filter or filter matches)
-			const filteredHistory = filter === '' ? recentHistoryPrompts : 
-				recentHistoryPrompts.filter(p => p.toLowerCase().includes(lowerFilter));
+			const filteredHistory = (filter === '' ? recentHistoryPrompts : 
+				recentHistoryPrompts.filter(p => p.toLowerCase().includes(lowerFilter)))
+				.filter(p => {
+					const types = promptTitleTypes.get(p);
+					// Hide only if it's speed-reading-only (no chat prompt with same title)
+					return !(types?.hasSpeedReading && !types.hasChat);
+				});
 			
-			// Filter built-in prompts
-			const filteredPrompts = builtInPrompts.filter(prompt => {
+			const matchesFilter = (prompt: PromptTemplate): boolean => {
 				if (filter === '') return true;
 				
 				// Search in current language title and description
@@ -541,7 +587,12 @@ class QuickChatBlockWidget extends WidgetType {
 					prompt.searchKeywords.some(keyword => keyword.toLowerCase().includes(lowerFilter));
 				
 				return titleMatch || descMatch || keywordMatch;
-			});
+			};
+
+			// Filter built-in prompts
+			const filteredBuiltInPrompts = builtInPrompts.filter(matchesFilter);
+			// Filter custom prompts
+			const filteredCustomPrompts = customPrompts.filter(matchesFilter);
 			
 			// Render recent history prompts (if any and no filter, or filter matches)
 			if (filteredHistory.length > 0) {
@@ -589,11 +640,10 @@ class QuickChatBlockWidget extends WidgetType {
 								});
 								
 								// Reload and re-render
-								const [prompts, history] = await Promise.all([
-									this.plugin.configDb.getBuiltInPrompts(),
+								const [, history] = await Promise.all([
+									refreshPrompts(),
 									this.plugin.configDb.getPromptHistory(3)
 								]);
-								builtInPrompts = prompts;
 								recentHistoryPrompts = history;
 								renderPrompts(input.value.trim());
 							};
@@ -615,13 +665,78 @@ class QuickChatBlockWidget extends WidgetType {
 				});
 			}
 			
-			// Add separator if both history and built-in prompts exist
-			if (filteredHistory.length > 0 && filteredPrompts.length > 0) {
+			// Add separator if history and other prompts exist
+			if (filteredHistory.length > 0 && (filteredCustomPrompts.length > 0 || filteredBuiltInPrompts.length > 0)) {
 				quickPromptsList.createDiv({ cls: 'llmsider-quick-prompts-separator' });
 			}
 			
+			// Render custom prompts section
+			if (filteredCustomPrompts.length > 0) {
+				quickPromptsList.createDiv({ 
+					cls: 'llmsider-quick-prompts-section-title',
+					text: this.i18n.t('quickChatUI.customPrompts') || 'Custom Prompts'
+				});
+			}
+
+			filteredCustomPrompts.forEach(prompt => {
+				const promptItem = quickPromptsList.createDiv({ cls: 'llmsider-quick-prompt-item' });
+				promptItem.createSpan({ cls: 'llmsider-quick-prompt-icon', text: getPromptIcon(prompt.title) });
+				promptItem.createSpan({ cls: 'llmsider-quick-prompt-text', text: prompt.title });
+
+				// Add Pin/Unpin button
+				const pinBtn = promptItem.createSpan({ 
+					cls: `llmsider-quick-prompt-pin ${prompt.pinned ? 'pinned' : ''}`,
+					attr: { 'title': prompt.pinned ? this.i18n.t('ui.unpin') : this.i18n.t('ui.pin') }
+				});
+				pinBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>';
+				
+				if (prompt.pinned) {
+					pinBtn.addClass('is-pinned');
+					pinBtn.querySelector('svg')?.setAttribute('fill', 'currentColor');
+				}
+
+				pinBtn.onmousedown = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+				};
+
+				pinBtn.onclick = async (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					
+					await this.plugin.configDb.togglePromptPin(prompt.id);
+					await refreshPrompts();
+					renderPrompts(input.value.trim());
+				};
+
+				promptItem.onmousedown = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+				};
+				
+				promptItem.onclick = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					selectedPromptIndex = -1;
+					quickPromptsSection.style.display = 'none';
+
+					// For custom prompts, fill input and wait for user confirmation
+					const action = prompt.title;
+					input.value = action;
+					setTimeout(() => {
+						input.focus();
+						input.setSelectionRange(input.value.length, input.value.length);
+					}, 0);
+				};
+			});
+
+			// Add separator if both custom and built-in prompts exist
+			if (filteredCustomPrompts.length > 0 && filteredBuiltInPrompts.length > 0) {
+				quickPromptsList.createDiv({ cls: 'llmsider-quick-prompts-separator' });
+			}
+
 			// Render built-in prompts section
-			if (filteredPrompts.length > 0 || filter === '') {
+			if (filteredBuiltInPrompts.length > 0 || filter === '') {
 				const builtInTitle = quickPromptsList.createDiv({ 
 					cls: 'llmsider-quick-prompts-section-title',
 					text: this.i18n.t('quickChatUI.builtInPrompts') || 'Built-in Actions'
@@ -629,12 +744,12 @@ class QuickChatBlockWidget extends WidgetType {
 			}
 			
 			// Show message if no results found
-			if (filteredPrompts.length === 0 && filteredHistory.length === 0 && filter !== '') {
+			if (filteredBuiltInPrompts.length === 0 && filteredCustomPrompts.length === 0 && filteredHistory.length === 0 && filter !== '') {
 				const noResults = quickPromptsList.createDiv({ cls: 'llmsider-no-results' });
 				noResults.textContent = this.i18n.t('quickChatUI.noMatchingPrompts');
 			}
 			
-			filteredPrompts.forEach(prompt => {
+			filteredBuiltInPrompts.forEach(prompt => {
 				const promptItem = quickPromptsList.createDiv({ cls: 'llmsider-quick-prompt-item' });
 				promptItem.createSpan({ cls: 'llmsider-quick-prompt-icon', text: getPromptIcon(prompt.title) });
 				promptItem.createSpan({ cls: 'llmsider-quick-prompt-text', text: prompt.title });
@@ -666,10 +781,8 @@ class QuickChatBlockWidget extends WidgetType {
 					await this.plugin.configDb.togglePromptPin(prompt.id);
 					
 					// Reload prompts and re-render
-					this.plugin.configDb.getBuiltInPrompts().then(prompts => {
-						builtInPrompts = prompts;
-						renderPrompts(input.value.trim());
-					});
+					await refreshPrompts();
+					renderPrompts(input.value.trim());
 				};
 
 				promptItem.onmousedown = (e) => {
@@ -707,10 +820,10 @@ class QuickChatBlockWidget extends WidgetType {
 			});
 			
 			// Update title with count
-			const totalCount = filteredHistory.length + filteredPrompts.length;
+			const totalCount = filteredHistory.length + filteredBuiltInPrompts.length + filteredCustomPrompts.length;
 			quickPromptsTitle.textContent = filter 
 				? this.i18n.t('quickChatUI.quickActionsMatching', { count: totalCount.toString() })
-				: this.i18n.t('quickChatUI.quickActionsAvailable', { count: (recentHistoryPrompts.length + builtInPrompts.length).toString() });
+				: this.i18n.t('quickChatUI.quickActionsAvailable', { count: (recentHistoryPrompts.length + builtInPrompts.length + customPrompts.length).toString() });
 
 			const promptItems = Array.from(quickPromptsList.querySelectorAll('.llmsider-quick-prompt-item')) as HTMLElement[];
 			if (promptItems.length > 0) {

@@ -13,8 +13,8 @@ import type { ToolCategory } from './types/tool-categories';
 export interface LLMConnection {
   id: string;                 // Unique identifier
   name: string;               // Display name
-  type: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'local' | 'github-copilot' | 'hugging-chat' | 'openrouter' | 'opencode';
-  apiKey: string;             // API key (not required for github-copilot) - For hugging-chat, this is the hf-chat cookie value or base64 encoded username=xxx&password=xxx; For free-gemini, this is __Secure-1PSID and __Secure-1PSIDTS separated by |
+  type: 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'local' | 'github-copilot' | 'hugging-chat' | 'openrouter' | 'opencode' | 'webllm';
+  apiKey: string;             // API key (not required for github-copilot) - For hugging-chat, this is the hf-chat cookie value or base64 encoded username=xxx&password=xxx;
   baseUrl?: string;           // Base URL (required for openai-compatible, ollama)
   organizationId?: string;    // Organization ID (OpenAI)
   region?: string;            // Region (Azure OpenAI, Qwen)
@@ -104,19 +104,6 @@ export interface FreeQwenProvider extends LLMProvider {
   // apiKey here is actually tongyi_sso_ticket or login_aliyunid_ticket
 }
 
-export interface FreeGeminiProvider extends LLMProvider {
-  name: 'free-gemini';
-  // apiKey here is actually __Secure-1PSID|__Secure-1PSIDTS (separated by |)
-  // Proxy configuration
-  proxyEnabled?: boolean;
-  proxyType?: 'socks5' | 'http' | 'https';
-  proxyHost?: string;
-  proxyPort?: number;
-  proxyAuth?: boolean;
-  proxyUsername?: string;
-  proxyPassword?: string;
-}
-
 export interface AzureOpenAIProvider extends LLMProvider {
   name: 'azure-openai';
   baseUrl: string; // Required: Azure endpoint URL
@@ -144,7 +131,7 @@ export interface XAIProvider extends LLMProvider {
   baseUrl?: string; // Optional: Custom endpoint
 }
 
-export type ProviderType = OpenAIProvider | AnthropicProvider | OpenAICompatibleProvider | QwenProvider | FreeQwenProvider | FreeGeminiProvider | AzureOpenAIProvider | OllamaProvider | GeminiProvider | GroqProvider | XAIProvider;
+export type ProviderType = OpenAIProvider | AnthropicProvider | OpenAICompatibleProvider | QwenProvider | FreeQwenProvider | AzureOpenAIProvider | OllamaProvider | GeminiProvider | GroqProvider | XAIProvider;
 
 // ============================================================================
 // Chat & Message Interfaces
@@ -410,6 +397,7 @@ export interface PromptTemplate {
   pinned?: boolean;
   isUserModified?: boolean;
   isDeleted?: boolean;
+  type?: 'chat' | 'speed-reading';
 }
 
 // ============================================================================
@@ -589,10 +577,10 @@ export interface LLMSiderSettings {
   // Built-in tools permissions
   // @deprecated - Now managed directly in database (tool_settings table), kept for backward compatibility
   builtInToolsPermissions: Record<string, boolean>; // tool name -> enabled (default all true)
-  
+
   // Tool auto-execution settings (for both built-in and MCP tools)
   toolAutoExecute: Record<string, boolean>; // tool name -> auto-execute without confirmation
-  
+
   isFirstLaunch: boolean; // Whether this is the first time launching the plugin
 
   // Autocomplete settings
@@ -676,6 +664,9 @@ export interface LLMSiderSettings {
     contextExcerptLength: number; // Maximum length of context excerpts sent to LLM (default: 500 characters, 0 = send full content)
   };
 
+  // WebLLM local inference settings
+  webllmSettings: WebLLMSettings;
+
   // Advanced settings
   debugMode: boolean;
   enableDiffRenderingInActionMode: boolean; // Toggle for diff rendering in action mode messages
@@ -683,6 +674,15 @@ export interface LLMSiderSettings {
   maxBuiltInToolsSelection: number; // Maximum number of built-in tools that can be enabled (default: 64)
   maxMCPToolsSelection: number; // Maximum number of MCP tools that can be enabled (default: 64)
   planExecutionMode: 'sequential' | 'dag'; // Plan execution mode: sequential (default) or dag (parallel)
+}
+
+// WebLLM local inference settings
+export interface WebLLMSettings {
+  enabled: boolean;
+  selectedModel: string;         // Selected model ID
+  cachedModels: string[];        // List of cached model IDs
+  autoLoad: boolean;             // Auto-load model on startup
+  contextWindowSize: number;     // Context window size (default: 2048)
 }
 
 // ============================================================================
@@ -741,10 +741,10 @@ export interface ToolCallResult {
 }
 
 export interface GeneratedImage {
-	type: 'image_url';
-	image_url: {
-		url: string; // Base64 data URL
-	};
+  type: 'image_url';
+  image_url: {
+    url: string; // Base64 data URL
+  };
 }
 export interface StreamingResponse {
   delta: string;
@@ -761,17 +761,17 @@ export interface StreamingResponse {
 
 
 export interface LLMResponse {
-	content: string;
-	model: string;
-	usage: {
-		promptTokens: number;
-		completionTokens: number;
-		totalTokens: number;
-	};
-	finishReason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error';
-	metadata?: Record<string, unknown>;
-	toolCalls?: ToolCall[];
-	images?: GeneratedImage[]; // Generated images for image generation models
+  content: string;
+  model: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  finishReason: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error';
+  metadata?: Record<string, unknown>;
+  toolCalls?: ToolCall[];
+  images?: GeneratedImage[]; // Generated images for image generation models
 
   isLoaded: boolean;
   isLoadingSession?: boolean;
@@ -795,7 +795,7 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
   activeConnectionId: '',
   activeModelId: '',
   activeProvider: '', // Format: connectionId::modelId
-  
+
   agentMode: false, // Deprecated: kept for migration
   conversationMode: 'normal', // Default to normal Q&A mode
   defaultConversationMode: 'normal', // Default conversation mode when starting new chat
@@ -883,6 +883,13 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
     topK: 5,
     embeddingModelId: '', // User must select from Connection-Model (remote API only)
     contextExcerptLength: 500 // Default 500 characters per excerpt
+  },
+  webllmSettings: {
+    enabled: false,
+    selectedModel: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
+    cachedModels: [],
+    autoLoad: false,
+    contextWindowSize: 2048,
   },
   debugMode: false,
   enableDiffRenderingInActionMode: false, // Default to disabled

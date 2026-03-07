@@ -38,11 +38,12 @@ export class SessionManager {
 	async newChat(): Promise<ChatSession> {
 		Logger.debug('Creating new chat session');
 		Logger.debug('Current sessions count:', this.plugin.settings.chatSessions.length);
+		const i18n = this.plugin.getI18nManager?.() || this.plugin.i18n;
 
 		// Create session without immediate save to improve performance
 		const session: ChatSession = {
 			id: this.plugin.settings.nextSessionId.toString(),
-			name: 'Untitled', // Default name, will be updated from first message
+			name: i18n.t('ui.chatHistoryUntitledConversation') || 'Untitled', // Default name, will be updated from first message
 			messages: [],
 			created: Date.now(),
 			updated: Date.now(),
@@ -110,6 +111,7 @@ export class SessionManager {
 	 */
 	private showChatHistoryModal(sessions: ChatSession[]): void {
 		Logger.debug('📜 showChatHistoryModal called with', sessions.length, 'sessions');
+		const i18n = this.plugin.getI18nManager?.() || this.plugin.i18n;
 		// Create modal overlay
 		const modal = document.body.createDiv({
 			cls: 'llmsider-chat-history-modal'
@@ -126,13 +128,51 @@ export class SessionManager {
 		});
 
 		const title = header.createEl('h2', {
-			text: 'Chat History',
+			text: i18n.t('ui.chatHistoryTitle') || 'Chat History',
 			cls: 'llmsider-chat-history-title'
 		});
 
-		const closeBtn = header.createEl('button', {
+		const headerActions = header.createDiv({
+			cls: 'llmsider-chat-history-actions'
+		});
+
+		const deleteAllBtn = headerActions.createEl('button', {
+			cls: 'llmsider-chat-history-delete-all',
+			text: i18n.t('ui.chatHistoryDeleteAll') || 'Delete All',
+			attr: { 'aria-label': i18n.t('ui.chatHistoryDeleteAllAriaLabel') || 'Delete all conversations' }
+		});
+		deleteAllBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M3 6h18"></path>
+			<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+			<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+		</svg>
+		<span>${i18n.t('ui.chatHistoryDeleteAll') || 'Delete All'}</span>`;
+		deleteAllBtn.onclick = async () => {
+			const currentSession = this.plugin.settings.chatSessions[0];
+			const idsToDelete = this.plugin.settings.chatSessions
+				.filter(s => s.id !== currentSession?.id)
+				.map(s => s.id);
+
+			if (idsToDelete.length === 0) {
+				return;
+			}
+
+			await Promise.all(idsToDelete.map(id => this.plugin.deleteChatSession(id)));
+			new Notice(i18n.t('ui.chatHistoryDeleteAllDone') || 'All conversations deleted');
+
+			// Refresh list or close modal if only current remains
+			allSessions = this.plugin.settings.chatSessions;
+			if (allSessions.length <= 1) {
+				modal.remove();
+			} else {
+				searchInput.value = '';
+				searchInput.dispatchEvent(new Event('input'));
+			}
+		};
+
+		const closeBtn = headerActions.createEl('button', {
 			cls: 'llmsider-chat-history-close',
-			attr: { 'aria-label': 'Close' }
+			attr: { 'aria-label': i18n.t('ui.close') || 'Close' }
 		});
 		closeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<line x1="18" y1="6" x2="6" y2="18"></line>
@@ -159,9 +199,9 @@ export class SessionManager {
 
 		const searchInput = searchContainer.createEl('input', {
 			type: 'text',
-			placeholder: 'Search conversations...',
+			placeholder: i18n.t('ui.chatHistorySearchPlaceholder') || 'Search conversations...',
 			cls: 'llmsider-chat-history-search-input',
-			attr: { 'aria-label': 'Search conversations' }
+			attr: { 'aria-label': i18n.t('ui.chatHistorySearchAriaLabel') || 'Search conversations' }
 		});
 
 		// Conversations list container (with scroll area)
@@ -191,7 +231,7 @@ export class SessionManager {
 					<path d="m21 21-4.35-4.35"></path>
 				</svg>`;
 				emptyState.createEl('p', {
-					text: 'No conversations found',
+					text: i18n.t('ui.chatHistoryEmpty') || 'No conversations found',
 					cls: 'llmsider-chat-history-empty-text'
 				});
 				return;
@@ -211,7 +251,7 @@ export class SessionManager {
 				const previewText = firstUserMessage?.content
 					? (typeof firstUserMessage.content === 'string'
 						? firstUserMessage.content
-						: firstUserMessage.content.map((c: any) => c.type === 'text' ? c.text : '[Image]').join(' '))
+						: firstUserMessage.content.map((c: any) => c.type === 'text' ? c.text : (i18n.t('ui.chatHistoryImagePlaceholder') || '[Image]')).join(' '))
 					: '';
 
 				// Create card item
@@ -249,7 +289,7 @@ export class SessionManager {
 
 				// Title
 				titleRow.createEl('h3', {
-					text: session.name || 'Untitled Conversation',
+					text: session.name || (i18n.t('ui.chatHistoryUntitledConversation') || 'Untitled Conversation'),
 					cls: 'llmsider-chat-history-card-title'
 				});
 
@@ -259,7 +299,7 @@ export class SessionManager {
 				// Message count
 				cardMeta.createEl('span', {
 					cls: 'llmsider-chat-history-meta-count',
-					text: `${messageCount} messages`
+					text: i18n.t('ui.chatHistoryMessageCount', { count: messageCount.toString() }) || `${messageCount} messages`
 				});
 
 				// Dot separator
@@ -282,7 +322,10 @@ export class SessionManager {
 				// Delete button
 				const deleteBtn = cardActions.createEl('button', {
 					cls: 'llmsider-chat-history-action-btn delete',
-					attr: { 'aria-label': 'Delete conversation', title: 'Delete conversation' }
+					attr: { 
+						'aria-label': i18n.t('ui.chatHistoryDeleteConversation') || 'Delete conversation',
+						title: i18n.t('ui.chatHistoryDeleteConversation') || 'Delete conversation'
+					}
 				});
 				deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M3 6h18"></path>
@@ -377,6 +420,7 @@ export class SessionManager {
 	async loadThreadFromMemory(threadId: string, memoryManager: any): Promise<void> {
 		try {
 			Logger.debug('📥 Loading thread from memory:', threadId);
+			const i18n = this.plugin.getI18nManager?.() || this.plugin.i18n;
 
 			// Get conversation history
 			const history = await memoryManager.getConversationHistory(threadId);
@@ -389,7 +433,7 @@ export class SessionManager {
 			const thread = await memoryManager.getStorageAdapter().getThread({ id: threadId });
 			const session: ChatSession = {
 				id: threadId,
-				name: thread?.title || 'Untitled',
+				name: thread?.title || (i18n.t('ui.chatHistoryUntitledConversation') || 'Untitled'),
 				messages: history.map((msg: any) => ({
 					role: msg.role,
 					content: msg.content,
@@ -432,6 +476,7 @@ export class SessionManager {
 	 * Load a specific chat session (legacy method, kept for compatibility)
 	 */
 	loadChatSession(session: ChatSession): void {
+		const i18n = this.plugin.getI18nManager?.() || this.plugin.i18n;
 		// Move session to front of array (make it current)
 		const sessionIndex = this.plugin.settings.chatSessions.findIndex(s => s.id === session.id);
 		if (sessionIndex > 0) {
@@ -440,7 +485,8 @@ export class SessionManager {
 		}
 
 		// Show success message
-		new Notice(this.plugin.getI18nManager()?.t('notifications.session.sessionLoaded', { name: session.name || 'Untitled' }) || `Loaded chat session: ${session.name || 'Untitled'}`);
+		const sessionName = session.name || (i18n.t('ui.chatHistoryUntitledConversation') || 'Untitled');
+		new Notice(this.plugin.getI18nManager()?.t('notifications.session.sessionLoaded', { name: sessionName }) || `Loaded chat session: ${sessionName}`);
 
 		// Update plugin's current session in state
 		this.plugin.state.currentSession = session.id;
@@ -486,6 +532,7 @@ export class SessionManager {
 	 */
 	private async showMaxChatLimitDialog(): Promise<boolean> {
 		return new Promise((resolve) => {
+			const i18n = this.plugin.getI18nManager?.() || this.plugin.i18n;
 			const modal = document.body.createDiv({
 				cls: 'llmsider-max-chat-limit-modal'
 			});
@@ -496,7 +543,7 @@ export class SessionManager {
 
 			// Title
 			container.createEl('h3', {
-				text: 'Maximum Chat History Reached',
+				text: i18n.t('ui.chatHistoryMaxLimitTitle') || 'Maximum Chat History Reached',
 				cls: 'llmsider-max-chat-limit-title'
 			});
 
@@ -506,11 +553,12 @@ export class SessionManager {
 			});
 
 			message.createEl('p', {
-				text: `You have reached the maximum chat history limit of ${this.plugin.settings.maxChatHistory} conversations.`
+				text: i18n.t('ui.chatHistoryMaxLimitMessage', { count: this.plugin.settings.maxChatHistory.toString() }) 
+					|| `You have reached the maximum chat history limit of ${this.plugin.settings.maxChatHistory} conversations.`
 			});
 
 			message.createEl('p', {
-				text: 'To create a new chat, the oldest conversation will be automatically removed.'
+				text: i18n.t('ui.chatHistoryMaxLimitWarning') || 'To create a new chat, the oldest conversation will be automatically removed.'
 			});
 
 			// Actions
@@ -520,12 +568,12 @@ export class SessionManager {
 
 			const cancelBtn = actions.createEl('button', {
 				cls: 'llmsider-max-chat-limit-cancel',
-				text: 'Cancel'
+				text: i18n.t('ui.cancel') || 'Cancel'
 			});
 
 			const proceedBtn = actions.createEl('button', {
 				cls: 'llmsider-max-chat-limit-proceed',
-				text: 'Continue & Remove Oldest'
+				text: i18n.t('ui.chatHistoryMaxLimitProceed') || 'Continue & Remove Oldest'
 			});
 
 			const cleanup = () => {

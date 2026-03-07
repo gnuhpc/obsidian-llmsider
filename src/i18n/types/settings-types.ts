@@ -89,6 +89,9 @@ export interface ToolManagementTranslation {
   disableAllMCPDesc: string;
   resetMCP: string;
   resetMCPDesc: string;
+
+  // Section label
+  availableTools: string;
 }
 
 export interface SettingsPageTranslation {

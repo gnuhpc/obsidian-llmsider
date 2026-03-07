@@ -23,11 +23,11 @@ export class ConnectionModal extends Modal {
 	private deploymentNameInput?: TextComponent;
 	private apiVersionInput?: TextComponent;
 	private saveButton?: HTMLButtonElement;
-	
+
 	// Free Gemini specific fields
 	private geminiPSIDInput?: TextComponent;
 	private geminiPSIDTSInput?: TextComponent;
-	
+
 	// Proxy fields
 	private proxyEnabledToggle?: HTMLInputElement;
 	private proxyTypeDropdown?: DropdownComponent;
@@ -66,8 +66,8 @@ export class ConnectionModal extends Modal {
 		contentEl.addClass('llmsider-connection-modal');
 
 		// Modal title
-		contentEl.createEl('h2', { 
-			text: this.existingConnection 
+		contentEl.createEl('h2', {
+			text: this.existingConnection
 				? this.i18n.t('ui.editConnection')
 				: this.i18n.t('ui.addNewConnection')
 		});
@@ -77,7 +77,7 @@ export class ConnectionModal extends Modal {
 
 		// Connection Type
 		const typeGroup = formContainer.createDiv({ cls: 'llmsider-form-group' });
-		
+
 		// Only show dropdown if no preset type is provided and not editing
 		if (!this.presetType && !this.existingConnection) {
 			typeGroup.createEl('label', { text: this.i18n.t('ui.connectionType'), cls: 'llmsider-form-label' });
@@ -96,41 +96,41 @@ export class ConnectionModal extends Modal {
 			this.typeDropdown.addOption('qwen', 'Qwen (通义千问)');
 			this.typeDropdown.addOption('free-qwen', 'Free Qwen (免费通义千问)');
 			this.typeDropdown.addOption('free-deepseek', 'Free DeepSeek (免费 DeepSeek)');
-			this.typeDropdown.addOption('free-gemini', 'Free Gemini (免费 Gemini)');
 			this.typeDropdown.addOption('hugging-chat', 'Hugging Chat');
 			this.typeDropdown.addOption('openai-compatible', 'OpenAI-Compatible');
+			this.typeDropdown.addOption('webllm', 'WebLLM (Beta)');
 			this.typeDropdown.selectEl.style.width = '100%';
 			this.typeDropdown.selectEl.style.boxSizing = 'border-box';
 			this.typeDropdown.setValue('openai');
 		} else {
 			// Create a hidden dropdown for internal use
 			this.typeDropdown = new DropdownComponent(typeGroup);
-		this.typeDropdown.addOption('openai', 'OpenAI');
-		this.typeDropdown.addOption('anthropic', 'Anthropic');
-		this.typeDropdown.addOption('azure-openai', 'Azure OpenAI');
-		this.typeDropdown.addOption('github-copilot', 'GitHub Copilot');
-		this.typeDropdown.addOption('gemini', 'Google Gemini');
-		this.typeDropdown.addOption('groq', 'Groq');
-		this.typeDropdown.addOption('xai', 'X.AI (Grok)');
-		this.typeDropdown.addOption('openrouter', 'OpenRouter');
-		this.typeDropdown.addOption('siliconflow', 'SiliconFlow (硅基流动)');
-		this.typeDropdown.addOption('kimi', 'Kimi (Moonshot)');
-		this.typeDropdown.addOption('ollama', 'Ollama');
-		this.typeDropdown.addOption('opencode', 'OpenCode');
-		this.typeDropdown.addOption('qwen', 'Qwen (通义千问)');
-		this.typeDropdown.addOption('free-qwen', 'Free Qwen (免费通义千问)');
-		this.typeDropdown.addOption('free-deepseek', 'Free DeepSeek (免费 DeepSeek)');
-		this.typeDropdown.addOption('free-gemini', 'Free Gemini (免费 Gemini)');
-		this.typeDropdown.addOption('hugging-chat', 'Hugging Chat');
-		this.typeDropdown.addOption('openai-compatible', 'OpenAI-Compatible');
-		
-		if (this.existingConnection) {
-			this.typeDropdown.setValue(this.existingConnection.type);
-		} else if (this.presetType) {
-			this.typeDropdown.setValue(this.presetType);
-		}
-		
-		typeGroup.style.display = 'none';
+			this.typeDropdown.addOption('openai', 'OpenAI');
+			this.typeDropdown.addOption('anthropic', 'Anthropic');
+			this.typeDropdown.addOption('azure-openai', 'Azure OpenAI');
+			this.typeDropdown.addOption('github-copilot', 'GitHub Copilot');
+			this.typeDropdown.addOption('gemini', 'Google Gemini');
+			this.typeDropdown.addOption('groq', 'Groq');
+			this.typeDropdown.addOption('xai', 'X.AI (Grok)');
+			this.typeDropdown.addOption('openrouter', 'OpenRouter');
+			this.typeDropdown.addOption('siliconflow', 'SiliconFlow (硅基流动)');
+			this.typeDropdown.addOption('kimi', 'Kimi (Moonshot)');
+			this.typeDropdown.addOption('ollama', 'Ollama');
+			this.typeDropdown.addOption('opencode', 'OpenCode');
+			this.typeDropdown.addOption('qwen', 'Qwen (通义千问)');
+			this.typeDropdown.addOption('free-qwen', 'Free Qwen (免费通义千问)');
+			this.typeDropdown.addOption('free-deepseek', 'Free DeepSeek (免费 DeepSeek)');
+			this.typeDropdown.addOption('hugging-chat', 'Hugging Chat');
+			this.typeDropdown.addOption('openai-compatible', 'OpenAI-Compatible');
+			this.typeDropdown.addOption('webllm', 'WebLLM (Beta)');
+
+			if (this.existingConnection) {
+				this.typeDropdown.setValue(this.existingConnection.type);
+			} else if (this.presetType) {
+				this.typeDropdown.setValue(this.presetType);
+			}
+
+			typeGroup.style.display = 'none';
 		}
 
 		// Connection Name
@@ -158,7 +158,7 @@ export class ConnectionModal extends Modal {
 
 		// Dynamic fields based on type
 		const dynamicFieldsContainer = formContainer.createDiv({ cls: 'llmsider-dynamic-fields' });
-		
+
 		// Proxy Configuration Section (Always visible, after dynamic fields)
 		const proxyContainer = formContainer.createDiv({ cls: 'llmsider-proxy-container' });
 		this.renderProxySettings(proxyContainer);
@@ -190,7 +190,7 @@ export class ConnectionModal extends Modal {
 			// Disable button to prevent double-click
 			saveButton.disabled = true;
 			saveButton.textContent = this.i18n.t('ui.saving') || 'Saving...';
-			
+
 			try {
 				await this.handleSave();
 			} catch (error) {
@@ -235,7 +235,7 @@ export class ConnectionModal extends Modal {
 
 			// Auth button
 			const authBtn = infoGroup.createEl('button', {
-				text: this.existingConnection?.githubToken 
+				text: this.existingConnection?.githubToken
 					? this.i18n.t('settingsPage.githubCopilotAuth.reauthenticateButton')
 					: this.i18n.t('settingsPage.githubCopilotAuth.authenticateButton'),
 				cls: 'mod-cta'
@@ -340,11 +340,11 @@ export class ConnectionModal extends Modal {
 			// Base URL (Azure endpoint)
 			const baseUrlGroup = container.createDiv({ cls: 'llmsider-form-group' });
 			baseUrlGroup.createEl('label', { text: this.i18n.t('ui.azureEndpoint'), cls: 'llmsider-form-label' });
-			baseUrlGroup.createEl('p', { 
-				text: this.i18n.t('ui.azureEndpointNote'), 
-				cls: 'llmsider-form-note' 
+			baseUrlGroup.createEl('p', {
+				text: this.i18n.t('ui.azureEndpointNote'),
+				cls: 'llmsider-form-note'
 			});
-			
+
 			this.baseUrlInput = new TextComponent(baseUrlGroup);
 			this.baseUrlInput.setPlaceholder(this.i18n.t('ui.azureEndpointPlaceholder'));
 			this.baseUrlInput.inputEl.style.width = '100%';
@@ -365,11 +365,11 @@ export class ConnectionModal extends Modal {
 			// API Version (optional)
 			const apiVersionGroup = container.createDiv({ cls: 'llmsider-form-group' });
 			apiVersionGroup.createEl('label', { text: this.i18n.t('ui.apiVersionOptional'), cls: 'llmsider-form-label' });
-			apiVersionGroup.createEl('p', { 
-				text: this.i18n.t('ui.apiVersionNote'), 
-				cls: 'llmsider-form-note' 
+			apiVersionGroup.createEl('p', {
+				text: this.i18n.t('ui.apiVersionNote'),
+				cls: 'llmsider-form-note'
 			});
-			
+
 			this.apiVersionInput = new TextComponent(apiVersionGroup);
 			this.apiVersionInput.setPlaceholder(this.i18n.t('ui.apiVersionPlaceholder'));
 			this.apiVersionInput.inputEl.style.width = '100%';
@@ -379,11 +379,11 @@ export class ConnectionModal extends Modal {
 		} else if (type === 'ollama') {
 			const baseUrlGroup = container.createDiv({ cls: 'llmsider-form-group' });
 			baseUrlGroup.createEl('label', { text: this.i18n.t('ui.ollamaServerUrl'), cls: 'llmsider-form-label' });
-			baseUrlGroup.createEl('p', { 
-				text: this.i18n.t('ui.ollamaServerUrlNote'), 
-				cls: 'llmsider-form-note' 
+			baseUrlGroup.createEl('p', {
+				text: this.i18n.t('ui.ollamaServerUrlNote'),
+				cls: 'llmsider-form-note'
 			});
-			
+
 			this.baseUrlInput = new TextComponent(baseUrlGroup);
 			this.baseUrlInput.setPlaceholder(this.i18n.t('ui.ollamaServerUrlPlaceholder'));
 			this.baseUrlInput.inputEl.style.width = '100%';
@@ -434,11 +434,11 @@ export class ConnectionModal extends Modal {
 			// Region (optional for Gemini)
 			const regionGroup = container.createDiv({ cls: 'llmsider-form-group' });
 			regionGroup.createEl('label', { text: this.i18n.t('ui.regionOptional'), cls: 'llmsider-form-label' });
-			regionGroup.createEl('p', { 
-				text: this.i18n.t('ui.regionNote'), 
-				cls: 'llmsider-form-note' 
+			regionGroup.createEl('p', {
+				text: this.i18n.t('ui.regionNote'),
+				cls: 'llmsider-form-note'
 			});
-			
+
 			this.regionInput = new TextComponent(regionGroup);
 			this.regionInput.setPlaceholder(this.i18n.t('ui.regionPlaceholder'));
 			this.regionInput.inputEl.style.width = '100%';
@@ -449,11 +449,11 @@ export class ConnectionModal extends Modal {
 			// Region (optional for Qwen)
 			const regionGroup = container.createDiv({ cls: 'llmsider-form-group' });
 			regionGroup.createEl('label', { text: this.i18n.t('ui.regionOptional'), cls: 'llmsider-form-label' });
-			regionGroup.createEl('p', { 
-				text: this.i18n.t('ui.regionAlibabaNote'), 
-				cls: 'llmsider-form-note' 
+			regionGroup.createEl('p', {
+				text: this.i18n.t('ui.regionAlibabaNote'),
+				cls: 'llmsider-form-note'
 			});
-			
+
 			this.regionInput = new TextComponent(regionGroup);
 			this.regionInput.setPlaceholder(this.i18n.t('ui.regionAlibabaPlaceholder'));
 			this.regionInput.inputEl.style.width = '100%';
@@ -596,104 +596,6 @@ export class ConnectionModal extends Modal {
 				}
 				this.apiKeyInput.setPlaceholder(this.i18n.t('ui.freeDeepSeekApiKeyPlaceholder'));
 			}
-		} else if (type === 'free-gemini') {
-			// Free Gemini - show info box explaining cookies requirement
-			const infoGroup = instructionsContainer.createDiv({ cls: 'llmsider-form-group' });
-			const infoBox = infoGroup.createDiv({ cls: 'llmsider-info-box' });
-			infoBox.style.padding = '12px';
-			infoBox.style.backgroundColor = 'var(--background-secondary)';
-			infoBox.style.borderRadius = '4px';
-			infoBox.style.marginTop = '8px';
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiTitle'),
-				cls: 'llmsider-info-title'
-			}).style.fontWeight = 'bold';
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiDesc'),
-				cls: 'llmsider-form-note'
-			});
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiHowToGetCookies'),
-				cls: 'llmsider-form-note'
-			}).style.fontWeight = 'bold';
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiStep1'),
-				cls: 'llmsider-form-note'
-			});
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiStep2'),
-				cls: 'llmsider-form-note'
-			});
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiStep3'),
-				cls: 'llmsider-form-note'
-			});
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiStep4'),
-				cls: 'llmsider-form-note'
-			});
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiStep5'),
-				cls: 'llmsider-form-note'
-			});
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiStep6'),
-				cls: 'llmsider-form-note'
-			});
-
-			infoBox.createEl('p', {
-				text: this.i18n.t('ui.freeGeminiNote'),
-				cls: 'llmsider-form-note'
-			}).style.fontStyle = 'italic';
-
-			// Hide the default API key field
-			const apiKeyGroupGemini = this.apiKeyInput.inputEl.closest('.llmsider-form-group') as HTMLElement;
-			if (apiKeyGroupGemini) {
-				apiKeyGroupGemini.style.display = 'none';
-			}
-
-			// Add separate fields for __Secure-1PSID
-			const psidGroup = container.createDiv({ cls: 'llmsider-form-group' });
-			psidGroup.createEl('label', { text: '__Secure-1PSID:', cls: 'llmsider-form-label' });
-			this.geminiPSIDInput = new TextComponent(psidGroup);
-			this.geminiPSIDInput.setPlaceholder(this.i18n.t('ui.freeGeminiPSIDPlaceholder'));
-			this.geminiPSIDInput.inputEl.type = 'password';
-			this.geminiPSIDInput.inputEl.style.width = '100%';
-			this.geminiPSIDInput.inputEl.style.boxSizing = 'border-box';
-			
-			// Parse existing value if editing
-			if (this.existingConnection && this.existingConnection.apiKey) {
-				const parts = this.existingConnection.apiKey.split('|');
-				if (parts.length >= 1) {
-					this.geminiPSIDInput.setValue(parts[0]);
-				}
-			}
-
-			// Add separate fields for __Secure-1PSIDTS
-			const psidtsGroup = container.createDiv({ cls: 'llmsider-form-group' });
-			psidtsGroup.createEl('label', { text: '__Secure-1PSIDTS:', cls: 'llmsider-form-label' });
-			this.geminiPSIDTSInput = new TextComponent(psidtsGroup);
-			this.geminiPSIDTSInput.setPlaceholder(this.i18n.t('ui.freeGeminiPSIDTSPlaceholder'));
-			this.geminiPSIDTSInput.inputEl.type = 'password';
-			this.geminiPSIDTSInput.inputEl.style.width = '100%';
-			this.geminiPSIDTSInput.inputEl.style.boxSizing = 'border-box';
-			
-			// Parse existing value if editing
-			if (this.existingConnection && this.existingConnection.apiKey) {
-				const parts = this.existingConnection.apiKey.split('|');
-				if (parts.length >= 2) {
-					this.geminiPSIDTSInput.setValue(parts[1]);
-				}
-			}
 		} else if (type === 'siliconflow' || type === 'kimi') {
 			const baseUrlGroup = container.createDiv({ cls: 'llmsider-form-group' });
 			baseUrlGroup.createEl('label', { text: this.i18n.t('ui.baseUrl'), cls: 'llmsider-form-label' });
@@ -701,7 +603,7 @@ export class ConnectionModal extends Modal {
 				text: this.i18n.t('ui.baseUrlNote'),
 				cls: 'llmsider-form-note'
 			});
-			
+
 			this.baseUrlInput = new TextComponent(baseUrlGroup);
 			this.baseUrlInput.setPlaceholder(this.i18n.t('ui.baseUrlPlaceholder'));
 			this.baseUrlInput.inputEl.style.width = '100%';
@@ -714,17 +616,39 @@ export class ConnectionModal extends Modal {
 			// Base URL (required for OpenAI-Compatible)
 			const baseUrlGroup = container.createDiv({ cls: 'llmsider-form-group' });
 			baseUrlGroup.createEl('label', { text: this.i18n.t('ui.baseUrl'), cls: 'llmsider-form-label' });
-			baseUrlGroup.createEl('p', { 
-				text: this.i18n.t('ui.baseUrlNote'), 
-				cls: 'llmsider-form-note' 
+			baseUrlGroup.createEl('p', {
+				text: this.i18n.t('ui.baseUrlNote'),
+				cls: 'llmsider-form-note'
 			});
-			
+
 			this.baseUrlInput = new TextComponent(baseUrlGroup);
 			this.baseUrlInput.setPlaceholder(this.i18n.t('ui.baseUrlPlaceholder'));
 			this.baseUrlInput.inputEl.style.width = '100%';
 			if (this.existingConnection && this.existingConnection.baseUrl) {
 				this.baseUrlInput.setValue(this.existingConnection.baseUrl);
 			}
+		} else if (type === 'webllm') {
+			const apiKeyGroup = this.apiKeyInput.inputEl.closest('.llmsider-form-group') as HTMLElement;
+			if (apiKeyGroup) {
+				apiKeyGroup.style.display = 'none';
+			}
+
+			const infoGroup = instructionsContainer.createDiv({ cls: 'llmsider-form-group' });
+			const infoBox = infoGroup.createDiv({ cls: 'llmsider-info-box' });
+			infoBox.style.padding = '12px';
+			infoBox.style.backgroundColor = 'var(--background-secondary)';
+			infoBox.style.borderRadius = '4px';
+			infoBox.style.marginTop = '8px';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.webllm.connectionTitle'),
+				cls: 'llmsider-info-title'
+			}).style.fontWeight = 'bold';
+
+			infoBox.createEl('p', {
+				text: this.i18n.t('ui.webllm.connectionDesc'),
+				cls: 'llmsider-form-note'
+			}).style.marginTop = '8px';
 		}
 		// Anthropic, Groq, and X.AI don't need extra fields
 	}
@@ -739,7 +663,7 @@ export class ConnectionModal extends Modal {
 
 			// Step 1: Get device code
 			const deviceCode = await GitHubAuth.getDeviceCode();
-			
+
 			// Show user code with copy button
 			const statusEl = infoBox.createEl('p', {
 				cls: 'llmsider-form-note'
@@ -781,7 +705,7 @@ export class ConnectionModal extends Modal {
 
 			// Step 2: Poll for access token
 			const githubToken = await GitHubAuth.pollAccessToken(deviceCode);
-			
+
 			// Step 3: Get Copilot token
 			const copilotData = await GitHubAuth.getCopilotToken(githubToken);
 
@@ -796,7 +720,7 @@ export class ConnectionModal extends Modal {
 			// Update UI
 			statusEl.innerHTML = `${this.i18n.t('settingsPage.githubCopilotAuth.successfullyAuthenticated')} <strong>${user.login}</strong>`;
 			statusEl.style.color = 'var(--text-success)';
-			
+
 			button.textContent = this.i18n.t('settingsPage.githubCopilotAuth.reauthenticateButton');
 			button.disabled = false;
 
@@ -815,18 +739,23 @@ export class ConnectionModal extends Modal {
 		if (this.proxySection) {
 			this.proxySection.remove();
 		}
-		
+
+		const type = this.typeDropdown.getValue();
+		if (type === 'webllm') return;
+
 		// Proxy settings container
 		this.proxySection = container.createDiv({ cls: 'llmsider-proxy-settings' });
 		this.proxySection.style.marginTop = beforeInfoBox ? '0px' : '24px';
-		this.proxySection.style.marginBottom = beforeInfoBox ? '16px' : '0px';		// Enable proxy toggle - always visible
+		this.proxySection.style.marginBottom = beforeInfoBox ? '16px' : '0px';
+
+		// Enable proxy toggle - always visible
 		const proxyEnableGroup = this.proxySection.createDiv({ cls: 'llmsider-form-group' });
 		proxyEnableGroup.style.display = 'flex';
 		proxyEnableGroup.style.flexDirection = 'row';
 		proxyEnableGroup.style.alignItems = 'center';
 		proxyEnableGroup.style.justifyContent = 'flex-start';
 		proxyEnableGroup.style.gap = '8px';
-		
+
 		proxyEnableGroup.createEl('label', { text: this.i18n.t('ui.enableProxy') || 'Enable Proxy' });
 		this.proxyEnabledToggle = proxyEnableGroup.createEl('input', { type: 'checkbox' });
 		this.proxyEnabledToggle.checked = this.existingConnection?.proxyEnabled || false;
@@ -872,7 +801,7 @@ export class ConnectionModal extends Modal {
 		authGroup.style.alignItems = 'center';
 		authGroup.style.gap = '8px';
 		authGroup.style.marginTop = '12px';
-		
+
 		this.proxyAuthToggle = authGroup.createEl('input', { type: 'checkbox' });
 		this.proxyAuthToggle.checked = this.existingConnection?.proxyAuth || false;
 		authGroup.createEl('label', { text: this.i18n.t('ui.proxyRequiresAuth') || 'Proxy requires authentication' });
@@ -918,32 +847,12 @@ export class ConnectionModal extends Modal {
 
 	private async handleSave() {
 		try {
-		const type = this.typeDropdown.getValue() as 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'free-gemini' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'hugging-chat' | 'github-copilot' | 'opencode' | 'openrouter';
-		const name = this.nameInput.getValue().trim();
-		let apiKey = (type === 'github-copilot' || type === 'opencode') ? '' : this.apiKeyInput.getValue().trim();
-			
-			// For Free Gemini, combine the two cookie fields
-			if (type === 'free-gemini') {
-				const psid = this.geminiPSIDInput?.getValue().trim() || '';
-				const psidts = this.geminiPSIDTSInput?.getValue().trim() || '';
-				
-				if (!psid || !psidts) {
-					new Notice(this.i18n.t('ui.bothCookiesRequired'));
-					if (!psid) {
-						this.geminiPSIDInput?.inputEl.focus();
-					} else {
-						this.geminiPSIDTSInput?.inputEl.focus();
-					}
-					this.restoreSaveButton();
-					return;
-				}
-				
-				// Combine with | separator
-				apiKey = `${psid}|${psidts}`;
-			}
-			
+			const type = this.typeDropdown.getValue() as 'openai' | 'anthropic' | 'qwen' | 'free-qwen' | 'free-deepseek' | 'openai-compatible' | 'siliconflow' | 'kimi' | 'azure-openai' | 'ollama' | 'gemini' | 'groq' | 'xai' | 'hugging-chat' | 'github-copilot' | 'opencode' | 'openrouter' | 'webllm';
+			const name = this.nameInput.getValue().trim();
+			let apiKey = (type === 'github-copilot' || type === 'opencode' || type === 'webllm') ? '' : this.apiKeyInput.getValue().trim();
+
 			Logger.debug('[ConnectionModal] Saving connection:', { name, type, hasApiKey: !!apiKey });
-			
+
 			// Validation
 			if (!name) {
 				new Notice(this.i18n.t('ui.connectionNameRequired'));
@@ -951,7 +860,7 @@ export class ConnectionModal extends Modal {
 				this.restoreSaveButton();
 				return;
 			}
-			
+
 			if (!type) {
 				Logger.error('[ConnectionModal] Type is empty!', { dropdownValue: this.typeDropdown.getValue() });
 				new Notice(this.i18n.t('ui.connectionTypeRequired'));
@@ -959,12 +868,12 @@ export class ConnectionModal extends Modal {
 				return;
 			}
 
-		if (type !== 'github-copilot' && type !== 'ollama' && type !== 'opencode' && !apiKey) {
-			new Notice(this.i18n.t('ui.apiKeyRequired'));
-			this.apiKeyInput.inputEl.focus();
-			this.restoreSaveButton();
-			return;
-		}			// GitHub Copilot specific validation
+			if (type !== 'github-copilot' && type !== 'ollama' && type !== 'opencode' && type !== 'webllm' && !apiKey) {
+				new Notice(this.i18n.t('ui.apiKeyRequired'));
+				this.apiKeyInput.inputEl.focus();
+				this.restoreSaveButton();
+				return;
+			}			// GitHub Copilot specific validation
 			if (type === 'github-copilot') {
 				const tempGitHubToken = this._tempGitHubToken;
 				if (!tempGitHubToken && !this.existingConnection?.githubToken) {
@@ -985,7 +894,7 @@ export class ConnectionModal extends Modal {
 				baseUrl = this.baseUrlInput?.getValue().trim();
 				deploymentName = this.deploymentNameInput?.getValue().trim();
 				apiVersion = this.apiVersionInput?.getValue().trim() || undefined;
-				
+
 				if (!baseUrl) {
 					new Notice(this.i18n.t('ui.azureEndpointRequired'));
 					this.baseUrlInput?.inputEl.focus();
@@ -998,22 +907,22 @@ export class ConnectionModal extends Modal {
 					this.restoreSaveButton();
 					return;
 				}
-		} else if (type === 'ollama' || type === 'openai-compatible') {
-			baseUrl = this.baseUrlInput?.getValue().trim();
-			if (!baseUrl) {
-				const typeLabel = type === 'ollama' ? 'Ollama' : 'OpenAI-Compatible';
-				new Notice(this.i18n.t('ui.baseUrlRequired', { type: typeLabel }));
-				this.baseUrlInput?.inputEl.focus();
-				this.restoreSaveButton();
-				return;
-			}
-		} else if (type === 'siliconflow') {
-			baseUrl = this.baseUrlInput?.getValue().trim() || 'https://api.siliconflow.cn/v1';
-		} else if (type === 'kimi') {
-			baseUrl = this.baseUrlInput?.getValue().trim() || 'https://api.moonshot.cn/v1';
-		} else if (type === 'openai') {
+			} else if (type === 'ollama' || type === 'openai-compatible') {
+				baseUrl = this.baseUrlInput?.getValue().trim();
+				if (!baseUrl) {
+					const typeLabel = type === 'ollama' ? 'Ollama' : 'OpenAI-Compatible';
+					new Notice(this.i18n.t('ui.baseUrlRequired', { type: typeLabel }));
+					this.baseUrlInput?.inputEl.focus();
+					this.restoreSaveButton();
+					return;
+				}
+			} else if (type === 'siliconflow') {
+				baseUrl = this.baseUrlInput?.getValue().trim() || 'https://api.siliconflow.cn/v1';
+			} else if (type === 'kimi') {
+				baseUrl = this.baseUrlInput?.getValue().trim() || 'https://api.moonshot.cn/v1';
+			} else if (type === 'openai') {
 				organizationId = this.organizationIdInput?.getValue().trim() || undefined;
-			} else if (type === 'gemini' || type === 'qwen' || type === 'free-qwen' || type === 'free-deepseek' || type === 'free-gemini') {
+			} else if (type === 'gemini' || type === 'qwen' || type === 'free-qwen' || type === 'free-deepseek') {
 				region = this.regionInput?.getValue().trim() || undefined;
 			}
 

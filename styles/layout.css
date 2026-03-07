@@ -156,43 +156,43 @@
     align-items: center;
     justify-content: center;
     flex: 1;
-    padding: 60px 24px 40px;
+    padding: 52px 24px 34px;
     text-align: center;
     color: var(--text-normal);
     animation: fadeIn 0.5s ease-out;
 }
 
 .llmsider-hero-icon {
-    margin-bottom: 18px;
+    margin-bottom: 14px;
     color: var(--interactive-accent);
     background: rgba(var(--interactive-accent-rgb), 0.12);
-    width: 72px;
-    height: 72px;
-    border-radius: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
 }
 
 .llmsider-hero-icon-inner svg {
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     stroke-width: 2;
 }
 
 .llmsider-hero-title {
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 600;
-    margin: 0 0 10px 0;
+    margin: 0 0 8px 0;
     color: var(--text-normal);
 }
 
 .llmsider-hero-subtitle {
-    font-size: 15px;
+    font-size: 13px;
     color: var(--text-muted);
     margin: 0;
-    max-width: 460px;
+    max-width: 420px;
     line-height: 1.6;
 }
 
@@ -470,12 +470,12 @@
     justify-content: center;
     flex: 1;
     text-align: center;
-    padding: 40px 20px;
+    padding: 28px 20px;
 }
 
 .llmsider-welcome-icon {
-    font-size: 48px;
-    margin-bottom: 24px;
+    font-size: 34px;
+    margin-bottom: 14px;
     background: linear-gradient(135deg, #007AFF, #5856D6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -483,8 +483,8 @@
 }
 
 .llmsider-welcome-text h1 {
-    margin: 0 0 16px 0;
-    font-size: 28px;
+    margin: 0 0 10px 0;
+    font-size: 22px;
     font-weight: 400;
     color: var(--text-normal);
     letter-spacing: -0.02em;
@@ -492,8 +492,8 @@
 
 .llmsider-welcome-subtext {
     color: var(--text-muted);
-    font-size: 14px;
-    margin-bottom: 32px;
+    font-size: 12px;
+    margin-bottom: 22px;
 }
 
 .llmsider-warning {

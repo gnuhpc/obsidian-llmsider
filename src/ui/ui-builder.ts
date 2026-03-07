@@ -1902,6 +1902,7 @@ export class UIBuilder {
 
 		// Create provider options grouped by connection
 		connections.forEach((connection: LLMConnection) => {
+			if (!connection.enabled) return;
 			const connectionModels = models.filter((m: LLMModel) => m.connectionId === connection.id && m.enabled);
 			Logger.debug(`[UI] Connection ${connection.id} (${connection.name}) - enabled models:`, connectionModels.length, 'of', models.filter((m: LLMModel) => m.connectionId === connection.id).length);
 			if (connectionModels.length === 0) return;

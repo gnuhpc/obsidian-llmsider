@@ -51,13 +51,13 @@ export const zhAutocomplete = {
   triggerDelayDesc: '显示建议前的延迟时间(毫秒)',
   maxSuggestions: '候选数量',
   maxSuggestionsDesc: '每次生成的补全候选数量（1-3个），可使用上下箭头切换',
-  
+
   // 颗粒度选项
   word: '单词',
   phrase: '短语',
   shortSentence: '短句',
   longSentence: '长句',
-  
+
   // 提示消息
   doubleTapTab: '双击 Tab 键补全, Esc 键关闭',
   completionEnabled: '自动补全已启用',
@@ -113,7 +113,7 @@ export const zhQuickChatUI = {
   quickActionsAvailable: '快捷操作 (共 {count} 项)',
   quickActionsMatching: '快捷操作 (匹配 {count} 项)',
   noMatchingPrompts: '未找到匹配的提示词',
-  chatInputPlaceholder: '添加上下文 (@)，内置提示词 (#)',
+  chatInputPlaceholder: '添加上下文 (@)，内置提示词 (/)',
   editModePlaceholder: '告诉我如何修改笔记...',
   accept: '接受',
   acceptChanges: '接受更改',
@@ -124,6 +124,7 @@ export const zhQuickChatUI = {
   insertBefore: '插入到选中块之前',
   insertAfter: '插入到选中块之后',
   recentPrompts: '最近使用',
+  customPrompts: '自定义提示词',
   builtInPrompts: '内置操作',
   addToBuiltIn: '添加到内置提示词'
 };

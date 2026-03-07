@@ -51,13 +51,13 @@ export const enAutocomplete = {
   triggerDelayDesc: 'Delay in milliseconds before showing suggestions',
   maxSuggestions: 'Max Suggestions',
   maxSuggestionsDesc: 'Number of completion candidates to generate (1-3), use up/down arrows to switch',
-  
+
   // Granularity options
   word: 'Word',
   phrase: 'Phrase',
   shortSentence: 'Short Sentence',
   longSentence: 'Long Sentence',
-  
+
   // Prompts
   doubleTapTab: 'Double-tap Tab to complete, Esc to dismiss',
   completionEnabled: 'Autocomplete enabled',
@@ -113,7 +113,7 @@ export const enQuickChatUI = {
   quickActionsAvailable: 'Quick Actions ({count} available)',
   quickActionsMatching: 'Quick Actions (matching {count})',
   noMatchingPrompts: 'No matching prompts found',
-  chatInputPlaceholder: 'Add context (@), built-in prompts (#)',
+  chatInputPlaceholder: 'Add context (@), built-in prompts (/)',
   editModePlaceholder: 'Tell me how to modify the note...',
   accept: 'Accept',
   acceptChanges: 'Accept changes',
@@ -124,6 +124,7 @@ export const enQuickChatUI = {
   insertBefore: 'Insert before selection',
   insertAfter: 'Insert after selection',
   recentPrompts: 'Recent',
+  customPrompts: 'Custom Prompts',
   builtInPrompts: 'Built-in Actions',
   addToBuiltIn: 'Add to built-in prompts'
 };
