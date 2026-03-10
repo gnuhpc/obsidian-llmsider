@@ -3,6 +3,7 @@
  */
 
 import { enNoteManagementTools } from './note-management';
+import { enCoreTools } from './core';
 import { enWebTools } from './web';
 import { enStockTools } from './stock';
 import { enFuturesTools } from './futures';
@@ -24,6 +25,7 @@ import { enImdbTools } from './imdb';
 import { enDevToTools } from './devto';
 
 export const enTools = {
+	...enCoreTools,
 	...enNoteManagementTools,
 	...enWebTools,
 	...enStockTools,

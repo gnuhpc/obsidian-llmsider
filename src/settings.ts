@@ -34,6 +34,7 @@ import { AdvancedSettingsRenderer } from './settings/renderers/advanced-settings
 import { ToolManagementSectionRenderer } from './settings/renderers/tool-management-section-renderer';
 import { PromptManagementRenderer } from './settings/renderers/prompt-management-renderer';
 import { MemorySettingsRenderer } from './settings/renderers/memory-settings-renderer';
+import { SkillManagementRenderer } from './settings/renderers/skill-management-renderer';
 // Import modals
 import { MCPToolsModal } from './settings/modals/mcp-tools-modal';
 import { MCPToolDetailsModal } from './settings/modals/mcp-tool-details-modal';
@@ -67,6 +68,7 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 	private advancedSettingsRenderer: AdvancedSettingsRenderer;
 	private toolManagementSectionRenderer: ToolManagementSectionRenderer;
 	private promptManagementRenderer: PromptManagementRenderer;
+	private skillManagementRenderer: SkillManagementRenderer;
 	private memorySettingsRenderer: MemorySettingsRenderer;
 	// Utils
 	private mcpCardUpdater: MCPCardUpdater;
@@ -110,6 +112,7 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 		this.advancedSettingsRenderer = new AdvancedSettingsRenderer(this.plugin, this.i18n, this.connectionModelRenderer);
 		this.toolManagementSectionRenderer = new ToolManagementSectionRenderer(this.i18n, this.builtInToolsRenderer);
 		this.promptManagementRenderer = new PromptManagementRenderer(this.plugin, this.i18n, () => this.display());
+		this.skillManagementRenderer = new SkillManagementRenderer(this.plugin, this.i18n, () => this.display());
 		this.memorySettingsRenderer = new MemorySettingsRenderer(this.app, this.plugin, this.i18n);
 
 		// Initialize modals
@@ -176,6 +179,9 @@ export class LLMSiderSettingTab extends PluginSettingTab {
 
 		// Prompt Management Section
 		await this.promptManagementRenderer.render(containerEl);
+
+		// Skills Management Section
+		await this.skillManagementRenderer.render(containerEl);
 
 		// Memory Settings Section
 		await this.memorySettingsRenderer.render(containerEl);

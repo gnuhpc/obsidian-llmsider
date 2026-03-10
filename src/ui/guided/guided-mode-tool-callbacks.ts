@@ -41,7 +41,7 @@ export interface IToolCallbackDeps {
 }
 
 /**
- * Handles tool-related callbacks for Mastra guided mode
+ * Handles tool-related callbacks for the Mastra guided-assist flow
  */
 export class GuidedModeToolCallbacks {
 	constructor(private deps: IToolCallbackDeps) {}

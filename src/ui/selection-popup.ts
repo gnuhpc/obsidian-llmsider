@@ -69,9 +69,14 @@ export class SelectionPopup {
 	private selectionChangeDebounce: number | null = null;
 	private lastSelectionText = '';
 	private lastAutoReferenceText = '';
+	private suppressSelectionClickUntil = 0;
+	private mouseDownX = 0;
+	private mouseDownY = 0;
 	
 	// Bound event handlers for proper cleanup
+	private boundHandleMouseDown: (e: MouseEvent) => void;
 	private boundHandleMouseUp: (e: MouseEvent) => void;
+	private boundHandleClickCapture: (e: MouseEvent) => void;
 	private boundHandleSelectionChange: () => void;
 	private boundHandleBeforeUnload: () => void;
 
@@ -80,7 +85,9 @@ export class SelectionPopup {
 		this.plugin = plugin;
 		
 		// Bind event handlers
+		this.boundHandleMouseDown = (e: MouseEvent) => this.handleMouseDown(e);
 		this.boundHandleMouseUp = (e: MouseEvent) => this.handleMouseUp(e);
+		this.boundHandleClickCapture = (e: MouseEvent) => this.handleClickCapture(e);
 		this.boundHandleSelectionChange = () => this.handleSelectionChange();
 		this.boundHandleBeforeUnload = () => this.destroy();
 		
@@ -94,8 +101,11 @@ export class SelectionPopup {
 		// Remove any existing listeners first
 		this.removeEventListeners();
 		
+		document.addEventListener('mousedown', this.boundHandleMouseDown);
 		// Listen to mouseup for selection changes
 		document.addEventListener('mouseup', this.boundHandleMouseUp);
+		// Intercept the synthetic click that can follow drag-selection in reading view.
+		document.addEventListener('click', this.boundHandleClickCapture, true);
 		
 		// Listen to selectionchange as backup
 		document.addEventListener('selectionchange', this.boundHandleSelectionChange);
@@ -108,9 +118,19 @@ export class SelectionPopup {
 	 * Remove event listeners
 	 */
 	private removeEventListeners(): void {
+		document.removeEventListener('mousedown', this.boundHandleMouseDown);
 		document.removeEventListener('mouseup', this.boundHandleMouseUp);
+		document.removeEventListener('click', this.boundHandleClickCapture, true);
 		document.removeEventListener('selectionchange', this.boundHandleSelectionChange);
 		window.removeEventListener('beforeunload', this.boundHandleBeforeUnload);
+	}
+
+	/**
+	 * Track the drag start point so we can distinguish a real selection drag from a normal click.
+	 */
+	private handleMouseDown(event: MouseEvent): void {
+		this.mouseDownX = event.clientX;
+		this.mouseDownY = event.clientY;
 	}
 
 	/**
@@ -119,8 +139,57 @@ export class SelectionPopup {
 	private handleMouseUp(event: MouseEvent): void {
 		// Small delay to ensure selection is complete
 		setTimeout(() => {
+			this.updateSelectionClickGuard(event);
 			this.checkSelection(event.clientX, event.clientY);
 		}, 10);
+	}
+
+	private updateSelectionClickGuard(event: MouseEvent): void {
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const isReadingView = activeView?.getMode() === 'preview';
+		const selection = window.getSelection();
+		const selectedText = selection?.toString().trim() || '';
+		const dragDistance = Math.hypot(
+			event.clientX - this.mouseDownX,
+			event.clientY - this.mouseDownY
+		);
+
+		if (isReadingView && selectedText && !selection?.isCollapsed && dragDistance >= 4) {
+			this.suppressSelectionClickUntil = Date.now() + 250;
+			return;
+		}
+
+		this.suppressSelectionClickUntil = 0;
+	}
+
+	private handleClickCapture(event: MouseEvent): void {
+		if (Date.now() > this.suppressSelectionClickUntil) {
+			return;
+		}
+
+		const target = event.target as HTMLElement | null;
+		if (!target || target.closest('.llmsider-selection-popup')) {
+			return;
+		}
+
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!activeView || activeView.getMode() !== 'preview') {
+			return;
+		}
+
+		const selection = window.getSelection();
+		const hasSelection = !!selection && !selection.isCollapsed && !!selection.toString().trim();
+		const isInRenderedMarkdown = !!target.closest('.markdown-reading-view, .markdown-preview-view, .markdown-rendered');
+
+		if (!hasSelection || !isInRenderedMarkdown) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		event.stopImmediatePropagation();
+		this.suppressSelectionClickUntil = 0;
+		Logger.debug('[SelectionPopup] Suppressed click after drag selection in reading view');
 	}
 
 	/**
@@ -339,17 +408,22 @@ export class SelectionPopup {
 		}
 		
 
-		// Get selection bounding rect
+		// Get selection anchor rect. Prefer mouse position so the popup appears
+		// next to the selection cursor instead of the whole selection block.
 		let rect: DOMRect;
 		
 		if (isFromWebViewer) {
 			// For web viewer selections, use mouse position since we can't access the actual selection rect
 			rect = new DOMRect(mouseX, mouseY, 0, 0);
 		} else {
-			// For normal selections, use the selection range
+			// For normal selections, prefer the mouseup position and fall back to the range bounds.
 			try {
-				const range = selection!.getRangeAt(0);
-				rect = range.getBoundingClientRect();
+				if (mouseX > 0 || mouseY > 0) {
+					rect = new DOMRect(mouseX, mouseY, 0, 0);
+				} else {
+					const range = selection!.getRangeAt(0);
+					rect = range.getBoundingClientRect();
+				}
 			} catch (error) {
 				rect = new DOMRect(mouseX, mouseY, 0, 0);
 			}
@@ -374,8 +448,15 @@ export class SelectionPopup {
 			return;
 		}
 
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const activeFile = activeView?.file ?? this.app.workspace.getActiveFile();
+		if (!activeFile) {
+			Logger.debug('[SelectionPopup] No active file available when restoring current note context');
+			return;
+		}
+
 		contextManager.clearContext();
-		await contextManager.includeCurrentNote();
+		await contextManager.addFileToContext(activeFile);
 
 		if ((chatView as unknown).updateContextDisplay) {
 			(chatView as unknown).updateContextDisplay();
@@ -466,39 +547,6 @@ export class SelectionPopup {
 			return;
 		}
 
-		// Position the popup
-		// For web viewer, place near mouse cursor; for normal editor, place near selection
-		const popupHeight = 45; // Approximate height for horizontal button layout
-		const spacing = 8; // Space between cursor/selection and popup
-		
-		let top: number;
-		let left: number;
-		
-		if (isFromWebViewer) {
-			// For web viewer, use mouse position (from rect which contains mouse coordinates)
-			top = rect.top + window.scrollY + spacing;
-			left = rect.left + window.scrollX + spacing;
-			// No transform needed for mouse position
-			this.popupEl.style.transform = 'none';
-		} else {
-			// For normal editor, place above selection by default, or below if not enough space
-			top = rect.top + window.scrollY - popupHeight - spacing;
-			
-			// If not enough space above, place below
-			if (rect.top < popupHeight + spacing) {
-				top = rect.bottom + window.scrollY + spacing;
-			}
-			
-			// Center horizontally relative to selection
-			left = rect.left + window.scrollX + (rect.width / 2);
-			this.popupEl.style.transform = 'translateX(-50%)';
-		}
-		
-		this.popupEl.style.position = 'absolute';
-		this.popupEl.style.top = `${top}px`;
-		this.popupEl.style.left = `${left}px`;
-		this.popupEl.style.zIndex = '1000';
-
 		// Handle mouse enter/leave for popup
 		this.popupEl.addEventListener('mouseenter', () => {
 			this.isMouseOverPopup = true;
@@ -516,8 +564,49 @@ export class SelectionPopup {
 		// Add to document
 		document.body.appendChild(this.popupEl);
 
+		this.positionPopup(rect, isFromWebViewer);
+
 		// Schedule auto-hide
 		this.scheduleHide();
+	}
+
+	private positionPopup(rect: DOMRect, isFromWebViewer: boolean): void {
+		if (!this.popupEl) {
+			return;
+		}
+
+		const spacing = 10;
+		const viewportPadding = 8;
+		const scrollX = window.scrollX;
+		const scrollY = window.scrollY;
+		const popupWidth = this.popupEl.offsetWidth || 80;
+		const popupHeight = this.popupEl.offsetHeight || 45;
+
+		let left = rect.right + scrollX + spacing;
+		let top = rect.bottom + scrollY + spacing;
+
+		if (isFromWebViewer) {
+			left = rect.left + scrollX + spacing;
+			top = rect.top + scrollY + spacing;
+		}
+
+		const maxLeft = scrollX + window.innerWidth - popupWidth - viewportPadding;
+		const maxTop = scrollY + window.innerHeight - popupHeight - viewportPadding;
+
+		if (left > maxLeft) {
+			left = Math.max(scrollX + viewportPadding, rect.left + scrollX - popupWidth - spacing);
+		}
+
+		if (top > maxTop) {
+			top = Math.max(scrollY + viewportPadding, rect.top + scrollY - popupHeight - spacing);
+		}
+
+		this.popupEl.style.setProperty('--llmsider-popup-show-transform', 'translateY(0)');
+		this.popupEl.style.setProperty('--llmsider-popup-hide-transform', 'translateY(-8px)');
+		this.popupEl.style.position = 'absolute';
+		this.popupEl.style.top = `${top}px`;
+		this.popupEl.style.left = `${Math.max(scrollX + viewportPadding, left)}px`;
+		this.popupEl.style.zIndex = '1000';
 	}
 
 	/**

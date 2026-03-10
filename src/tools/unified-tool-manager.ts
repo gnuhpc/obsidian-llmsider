@@ -54,6 +54,29 @@ export class UnifiedToolManager {
     this.configDb = configDb;
   }
 
+  private extractBuiltInToolError(result: Record<string, unknown>): string | undefined {
+    const directError = typeof result.error === 'string' ? result.error.trim() : '';
+    if (directError) {
+      return directError;
+    }
+
+    const stderr = typeof result.stderr === 'string' ? result.stderr.trim() : '';
+    if (stderr) {
+      return stderr;
+    }
+
+    const message = typeof result.message === 'string' ? result.message.trim() : '';
+    if (message) {
+      return message;
+    }
+
+    if (typeof result.exitCode === 'number') {
+      return `Tool exited with code ${result.exitCode}`;
+    }
+
+    return undefined;
+  }
+
   /**
    * Check if a built-in tool is enabled
    * Directly queries database for real-time permission state
@@ -65,7 +88,7 @@ export class UnifiedToolManager {
     }
     
     const isEnabled = this.configDb.isBuiltInToolEnabled(toolName);
-    Logger.debug(`[UnifiedToolManager] isBuiltInToolEnabled("${toolName}") = ${isEnabled} [caller: ${new Error().stack?.split('\n')[2]?.trim()}]`);
+    // Logger.debug(`[UnifiedToolManager] isBuiltInToolEnabled("${toolName}") = ${isEnabled} [caller: ${new Error().stack?.split('\n')[2]?.trim()}]`);
     return isEnabled;
   }
 
@@ -110,7 +133,7 @@ export class UnifiedToolManager {
       
       // Check if the built-in tool is enabled
       if (this.isBuiltInToolEnabled(tool.name) && !toolNames.has(tool.name)) {
-        Logger.debug(`[getAllTools] ✅ Built-in tool ENABLED: ${tool.name}`);
+        // Logger.debug(`[getAllTools] ✅ Built-in tool ENABLED: ${tool.name}`);
         tools.push({
           name: tool.name,
           description: tool.description,
@@ -121,7 +144,7 @@ export class UnifiedToolManager {
         });
         toolNames.add(tool.name);
       } else if (!this.isBuiltInToolEnabled(tool.name)) {
-        Logger.debug(`[getAllTools] ❌ Built-in tool DISABLED: ${tool.name}`);
+        // Logger.debug(`[getAllTools] ❌ Built-in tool DISABLED: ${tool.name}`);
       } else {
         // Logger.warn(`Duplicate tool name detected and skipped: ${tool.name} (built-in)`);
       }
@@ -295,6 +318,9 @@ export class UnifiedToolManager {
         const isSuccess = result && typeof result === 'object' && 'success' in result 
           ? result.success !== false  // If result has success field, use it (false means failure)
           : true;  // If no success field, assume success
+        const errorMessage = !isSuccess && result && typeof result === 'object'
+          ? this.extractBuiltInToolError(result as Record<string, unknown>)
+          : undefined;
 
         return {
           success: isSuccess,
@@ -302,7 +328,7 @@ export class UnifiedToolManager {
           toolName: name,
           source: 'built-in',
           executionTime: Date.now() - startTime,
-          error: !isSuccess && result && typeof result === 'object' && 'error' in result ? (result as any).error : undefined
+          error: errorMessage,
         };
       }
 

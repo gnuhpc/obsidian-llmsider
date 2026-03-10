@@ -9,7 +9,7 @@
  * - Token 管理和截断
  */
 
-import { ChatMessage, ChatSession } from '../../types';
+import { ChatMessage, ChatSession, ResolvedSkill } from '../../types';
 import { Logger } from '../../utils/logger';
 import type LLMSiderPlugin from '../../main';
 import type { ContextManager } from '../../core/context-manager';
@@ -17,6 +17,8 @@ import type { ToolCoordinator } from '../tools/tool-coordinator';
 import type { UIBuilder } from '../ui-builder';
 import { TokenManager } from '../../utils/token-manager';
 import { Notice } from 'obsidian';
+
+const RUN_LOCAL_COMMAND_TOOL = 'run_local_command';
 
 export interface IMessagePreparationService {
 	/**
@@ -27,13 +29,14 @@ export interface IMessagePreparationService {
 		stepIndicatorsEl: HTMLElement | null,
 		memoryContext: string,
 		memoryMessages: ChatMessage[] | null,
-		memoryEnabled: boolean
+		memoryEnabled: boolean,
+		routedSkill?: ResolvedSkill | null
 	): Promise<ChatMessage[]>;
 
 	/**
 	 * 生成系统提示词
 	 */
-	getSystemPrompt(memoryContext?: string): Promise<string>;
+	getSystemPrompt(memoryContext?: string, userInput?: string, routedSkill?: ResolvedSkill | null): Promise<string>;
 
 	/**
 	 * 更新步骤指示器状态
@@ -89,7 +92,8 @@ export class MessagePreparationService implements IMessagePreparationService {
 		stepIndicatorsEl: HTMLElement | null = null,
 		memoryContext = '',
 		memoryMessages: ChatMessage[] | null = null,
-		memoryEnabled = false
+		memoryEnabled = false,
+		routedSkill: ResolvedSkill | null = null
 	): Promise<ChatMessage[]> {
 		const messages: ChatMessage[] = [];
 		const hasContext = this.contextManager.hasContext();
@@ -97,7 +101,8 @@ export class MessagePreparationService implements IMessagePreparationService {
 		const allowExtraContext = !hasContext || includeExtrasWithContext;
 
 		// Add system message
-		const systemPrompt = await this.getSystemPrompt(memoryContext);
+		const rawUserInput = typeof userMessage.content === 'string' ? userMessage.content : '';
+		const systemPrompt = await this.getSystemPrompt(memoryContext, rawUserInput, routedSkill);
 
 		// Add local vector search context if auto-search is enabled
 		// Skip during plugin initialization and session loading to prevent startup vector generation
@@ -172,6 +177,9 @@ export class MessagePreparationService implements IMessagePreparationService {
 
 		// Add chat history: use Memory messages if available, no manual history fallback
 		let chatHistory: ChatMessage[] = [];
+		const currentUserContent = typeof userMessage.content === 'string'
+			? userMessage.content
+			: JSON.stringify(userMessage.content);
 
 		// Check if conversation history is enabled in settings
 		if (allowExtraContext && this.plugin.settings.memorySettings.enableConversationHistory) {
@@ -203,6 +211,22 @@ export class MessagePreparationService implements IMessagePreparationService {
 				if (currentSession && currentSession.messages.length > 0) {
 					// Exclude the current user message
 					chatHistory = currentSession.messages.filter((m) => m.id !== userMessage.id);
+
+					// Avoid sending the same user turn twice when a previous interrupted
+					// request already left an identical trailing user message in session history.
+					const lastHistoryMessage = chatHistory[chatHistory.length - 1];
+					const lastHistoryContent = lastHistoryMessage
+						? (typeof lastHistoryMessage.content === 'string'
+							? lastHistoryMessage.content
+							: JSON.stringify(lastHistoryMessage.content))
+						: '';
+					if (
+						lastHistoryMessage?.role === userMessage.role &&
+						lastHistoryContent === currentUserContent
+					) {
+						chatHistory = chatHistory.slice(0, -1);
+						Logger.debug('[Memory] 🧹 Removed duplicate trailing local history message matching current user input');
+					}
 
 					// Apply history limit
 					if (chatHistory.length > limit) {
@@ -334,14 +358,38 @@ export class MessagePreparationService implements IMessagePreparationService {
 		// Apply token management - this will truncate if needed
 		const contextPrompt = systemPrompt;
 
-		// Get available tools for token estimation (only in Agent conversation mode)
+		// Get available tools for token estimation
 		const conversationMode = this.plugin.settings.conversationMode || 'normal';
 		let availableTools: any[] = [];
-		if (conversationMode === 'agent') {
+		if (conversationMode === 'agent' || conversationMode === 'normal') {
 			try {
 				const toolManager = this.plugin.getToolManager();
+				const skillManager = this.plugin.getSkillManager();
 				if (toolManager) {
 					availableTools = await toolManager.getAllTools();
+					if (conversationMode === 'normal') {
+						const currentSession = this.callbacks.getCurrentSession();
+						const effectiveSkill = skillManager?.getEffectiveSkill(currentSession) || routedSkill;
+						if (skillManager && effectiveSkill) {
+							availableTools = skillManager.filterToolsForSkill(availableTools, effectiveSkill);
+						} else if (skillManager && skillManager.isSkillUsageEnabled(currentSession) && skillManager.getInvocableSkills(currentSession).length > 0) {
+							availableTools = skillManager
+								.filterToolsForSession(
+									availableTools,
+									currentSession,
+									typeof userMessage.content === 'string' ? userMessage.content : ''
+								)
+								.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+						} else {
+							availableTools = availableTools.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+						}
+					} else if (skillManager) {
+						availableTools = skillManager.filterToolsForSession(
+							availableTools,
+							this.callbacks.getCurrentSession(),
+							typeof userMessage.content === 'string' ? userMessage.content : ''
+						);
+					}
 				}
 			} catch (error) {
 				Logger.warn('Failed to get tools for token estimation:', error);
@@ -425,8 +473,15 @@ export class MessagePreparationService implements IMessagePreparationService {
 	/**
 	 * 生成系统提示词
 	 */
-	async getSystemPrompt(memoryContext = ''): Promise<string> {
+	async getSystemPrompt(memoryContext = '', userInput = '', routedSkill: ResolvedSkill | null = null): Promise<string> {
 		const basePrompt = `You are an AI assistant integrated into Obsidian, a note-taking app.`;
+		const currentSession = this.callbacks.getCurrentSession();
+		const skillManager = this.plugin.getSkillManager();
+		const skillsEnabled = skillManager?.isSkillUsageEnabled(currentSession) !== false;
+		const effectiveSkill = skillsEnabled ? skillManager?.getEffectiveSkill(currentSession) : null;
+		const resolvedRoutedSkill = !effectiveSkill && skillsEnabled
+			? routedSkill || (userInput ? skillManager?.routeSkillForInput(userInput, currentSession) : null)
+			: null;
 
 		// Check if working memory is enabled in settings
 		const workingMemoryEnabled = this.plugin.settings.memorySettings.enableWorkingMemory;
@@ -506,6 +561,7 @@ Step 7: Wait for create() tool result before concluding
 **File operations (where to save, what to name) come LAST, after content is ready!**`;
 
 		const conversationMode = this.plugin.settings.conversationMode || 'normal';
+		const guidedModeEnabled = currentSession?.guidedModeEnabled ?? this.plugin.settings.guidedModeEnabled ?? false;
 		let modePrompt = '';
 
 		if (conversationMode === 'agent') {
@@ -559,6 +615,44 @@ IMPORTANT RESPONSE STYLE:
 - Do NOT end with summaries, suggestions for further action, or closing remarks
 - For any task (writing, expanding, modifying, explaining), output the actual result immediately
 - Avoid unnecessary framing language - just deliver the requested content directly`;
+		} else if (guidedModeEnabled) {
+			// Guided assistant toggle: inject structured, option-oriented prompting.
+			modePrompt = `You're in normal chat mode with the Guided Assistant toggle enabled.
+
+Your job is to guide the user step by step instead of jumping straight into long free-form answers.
+
+RESPONSE STYLE:
+- Prefer short guided turns over long monologues.
+- If the task is ambiguous, ask a focused next-step question.
+- When there are clear next actions, present 2-4 explicit options.
+- Use clickable option lines in this exact format when offering choices:
+➤CHOICE:SINGLE
+➤CHOICE: Option 1
+➤CHOICE: Option 2
+
+GUIDED BEHAVIOR RULES:
+- Break complex tasks into smaller decision points.
+- Ask for missing information only when it is actually required.
+- If the user intent is already clear and tools are available, explain the action briefly and then act.
+- If tools are not needed, still keep the response structured and guidance-oriented.
+- Do not invent options just for style; only show them when they help the user choose.
+- Do not end with vague offers like "let me know". Instead, provide the next concrete choice or action.
+
+WHEN TO OFFER OPTIONS:
+- Multiple reasonable approaches exist
+- The user needs to choose scope, format, destination, or tradeoff
+- A tool result requires the user to decide the next step
+
+WHEN NOT TO OFFER OPTIONS:
+- The user asked a simple factual question with a clear answer
+- The requested action is unambiguous and can be completed directly
+
+${directoryBestPractices}
+
+IMPORTANT RESPONSE STYLE:
+- Always provide direct answers without preamble, introductions, or meta-commentary
+- Do NOT start responses with phrases like "我来帮你...", "我将为你...", "让我..." etc.
+- Avoid unnecessary framing language; move directly to the next step, answer, or choice`;
 		} else {
 			// Basic Q&A mode: provide helpful responses with action buttons
 			modePrompt = `You're in basic Q&A mode - provide helpful, informative responses to user questions. When the user references files or provides context, make sure to use that information to provide relevant answers.
@@ -575,7 +669,31 @@ IMPORTANT RESPONSE STYLE:
 		}
 
 		// Get available tools and add them to the system prompt
-		const toolsInfo = await this.toolCoordinator.getAvailableToolsInfo();
+		const toolsInfo = await this.toolCoordinator.getAvailableToolsInfo(resolvedRoutedSkill);
+		const activeOrRoutedSkill = effectiveSkill || resolvedRoutedSkill;
+		const cliExecutionAdapterPrompt = activeOrRoutedSkill?.toolAllowlist?.includes(RUN_LOCAL_COMMAND_TOOL)
+			? `\n\n## CLI Skill Execution Adapter\n\nThis skill allows "${RUN_LOCAL_COMMAND_TOOL}". That means the skill's domain actions must be executed through the exact tool name "${RUN_LOCAL_COMMAND_TOOL}".\n\nHow to use it:\n- Infer the needed local CLI action from the skill's name, description, and instructions.\n- Call the exact tool "${RUN_LOCAL_COMMAND_TOOL}".\n- Pass a real shell command string in the "command" argument.\n\nCRITICAL:\n- The skill name is not a tool name.\n- Terms mentioned in the skill description are not automatically tool names.\n- Do not invent wrapper tools, aliases, or pseudo-DSL commands.\n- The "command" field must contain a real shell command, not an abstract action description.\n\nCorrect pattern:\n- tool name: "${RUN_LOCAL_COMMAND_TOOL}"\n- arguments: {"command":"<actual terminal command>"}\n\nWrong pattern:\n- tool name: "<skill name or alias>"\n- arguments: {"command":"create name=\\"foo\\""}\n`
+			: '';
+		const skillExecutionPrompt = activeOrRoutedSkill
+			? `\n\n## Skill Execution Policy\n\nA skill is active for this request: ${activeOrRoutedSkill.name}.\nYou must treat this skill as the execution strategy for the current request.\n\nRules:\n- Do not only explain what you plan to do.\n- If the skill exposes relevant tools, call them to complete the request.\n- Prefer acting over asking follow-up questions when the user already gave enough information.\n- For creation/update requests, perform the concrete operation with the allowed tools instead of asking for unnecessary confirmation.\n- Only ask a clarifying question if a required parameter is truly missing and cannot be inferred safely.\n- If a tool fails, briefly explain the failure and either retry with a corrected call or ask for the single missing detail.\n- CRITICAL: A skill name is NOT automatically a callable tool name.\n- CRITICAL: You may only call tool names that appear exactly in the AVAILABLE TOOLS section.\n- CRITICAL: Never invent aliases, shorthand, wrappers, or pseudo-tools from a skill name.\n- Example: if the skill is "obsidian-cli" but AVAILABLE TOOLS only lists "run_local_command" and "get_current_time", then the only callable tool names are exactly "run_local_command" and "get_current_time". Do NOT call "obsidian".\n`
+			: '';
+		const skillPrompt = !skillsEnabled
+			? ''
+			: (effectiveSkill || resolvedRoutedSkill)
+			? (() => {
+				const resolvedSkill = effectiveSkill || resolvedRoutedSkill;
+				const title = effectiveSkill ? 'Active Skill' : 'Routed Skill';
+				const cliExecutionHint = resolvedSkill?.toolAllowlist?.includes(RUN_LOCAL_COMMAND_TOOL)
+					? `Execution mapping: this skill executes through the exact tool name "${RUN_LOCAL_COMMAND_TOOL}". If you need to act in the local environment or invoke a CLI described by the skill, call "${RUN_LOCAL_COMMAND_TOOL}" with a real shell command string. Do not invent tool names such as "${resolvedSkill.name}" or "obsidian".\n`
+					: '';
+				return `\n\n## ${title}\n\nSkill: ${resolvedSkill?.name}\n${resolvedSkill?.description ? `Description: ${resolvedSkill.description}\n` : ''}${resolvedSkill?.preferredConversationMode ? `Preferred conversation mode: ${resolvedSkill.preferredConversationMode}\n` : ''}${resolvedSkill?.toolAllowlist?.length ? `Allowed tools: ${resolvedSkill.toolAllowlist.join(', ')}\n` : ''}${cliExecutionHint}${resolvedSkill?.instructionsContent ? `\nSkill instructions:\n${resolvedSkill.instructionsContent}\n` : ''}`;
+			  })()
+			: (() => {
+				// No skill explicitly active — inject descriptions of all model-invocable
+				// enabled skills so the LLM can progressively select the right one.
+				const descriptions = skillManager?.getSkillDescriptionsForContext(currentSession) || '';
+				return descriptions ? `\n\n${descriptions}` : '';
+			  })();
 
 		// Add context from ContextManager (will auto-refresh file contents)
 		// Pass model name to ensure proper token limits for file extraction
@@ -591,9 +709,16 @@ IMPORTANT RESPONSE STYLE:
 			providerName
 		);
 
-		return `${basePrompt}
+		const toolUsagePolicy = activeOrRoutedSkill
+			? `Remember: Always respond to the user. If tools are available for the active skill and the request is actionable, use them instead of merely describing them. Only describe a tool-based plan when execution is impossible because required information is missing. Tool names must match AVAILABLE TOOLS exactly; never invent tool names from skill names.`
+			: `Remember: Always respond to the user. If you use tools, explain what you're doing. If you can't use tools, explain what you would do with them. CRITICAL: "${RUN_LOCAL_COMMAND_TOOL}" is forbidden unless a specific active or routed skill explicitly matched this request and exposes that exact tool.`;
+
+	return `${basePrompt}
 ${memorySection}
-${modePrompt}
+${skillPrompt}
+	${cliExecutionAdapterPrompt}
+	${skillExecutionPrompt}
+	${modePrompt}
 
 ${toolsInfo}
 
@@ -605,7 +730,7 @@ CRITICAL: Context-First Rule
 - If the user references a folder (e.g., "Summarize folder X") and the content of files from that folder is ALREADY present in the "Context Information" (look for "Directory: X/" markers), you MUST NOT call \`list_directory\` or search for those files.
 - Use the provided context directly to answer the user's request. Only use tools if the necessary information is truly missing from the context.
 
-Remember: Always respond to the user. If you use tools, explain what you're doing. If you can't use tools, explain what you would do with them.`;
+${toolUsagePolicy}`;
 	}
 
 	/**

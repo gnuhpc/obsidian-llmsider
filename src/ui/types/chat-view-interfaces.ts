@@ -4,7 +4,7 @@
  * 定义各个模块之间的通信接口，确保松耦合和可测试性
  */
 
-import { ChatMessage, ChatSession } from '../../types';
+import { ChatMessage, ChatSession, ResolvedSkill } from '../../types';
 import { TFile } from 'obsidian';
 
 // ============================================================================
@@ -31,7 +31,8 @@ export interface IConversationOrchestrator {
 			stepIndicatorsEl: HTMLElement | null,
 			memoryContext: string,
 			memoryMessages: ChatMessage[],
-			memoryEnabled: boolean
+			memoryEnabled: boolean,
+			routedSkill?: ResolvedSkill | null
 		) => Promise<any[]>;
 		updateStepIndicator: (el: HTMLElement, step: string, status: string) => void;
 		autoGenerateSessionTitle: (userMessage: ChatMessage, assistantMessage: ChatMessage) => Promise<void>;
@@ -540,6 +541,7 @@ export interface GuidedMessageMetadata {
 	isGuidedQuestion?: boolean;
 	guidedOptions?: string[];
 	isMultiSelect?: boolean;
+	guidedInitialGoal?: string;
 	requiresToolConfirmation?: boolean;
 	suggestedToolCalls?: unknown[];
 	isStreaming?: boolean;
@@ -603,7 +605,7 @@ export interface IToolCoordinator {
 	/**
 	 * Get available tools information for system prompt
 	 */
-	getAvailableToolsInfo(): Promise<string>;
+	getAvailableToolsInfo(routedSkill?: ResolvedSkill | null): Promise<string>;
 }
 
 // ============================================================================
@@ -619,13 +621,14 @@ export interface IMessagePreparationService {
 		stepIndicatorsEl: HTMLElement | null,
 		memoryContext: string,
 		memoryMessages: ChatMessage[] | null,
-		memoryEnabled: boolean
+		memoryEnabled: boolean,
+		routedSkill?: ResolvedSkill | null
 	): Promise<ChatMessage[]>;
 
 	/**
 	 * Get system prompt for current mode
 	 */
-	getSystemPrompt(memoryContext?: string): Promise<string>;
+	getSystemPrompt(memoryContext?: string, userInput?: string, routedSkill?: ResolvedSkill | null): Promise<string>;
 
 	/**
 	 * Update step indicator state

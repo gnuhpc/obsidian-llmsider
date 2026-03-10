@@ -396,7 +396,7 @@ export class UIBuilder {
 
 		// Attach/Context button
 		const attachBtn = leftButtons.createEl('button', {
-			cls: 'llmsider-input-btn',
+			cls: 'llmsider-input-btn llmsider-attach-context-btn',
 			title: this.i18n.t('ui.attachFile')
 		});
 		attachBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -421,6 +421,9 @@ export class UIBuilder {
 		// Conversation mode selector (replaces agent toggle)
 		const modeSelectorBtn = this.buildModeSelector(leftButtons);
 
+		// Skill selector
+		this.buildSkillSelector(leftButtons);
+
 		// Tools management button (next to mode selector)
 		const toolsManagerBtn = this.buildToolsManager(leftButtons);
 
@@ -434,7 +437,7 @@ export class UIBuilder {
 		const speedReadingBtn = this.buildSpeedReadingButton(leftButtons);
 
 		// Optimize Prompt button
-		const optimizePromptBtn = this.buildOptimizePromptButton(leftButtons, inputElement);
+		const optimizePromptBtn = this.buildOptimizePromptButton(inputWrapper, inputElement);
 
 		// Right side - Provider, Send/Stop buttons
 		const rightButtons = buttonRow.createDiv({ cls: 'llmsider-button-row-right' });
@@ -667,9 +670,9 @@ export class UIBuilder {
 	 * Build Optimize Prompt button
 	 */
 	private buildOptimizePromptButton(container: HTMLElement, inputElement: HTMLTextAreaElement): HTMLElement {
-		// Optimize Prompt button - use same class as other input buttons
+		// Optimize Prompt button inside the textarea shell
 		const optimizePromptBtn = container.createEl('button', {
-			cls: 'llmsider-input-btn',
+			cls: 'llmsider-input-btn llmsider-optimize-prompt-btn',
 			title: this.i18n.t('ui.optimizePromptTooltip') || 'Optimize Prompt'
 		});
 
@@ -772,8 +775,8 @@ export class UIBuilder {
 		// Get current mode
 		const mode = this.plugin.settings.conversationMode;
 
-		// Only show in 'guided' and 'agent' modes
-		const shouldShow = mode === 'guided' || mode === 'agent';
+		// Show in normal/agent modes.
+		const shouldShow = mode === 'normal' || mode === 'agent';
 
 		if (shouldShow) {
 			btn.style.display = '';
@@ -803,9 +806,8 @@ export class UIBuilder {
 		// Get current mode
 		const mode = this.plugin.settings.conversationMode;
 
-		// Only show in 'guided' and 'agent' modes
-		// (we always show it in these modes, even if no tools configured yet)
-		const shouldShow = mode === 'guided' || mode === 'agent';
+		// Show in normal/agent modes.
+		const shouldShow = mode === 'normal' || mode === 'agent';
 
 		if (shouldShow) {
 			btn.style.display = '';
@@ -874,7 +876,7 @@ export class UIBuilder {
 
 		// Filter out hidden categories (like 'meta' for control flow tools) and system tools
 		const HIDDEN_CATEGORIES = ['meta'];
-		const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each'];
+		const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each', 'run_local_command'];
 
 		const allBuiltInTools = allBuiltInToolsUnfiltered.filter((tool: unknown) => {
 			const t = tool as BuiltInTool;
@@ -1589,7 +1591,7 @@ export class UIBuilder {
 	}
 
 	/**
-	 * Build conversation mode selector (Normal / Guided / Agent)
+	 * Build conversation mode selector with a separate guided toggle.
 	 */
 	private buildModeSelector(container: HTMLElement): HTMLElement {
 		const modeSelector = container.createDiv({ cls: 'llmsider-mode-selector' });
@@ -1613,7 +1615,45 @@ export class UIBuilder {
 			this.showModeDropdown(modeBtn);
 		};
 
+		const guidedBtn = modeSelector.createEl('button', {
+			cls: 'llmsider-mode-btn llmsider-guided-toggle-btn',
+			title: this.i18n.t('ui.guidedMode')
+		});
+
+		this.updateGuidedToggleButton(guidedBtn);
+
+		guidedBtn.onclick = async (e) => {
+			e.stopPropagation();
+			if (this.isExecuting()) {
+				new Notice(this.i18n.t('ui.cannotChangeModeDuringExecution') || 'Cannot change mode during execution');
+				return;
+			}
+			await this.handleGuidedToggle();
+		};
+
 		return modeSelector;
+	}
+
+	private buildSkillSelector(container: HTMLElement): HTMLElement {
+		const skillSelector = container.createDiv({ cls: 'llmsider-mode-selector llmsider-skill-selector' });
+
+		const skillBtn = skillSelector.createEl('button', {
+			cls: 'llmsider-mode-btn llmsider-skill-btn',
+			title: this.i18n.t('ui.activeSkill') || 'Active Skill'
+		});
+
+		this.updateSkillSelectorButton(skillBtn);
+
+		skillBtn.onclick = (e) => {
+			e.stopPropagation();
+			if (this.isExecuting()) {
+				new Notice(this.i18n.t('ui.cannotChangeSkillDuringExecution') || 'Cannot change skill during execution');
+				return;
+			}
+			this.showSkillDropdown(skillBtn);
+		};
+
+		return skillSelector;
 	}
 
 	/**
@@ -1623,11 +1663,6 @@ export class UIBuilder {
 		const svgs = {
 			normal: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-			</svg>`,
-			guided: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<circle cx="12" cy="12" r="10"></circle>
-				<circle cx="12" cy="12" r="6"></circle>
-				<circle cx="12" cy="12" r="2"></circle>
 			</svg>`,
 			agent: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<rect x="6" y="8" width="12" height="12" rx="2"/>
@@ -1641,12 +1676,28 @@ export class UIBuilder {
 		return svgs[mode];
 	}
 
+	private getGuidedToggleIconSVG(enabled: boolean): string {
+		if (enabled) {
+			return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<circle cx="12" cy="12" r="9"></circle>
+				<path d="M12 8v4l3 3"></path>
+			</svg>`;
+		}
+
+		return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="12" cy="12" r="9"></circle>
+			<path d="M12 8v4l3 3"></path>
+			<line x1="4" y1="4" x2="20" y2="20"></line>
+		</svg>`;
+	}
+
 	/**
 	 * Show mode selection dropdown
 	 */
 	private showModeDropdown(button: HTMLElement): void {
 		// Remove existing dropdown if any
 		document.querySelectorAll('.llmsider-mode-dropdown').forEach(el => el.remove());
+		document.querySelectorAll('.llmsider-skill-dropdown').forEach(el => el.remove());
 
 		// Close other menus (mutual exclusion)
 		document.querySelectorAll('.llmsider-tools-dropdown').forEach(el => el.remove());
@@ -1696,11 +1747,6 @@ export class UIBuilder {
 				description: this.i18n.t('ui.normalModeDesc')
 			},
 			{
-				value: 'guided',
-				label: this.i18n.t('ui.guidedMode'),
-				description: this.i18n.t('ui.guidedModeDesc')
-			},
-			{
 				value: 'agent',
 				label: this.i18n.t('ui.agentMode'),
 				description: this.i18n.t('ui.agentModeDesc')
@@ -1741,6 +1787,164 @@ export class UIBuilder {
 		}, 10);
 	}
 
+	private showSkillDropdown(button: HTMLElement): void {
+		document.querySelectorAll('.llmsider-mode-dropdown').forEach(el => el.remove());
+		document.querySelectorAll('.llmsider-skill-dropdown').forEach(el => el.remove());
+
+		document.querySelectorAll('.llmsider-tools-dropdown').forEach(el => el.remove());
+		document.querySelectorAll('.llmsider-mcp-dropdown').forEach(el => el.remove());
+		document.querySelectorAll('.llmsider-provider-dropdown').forEach(el => el.remove());
+		document.querySelectorAll('.llmsider-context-menu').forEach(el => el.remove());
+
+		const dropdown = document.body.createDiv({ cls: 'llmsider-mcp-dropdown llmsider-skill-dropdown' });
+		const buttonRect = button.getBoundingClientRect();
+		dropdown.style.position = 'fixed';
+		dropdown.style.zIndex = '99999';
+
+		const spaceAbove = buttonRect.top;
+		const spaceBelow = window.innerHeight - buttonRect.bottom;
+		const dropdownMaxHeight = 450;
+
+		if (spaceAbove >= dropdownMaxHeight || spaceAbove > spaceBelow) {
+			dropdown.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
+			dropdown.style.top = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceAbove - 16)}px`;
+		} else {
+			dropdown.style.top = `${buttonRect.bottom + 8}px`;
+			dropdown.style.bottom = 'auto';
+			dropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, spaceBelow - 16)}px`;
+		}
+
+		const dropdownWidth = 340;
+		if (buttonRect.left + dropdownWidth > window.innerWidth) {
+			dropdown.style.left = 'auto';
+			dropdown.style.right = `${window.innerWidth - buttonRect.right}px`;
+		} else {
+			dropdown.style.left = `${buttonRect.left}px`;
+			dropdown.style.right = 'auto';
+		}
+
+		const skillManager = this.plugin.getSkillManager();
+		if (!skillManager) {
+			const emptyNote = dropdown.createDiv({ cls: 'llmsider-tools-empty-note' });
+			emptyNote.textContent = this.i18n.t('ui.skillManagerNotInitialized') || 'Skill manager is not initialized';
+		} else {
+			const currentSession = this.plugin.getChatView()?.getCurrentSession() || null;
+			const skills = skillManager.listSkills();
+			const effectiveSkill = skillManager.getEffectiveSkill(currentSession);
+
+			const skillsContainer = dropdown.createDiv({ cls: 'llmsider-tools-categories' });
+			const headerRow = skillsContainer.createDiv({ cls: 'llmsider-tools-header-row' });
+			const skillsHeader = headerRow.createDiv({ cls: 'llmsider-tools-section-header' });
+			skillsHeader.textContent = this.i18n.t('ui.allSkills') || 'All Skills';
+
+			if (skills.length > 0) {
+				const globalToggle = headerRow.createDiv({ cls: 'llmsider-tools-global-toggle' });
+
+				const globalSwitch = this.createToggleSwitch(
+					this.areAllSkillsEnabled(skills, skillManager),
+					async (enabled) => {
+						await this.plugin.setAllLocalSkillsEnabled(enabled);
+						this.updateSkillSelectorButton(button);
+						dropdown.remove();
+						this.showSkillDropdown(button);
+					}
+				);
+				globalToggle.appendChild(globalSwitch);
+			}
+
+			if (skills.length === 0) {
+				const emptyNote = skillsContainer.createDiv({ cls: 'llmsider-tools-empty-note' });
+				emptyNote.textContent = this.i18n.t('ui.noSkillsAvailable') || 'No skills available';
+			} else {
+				const searchContainer = skillsContainer.createDiv({ cls: 'llmsider-tools-search-container' });
+				const searchInput = searchContainer.createEl('input', {
+					type: 'text',
+					placeholder: this.i18n.t('ui.searchSkills') || 'Search skills...',
+					cls: 'llmsider-tools-search-input'
+				});
+
+				const skillsListContainer = skillsContainer.createDiv({ cls: 'llmsider-mcp-tools-list' });
+				const noResultsMsg = skillsContainer.createDiv({ cls: 'llmsider-tools-no-results' });
+				noResultsMsg.textContent = this.i18n.t('ui.noMatchingSkills') || 'No matching skills found';
+				noResultsMsg.style.display = 'none';
+
+				const renderSkillList = (filterText: string = '') => {
+					skillsListContainer.empty();
+					const normalizedFilter = filterText.trim().toLowerCase();
+					const filteredSkills = normalizedFilter
+						? skills.filter(skill => skill.name.toLowerCase().includes(normalizedFilter)
+							|| skill.id.toLowerCase().includes(normalizedFilter)
+							|| (skill.description || '').toLowerCase().includes(normalizedFilter))
+						: skills;
+
+					if (filteredSkills.length === 0) {
+						noResultsMsg.style.display = 'block';
+						return;
+					}
+
+					noResultsMsg.style.display = 'none';
+
+					filteredSkills.forEach(skill => {
+						const skillItem = skillsListContainer.createDiv({ cls: 'llmsider-mcp-tool-item llmsider-skill-item' });
+						const skillDot = skillItem.createDiv({ cls: 'tool-dot' });
+						const skillInfo = skillItem.createDiv({ cls: 'tool-info' });
+						const skillName = skillInfo.createDiv({ cls: 'tool-name' });
+
+						const isEnabled = skillManager.isSkillEnabled(skill.id);
+						const detailParts: string[] = [];
+						if (effectiveSkill?.id === skill.id) {
+							detailParts.push(this.i18n.t('ui.skillsSwitchOn') || 'Skills On');
+						}
+						if (skill.description) {
+							detailParts.push(skill.description);
+						} else {
+							detailParts.push(skill.id);
+						}
+
+						skillName.textContent = skill.name;
+						const skillDesc = skillInfo.createDiv({ cls: 'tool-description' });
+						skillDesc.textContent = detailParts.join(' · ');
+						skillItem.setAttribute('title', `${skill.name} (${isEnabled
+							? (this.i18n.t('ui.skillEnabled') || 'Enabled')
+							: (this.i18n.t('ui.skillDisabled') || 'Disabled')})`);
+
+						const skillSwitch = this.createToggleSwitch(
+							isEnabled,
+							async (enabled) => {
+								await this.plugin.setLocalSkillEnabled(skill.id, enabled);
+								this.updateSkillSelectorButton(button);
+								dropdown.remove();
+								this.showSkillDropdown(button);
+							}
+						);
+						skillItem.appendChild(skillSwitch);
+						skillDot.style.background = isEnabled ? 'var(--interactive-accent)' : 'var(--text-muted)';
+					});
+				};
+
+				renderSkillList();
+				searchInput.addEventListener('input', (e) => {
+					renderSkillList((e.target as HTMLInputElement).value);
+				});
+			}
+		}
+
+		const closeHandler = (e: MouseEvent) => {
+			if (!dropdown.contains(e.target as Node) && !button.contains(e.target as Node)) {
+				dropdown.remove();
+				document.removeEventListener('click', closeHandler);
+			}
+		};
+		setTimeout(() => {
+			document.addEventListener('click', closeHandler);
+		}, 10);
+	}
+
+	private areAllSkillsEnabled(skills: Array<{ id: string }>, skillManager: { isSkillEnabled(skillId: string): boolean }): boolean {
+		return skills.length > 0 && skills.every(skill => skillManager.isSkillEnabled(skill.id));
+	}
+
 	/**
 	 * Update mode selector button appearance
 	 */
@@ -1755,23 +1959,83 @@ export class UIBuilder {
 		switch (mode) {
 			case 'normal':
 				title = this.i18n.t('ui.normalMode');
-				btn.classList.remove('mode-guided', 'mode-agent');
+				btn.classList.remove('mode-agent');
 				btn.classList.add('mode-normal');
-				break;
-			case 'guided':
-				title = this.i18n.t('ui.guidedMode');
-				btn.classList.remove('mode-normal', 'mode-agent');
-				btn.classList.add('mode-guided');
 				break;
 			case 'agent':
 				title = this.i18n.t('ui.agentMode');
-				btn.classList.remove('mode-normal', 'mode-guided');
+				btn.classList.remove('mode-normal');
 				btn.classList.add('mode-agent');
 				break;
 		}
 
 		btn.innerHTML = `<span class="mode-icon">${this.getModeIconSVG(mode)}</span>`;
 		btn.title = title;
+	}
+
+	private isGuidedEnabled(): boolean {
+		const currentSession = this.plugin.getChatView()?.getCurrentSession() || null;
+		if (currentSession?.guidedModeEnabled !== undefined) {
+			return currentSession.guidedModeEnabled;
+		}
+
+		return this.plugin.settings.guidedModeEnabled;
+	}
+
+	private updateGuidedToggleButton(button?: HTMLElement): void {
+		const btn = button || this.containerEl.querySelector('.llmsider-guided-toggle-btn') as HTMLElement;
+		if (!btn) return;
+
+		const isAgentMode = this.plugin.settings.conversationMode === 'agent';
+		const enabled = this.isGuidedEnabled();
+
+		btn.classList.toggle('is-active', enabled && !isAgentMode);
+		btn.classList.toggle('is-disabled', isAgentMode);
+		btn.innerHTML = `<span class="mode-icon">${this.getGuidedToggleIconSVG(enabled && !isAgentMode)}</span>`;
+
+		if (isAgentMode) {
+			btn.title = this.i18n.t('ui.guidedModeDesc') || 'Guided mode is only available in normal mode';
+			btn.setAttribute('aria-disabled', 'true');
+		} else {
+			btn.title = enabled ? this.i18n.t('ui.guidedMode') : this.i18n.t('ui.guidedModeDesc');
+			btn.removeAttribute('aria-disabled');
+		}
+	}
+
+	private updateSkillSelectorButton(button?: HTMLElement): void {
+		const btn = button || this.containerEl.querySelector('.llmsider-skill-btn') as HTMLElement;
+		if (!btn) return;
+
+		const currentSession = this.plugin.getChatView()?.getCurrentSession() || null;
+		const skillManager = this.plugin.getSkillManager();
+		const skillsEnabled = !!skillManager?.isSkillUsageEnabled(currentSession);
+		const hasEnabledSkills = !!skillManager?.hasEnabledSkills();
+		const activeSkill = skillsEnabled ? skillManager?.getEffectiveSkill(currentSession) : null;
+
+		btn.innerHTML = `<span class="mode-icon">${this.getSkillIconSVG(skillsEnabled)}</span>`;
+		btn.title = skillsEnabled
+			? (activeSkill
+				? `${this.i18n.t('ui.skillsSwitchOn') || 'Skills On'}: ${activeSkill.name}`
+				: (this.i18n.t('ui.skillsSwitchOn') || 'Skills On'))
+			: hasEnabledSkills
+				? (this.i18n.t('ui.skillsSwitchOff') || 'Skills Off')
+				: `${this.i18n.t('ui.skillsSwitchOff') || 'Skills Off'}: ${this.i18n.t('ui.noSkillsAvailable') || 'No skills available'}`;
+		btn.toggleClass('has-skill', skillsEnabled);
+		btn.toggleClass('skill-disabled', !skillsEnabled);
+	}
+
+	private getSkillIconSVG(enabled: boolean): string {
+		if (!enabled) {
+			return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="3" y="7" width="18" height="10" rx="5"></rect>
+				<circle cx="8" cy="12" r="3" fill="currentColor" stroke="none"></circle>
+			</svg>`;
+		}
+
+		return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<rect x="3" y="7" width="18" height="10" rx="5"></rect>
+			<circle cx="16" cy="12" r="3" fill="currentColor" stroke="none"></circle>
+		</svg>`;
 	}
 
 	/**
@@ -2237,6 +2501,7 @@ export class UIBuilder {
 		this.updateAgentButtonInline();
 		// Update mode selector button
 		this.updateModeSelectorButton();
+		this.updateGuidedToggleButton();
 	}
 
 	/**
@@ -2244,6 +2509,10 @@ export class UIBuilder {
 	 */
 	updateProviderButtonPublic(): void {
 		this.updateProviderButton();
+	}
+
+	updateSkillButtonPublic(): void {
+		this.updateSkillSelectorButton();
 	}
 
 	updateContextSearchButtonPublic(): void {
@@ -2289,8 +2558,8 @@ export class UIBuilder {
 	 */
 	private async handleModeChange(mode: ConversationMode): Promise<void> {
 		try {
-			// Check if using Free Qwen and switching to Guided/Agent mode
-			if ((mode === 'guided' || mode === 'agent') && this.plugin.getActiveProvider()) {
+			// Check if using Free Qwen and switching to Agent mode
+			if (mode === 'agent' && this.plugin.getActiveProvider()) {
 				const providerName = this.plugin.getActiveProvider()!.constructor.name;
 				if (providerName === 'FreeQwenProviderImpl') {
 					// Show warning about tool calling limitations
@@ -2308,8 +2577,17 @@ export class UIBuilder {
 			// Update legacy agentMode for backward compatibility
 			this.plugin.settings.agentMode = (mode === 'agent');
 
+			const currentSession = this.plugin.getChatView()?.getCurrentSession() || null;
+			if (currentSession) {
+				currentSession.conversationMode = mode;
+				await this.plugin.updateChatSession(currentSession.id, {
+					conversationMode: mode,
+				});
+			}
+
 			// Update button appearance
 			this.updateModeSelectorButton();
+			this.updateGuidedToggleButton();
 
 			// Update Tools button visibility based on new mode
 			this.updateToolsButton();
@@ -2325,6 +2603,35 @@ export class UIBuilder {
 			Logger.debug(`Conversation mode changed to: ${mode}, saved to SQLite`);
 		} catch (error) {
 			Logger.error('Failed to change conversation mode:', error);
+		}
+	}
+
+	private async handleGuidedToggle(): Promise<void> {
+		try {
+			if (this.plugin.settings.conversationMode === 'agent') {
+				new Notice(this.i18n.t('ui.guidedModeDesc') || 'Guided mode is only available in normal mode');
+				return;
+			}
+
+			const currentSession = this.plugin.getChatView()?.getCurrentSession() || null;
+			const nextEnabled = !this.isGuidedEnabled();
+
+			await this.plugin.configDb.setGuidedModeEnabled(nextEnabled);
+			this.plugin.settings.guidedModeEnabled = nextEnabled;
+
+			if (currentSession) {
+				currentSession.guidedModeEnabled = nextEnabled;
+				await this.plugin.updateChatSession(currentSession.id, {
+					guidedModeEnabled: nextEnabled,
+				});
+			}
+
+			this.updateGuidedToggleButton();
+			window.dispatchEvent(new CustomEvent('llmsider-guided-mode-changed', {
+				detail: { enabled: nextEnabled }
+			}));
+		} catch (error) {
+			Logger.error('Failed to toggle guided mode:', error);
 		}
 	}
 

@@ -42,9 +42,9 @@ https://github.com/user-attachments/assets/8bbc0212-2170-4ece-baa6-8704afcfcc96
 
 ### 💬 Flexible Conversation Modes
 
-LLMSider offers **three conversation modes** for different work scenarios:
+LLMSider offers **two conversation modes plus a guided assist toggle** for different work scenarios:
 
-**Normal Mode** for quick Q&A and brainstorming with direct AI interaction. **Guided Mode** breaks complex tasks into manageable steps, displaying specific actions before execution—suitable for multi-step workflows requiring review. **Agent Mode** allows AI to autonomously use tools, search the web, analyze data, and complete complex tasks.
+**Normal Mode** handles quick Q&A and brainstorming with direct AI interaction. **Guided Assist** can be turned on inside the main chat UI to break complex tasks into manageable steps and render explicit options before continuing. **Agent Mode** allows AI to autonomously use tools, search the web, analyze data, and complete complex tasks.
 
 
 
@@ -250,11 +250,11 @@ When reading lengthy PDF papers or EPUB books, **drag files** into chat for AI t
 
 While writing, **Autocomplete** suggests content in real-time based on your style. Select paragraphs to optimize, **Selection Popup** offers quick actions like improve expression, fix grammar, or adjust tone. Use **Cmd+/** to activate quick chat for expanding arguments, adding examples, or reorganizing content, with all changes controlled through **visual diff preview**.
 
-For complex content optimization tasks, **Guided Mode** helps you explore multiple improvement directions: AI presents different rewriting approaches step-by-step (such as academic expression, conversational style, concise version), waiting for your confirmation at each step before proceeding. **Agent Mode** provides fully automated writing optimization: AI autonomously analyzes article structure, searches for relevant materials, optimizes argumentation logic, supplements data support, and presents a complete improved version. **One-click translation** generates multilingual versions, or let AI **create separate notes** to save different versions for comparison.
+For complex content optimization tasks, turn on **Guided Assist** to explore multiple improvement directions: AI presents different rewriting approaches step by step (such as academic expression, conversational style, concise version), waiting for your confirmation before proceeding. **Agent Mode** provides fully automated writing optimization: AI autonomously analyzes article structure, searches for relevant materials, optimizes argumentation logic, supplements data support, and presents a complete improved version. **One-click translation** generates multilingual versions, or let AI **create separate notes** to save different versions for comparison.
 
 ### 🔬 In-Depth Research & Writing
 
-When writing research reports, use **Semantic Search** to locate all relevant literature notes, **drag multiple files** for AI to extract common viewpoints and research gaps. Query Wikipedia, academic databases, or **Financial Data** directly via **MCP tools** to supplement materials. In **Guided Mode**, let AI execute literature review, data analysis, and conclusion writing step-by-step, with each output **applied with one click** to the current document. **Vector Database** correlates historical research notes for deeper insights based on past experience. **Agent Mode** lets AI autonomously search web resources and organize citations, finally use **Speed Reading** to generate executive summaries...
+When writing research reports, use **Semantic Search** to locate all relevant literature notes, **drag multiple files** for AI to extract common viewpoints and research gaps. Query Wikipedia, academic databases, or **Financial Data** directly via **MCP tools** to supplement materials. With **Guided Assist** enabled, let AI execute literature review, data analysis, and conclusion writing step by step, with each output **applied with one click** to the current document. **Vector Database** correlates historical research notes for deeper insights based on past experience. **Agent Mode** lets AI autonomously search web resources and organize citations, finally use **Speed Reading** to generate executive summaries...
 
 ---
 

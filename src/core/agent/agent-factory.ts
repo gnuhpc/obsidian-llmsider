@@ -7,7 +7,7 @@
  * 
  * Supported modes:
  * - normal: Simple Q&A without tools (NormalModeAgent)
- * - guided: Step-by-step with tool confirmation (future: GuidedModeAgent)
+ * - guided: Internal guided-assistant flow with step-by-step options/tool confirmation
  * - agent: Autonomous plan-execute (MastraPlanExecuteProcessor)
  * 
  * Benefits:
@@ -27,7 +27,8 @@ import { GuidedModeAgent } from './guided-mode-agent';
 import { MastraAgent } from './mastra-agent';
 
 /**
- * Conversation mode types
+ * Internal agent creation modes.
+ * Note: public UI conversation mode is now `normal | agent`.
  */
 export type ConversationMode = 'normal' | 'guided' | 'agent';
 
@@ -53,11 +54,11 @@ export interface AgentFactoryConfig {
 	streamingManager?: StreamingIndicatorManager;
 	/** Optional: Context manager for file references */
 	contextManager?: any;
-	/** Optional: Custom system prompt (for normal/guided mode) */
+	/** Optional: Custom system prompt (for normal or guided-assist agent flows) */
 	systemPrompt?: string;
-	/** Optional: Available tools (for guided mode) */
+	/** Optional: Available tools (for guided flow) */
 	tools?: Record<string, any>;
-	/** Optional: Tool suggestion callback (for guided mode) */
+	/** Optional: Tool suggestion callback (for guided flow) */
 	onToolSuggestion?: (toolCall: any) => Promise<boolean>;
 }
 
@@ -102,13 +103,12 @@ export class AgentFactory {
 			
 			// Create or use provided memory manager
 			let memoryManager = config.memoryManager;
-			if (!memoryManager) {
-				Logger.debug('[AgentFactory] Creating new MemoryManager instance');
-				memoryManager = new MemoryManager(
-					config.plugin,
-					config.i18n,
-					config.memoryConfig
-				);
+				if (!memoryManager) {
+					Logger.debug('[AgentFactory] Creating new MemoryManager instance');
+					memoryManager = new MemoryManager(
+						config.plugin,
+						config.memoryConfig
+					);
 				await memoryManager.initialize();
 			}
 			
@@ -196,7 +196,7 @@ export class AgentFactory {
 	}
 	
 	/**
-	 * Create Guided Mode Agent
+	 * Create the guided-assist agent
 	 */
 	private static async createGuidedModeAgent(
 		config: AgentFactoryConfig,
@@ -204,7 +204,7 @@ export class AgentFactory {
 		threadId: string,
 		resourceId: string
 	): Promise<GuidedModeAgent> {
-		Logger.debug('[AgentFactory] Creating GuidedModeAgent');
+		Logger.debug('[AgentFactory] Creating guided-assist agent');
 		
 		// Validate tools are provided
 		if (!config.tools || Object.keys(config.tools).length === 0) {
@@ -216,7 +216,6 @@ export class AgentFactory {
 			i18n: config.i18n,
 			name: 'Guided Chat Assistant',
 			tools: config.tools,
-			instructions: '', // Will be set during initialization
 			memoryManager,
 			threadId,
 			resourceId,
@@ -258,7 +257,7 @@ export class AgentFactory {
 	): Promise<MemoryManager> {
 		Logger.debug('[AgentFactory] Creating shared MemoryManager');
 		
-		const memoryManager = new MemoryManager(plugin, i18n, config);
+			const memoryManager = new MemoryManager(plugin, config);
 		await memoryManager.initialize();
 		
 		Logger.debug('[AgentFactory] Shared MemoryManager created and initialized');

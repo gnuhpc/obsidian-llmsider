@@ -1,7 +1,7 @@
 /**
- * Guided Mode Agent - Step-by-step conversation with tool confirmation
+ * Guided Mode Agent - guided-assist conversation with tool confirmation
  * 
- * This agent extends MastraAgent to provide interactive guided conversations:
+ * This agent extends MastraAgent to provide interactive guided-assist conversations:
  * - AI asks clarifying questions with options
  * - Tools require user confirmation before execution
  * - Automatic Memory management (Working Memory + Conversation History)
@@ -84,7 +84,7 @@ import { TokenManager } from '../../utils/token-manager';
 import { UnifiedTool } from '../../tools/unified-tool-manager';
 
 /**
- * Configuration for Guided Mode Agent
+ * Configuration for the guided-assist agent
  */
 export interface GuidedModeAgentConfig extends Omit<MastraAgentConfig, 'instructions'> {
 	/** Available tools for the agent */
@@ -96,11 +96,13 @@ export interface GuidedModeAgentConfig extends Omit<MastraAgentConfig, 'instruct
 }
 
 /**
- * Options for executing guided mode conversation
+ * Options for executing the guided-assist conversation
  */
 export interface GuidedModeExecuteOptions {
 	/** User messages to process */
 	messages: ChatMessage[];
+	/** Original user goal captured when guided mode started */
+	guidedInitialGoal?: string;
 	/** Abort controller for cancellation */
 	abortController?: AbortController;
 	/** Callback for streaming updates */
@@ -122,7 +124,7 @@ export interface GuidedModeExecuteOptions {
 }
 
 /**
- * GuidedModeAgent - Extends MastraAgent for interactive guided mode
+ * GuidedModeAgent - Extends MastraAgent for the guided-assist flow
  * 
  * This agent provides conversational AI with tool capabilities,
  * requiring user confirmation before tool execution:
@@ -166,7 +168,7 @@ export class GuidedModeAgent extends MastraAgent {
 		super({
 			...config,
 			tools: config.tools,
-			name: config.name || 'Guided Mode Agent',
+			name: config.name || 'Guided Assist Agent',
 			instructions: '', // Will be set after initialization
 		});
 		
@@ -201,7 +203,7 @@ export class GuidedModeAgent extends MastraAgent {
 			await super.initialize({
 				...config,
 				tools: this.availableTools,
-				name: config?.name || 'Guided Mode Agent',
+				name: config?.name || 'Guided Assist Agent',
 				instructions,
 			});
 			
@@ -227,8 +229,34 @@ export class GuidedModeAgent extends MastraAgent {
 		return 'en'; // Default to English
 	}
 
+	private buildGuidedGoalAnchor(goal: string, userLanguage: 'en' | 'zh'): string {
+		if (userLanguage === 'zh') {
+			return `# 引导目标锚点
+初始用户目标：${goal}
+
+强制规则：
+- 你后续的每一步提问、选项、工具调用和总结都必须直接服务这个初始目标。
+- 即使用户后续只回复一个短句、点击某个选项，或讨论局部细节，也要把它理解为推进这个初始目标，而不是开启新任务。
+- 不要被后续枝节带偏；如果用户输入看起来偏离目标，应把对话重新拉回到如何完成这个初始目标。
+- 只有当用户明确表示要更换任务、放弃当前任务或开启全新目标时，才允许脱离这个初始目标。`;
+		}
+
+		return `# Guided Goal Anchor
+Original user goal: ${goal}
+
+Mandatory rules:
+- Every follow-up question, option, tool call, and summary must directly advance this original goal.
+- If the user later replies with a short answer, clicks an option, or discusses a detail, interpret it as progress on the same goal rather than a new task.
+- Do not drift into side topics. If later input appears off-track, steer the conversation back to completing the original goal.
+- Only leave this goal if the user explicitly says they want to switch tasks, abandon it, or start a brand-new objective.`;
+	}
+
+	private getToolCallName(toolCall: any): string {
+		return toolCall?.function?.name || toolCall?.name || '';
+	}
+
 	/**
-	 * Execute guided mode conversation
+	 * Execute the guided-assist conversation
 	 * 
 	 * This method:
 	 * 1. Retrieves relevant memory (working memory + semantic recall)
@@ -382,11 +410,16 @@ export class GuidedModeAgent extends MastraAgent {
 				systemLanguageInstruction = '\n\n**关键语言要求**：用户使用中文交流。你必须仅使用中文进行回复。严禁使用其他语言。';
 			}
 
+			const guidedGoalInstruction = options.guidedInitialGoal?.trim()
+				? this.buildGuidedGoalAnchor(options.guidedInitialGoal.trim(), userLanguage)
+				: '';
+
 			// Combine memory context, internal system prompt, and external system messages
 			const combinedSystemMessage = [
 				memoryContext,
 				this.systemPrompt,
 				externalSystemContent,
+				guidedGoalInstruction,
 				systemLanguageInstruction
 			].filter(Boolean).join('\n\n');
 			
@@ -557,12 +590,52 @@ export class GuidedModeAgent extends MastraAgent {
 				// Handle tool calls
 				Logger.debug('[GuidedModeAgent] AI suggested', detectedToolCalls.length, 'tool(s)');
 				Logger.debug('[GuidedModeAgent] Streaming completed:', streamingCompleted);
+
+				const validToolCalls = detectedToolCalls.filter(toolCall => {
+					const toolName = this.getToolCallName(toolCall);
+					return Boolean(toolName) && Boolean(this.availableTools[toolName]);
+				});
+				const invalidToolCalls = detectedToolCalls.filter(toolCall => {
+					const toolName = this.getToolCallName(toolCall);
+					return !toolName || !this.availableTools[toolName];
+				});
+
+				if (invalidToolCalls.length > 0) {
+					const invalidToolNames = invalidToolCalls
+						.map(toolCall => this.getToolCallName(toolCall) || 'unknown')
+						.join(', ');
+					const allowedToolNames = Object.keys(this.availableTools).join(', ') || 'none';
+					Logger.warn('[GuidedModeAgent] Ignoring unavailable tool calls:', {
+						invalidToolNames,
+						allowedToolNames,
+					});
+
+					let unavailableToolInstruction = '';
+					if (userLanguage === 'zh') {
+						unavailableToolInstruction = `你刚才请求了当前会话不可用的工具：${invalidToolNames}。当前真正可用的工具只有：${allowedToolNames}。严禁调用未出现在可用工具列表中的工具；如果没有合适工具，就直接继续引导用户。`;
+					} else {
+						unavailableToolInstruction = `You requested unavailable tools: ${invalidToolNames}. The only tools available in this conversation are: ${allowedToolNames}. Do not call tools outside that list; if no valid tool fits, continue by guiding the user without tools.`;
+					}
+
+					conversationMessages.push({
+						role: 'user',
+						content: unavailableToolInstruction,
+					} as any);
+				}
+
+				if (validToolCalls.length === 0) {
+					Logger.debug('[GuidedModeAgent] No valid tool calls remain after availability filtering');
+					if (invalidToolCalls.length > 0) {
+						continue;
+					}
+					break;
+				}
 				
 				// 流式完成后，统一通知 UI 显示工具卡片
 				// 此时 turnResponse 中的文本内容已经显示完毕
 				if (options.onToolSuggested && streamingCompleted) {
 					Logger.debug('[GuidedModeAgent] Notifying UI about tool suggestions after streaming completed');
-					options.onToolSuggested(detectedToolCalls);
+					options.onToolSuggested(validToolCalls);
 				}
 				
 				// Add the assistant's message (with tool calls) to history for the next turn
@@ -575,7 +648,7 @@ export class GuidedModeAgent extends MastraAgent {
 				let toolsExecuted = false;
 				
 				// Process each tool call
-				for (const toolCall of detectedToolCalls) {
+				for (const toolCall of validToolCalls) {
 					try {
 						// Ask for user confirmation
 						let confirmed = true;
@@ -700,7 +773,7 @@ Make sure the execution summary is natural and describes what was accomplished.`
 				
 				// If no tools were executed (all declined), we might want to stop or let AI respond to declination
 				// For now, we continue the loop so AI can respond to the results (or rejections)
-				if (!toolsExecuted && detectedToolCalls.length > 0) {
+				if (!toolsExecuted && validToolCalls.length > 0) {
 					Logger.debug('[GuidedModeAgent] No tools were executed (all declined or failed)');
 				}
 				
@@ -730,7 +803,7 @@ Make sure the execution summary is natural and describes what was accomplished.`
 	}
 	
 	/**
-	 * Build default system prompt for guided mode
+	 * Build the default system prompt for the guided-assist flow
 	 * This provides interactive guidance with clarifying questions
 	 * 
 	 * Note: All tools are now in Mastra format with Zod schemas:
@@ -882,7 +955,7 @@ Make sure the execution summary is natural and describes what was accomplished.`
 		}).join('\n\n');
 		
 		return `<role>
-You are an AI assistant in **Guided Mode** - an interactive, step-by-step assistant integrated into Obsidian.
+You are an AI assistant in **Guided Assist** - an interactive, step-by-step assistant integrated into Obsidian.
 Your goal is to guide the user through complex tasks by breaking them down into steps, providing clear options, and executing tools only when appropriate.
 </role>
 <language_instruction>
@@ -908,6 +981,12 @@ Use this when the user's intent is clear and a tool can fulfill it.
 2.  **Tool Call**: Execute the tool (ONLY if the required information is NOT already available in the 'Context Information' section).
 3.  **Follow-up**: (Handled in next turn) Analyze result and provide Type 1 Options.
 </response_logic>
+
+<goal_discipline>
+- The first user prompt in the guided flow defines the primary objective.
+- Later questions, options, and tool usage must stay centered on that objective unless the user explicitly changes it.
+- Do not let option clicks or short follow-up replies silently redefine the task.
+</goal_discipline>
 
 <critical_workflow name="Search & Research">
 **Trigger**: User asks for latest info, news, or specific topics.

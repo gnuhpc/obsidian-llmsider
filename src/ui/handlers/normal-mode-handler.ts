@@ -1,4 +1,4 @@
-import { ChatMessage, ChatSession } from '../../types';
+import { ChatMessage, ChatSession, ResolvedSkill } from '../../types';
 import { INormalModeHandler } from '../types/chat-view-interfaces';
 import ObsidianLLMSider from '../../main';
 import { I18nManager } from '../../i18n/i18n-manager';
@@ -11,6 +11,8 @@ import { ContextManager } from '../../core/context-manager';
 import { AgentFactory } from '../../core/agent/agent-factory';
 import { NormalModeAgent } from '../../core/agent/normal-mode-agent';
 import { MemoryManager } from '../../core/agent/memory-manager';
+
+const RUN_LOCAL_COMMAND_TOOL = 'run_local_command';
 
 /**
  * Handler for Normal conversation mode
@@ -68,7 +70,8 @@ export class NormalModeHandler implements INormalModeHandler {
 			stepIndicatorsEl: HTMLElement | null,
 			memoryContext: string,
 			memoryMessages: ChatMessage[],
-			memoryEnabled: boolean
+			memoryEnabled: boolean,
+			routedSkill?: ResolvedSkill | null
 		) => Promise<any[]>;
 		autoGenerateSessionTitle: (userMessage: ChatMessage, assistantMessage: ChatMessage) => Promise<void>;
 		removeStepIndicators: (el: HTMLElement | null) => void;
@@ -181,6 +184,17 @@ export class NormalModeHandler implements INormalModeHandler {
 				}
 				return cleaned.trim();
 			};
+
+			const rawUserInput = typeof userMessage.content === 'string' ? userMessage.content : '';
+			let routedSkill: ResolvedSkill | null = null;
+			try {
+				const skillManager = this.plugin.getSkillManager();
+				if (skillManager && skillManager.isSkillUsageEnabled(currentSession) && skillManager.getInvocableSkills(currentSession).length > 0) {
+					routedSkill = await skillManager.routeSkillForInputWithModel(rawUserInput, provider, currentSession);
+				}
+			} catch (e) {
+				Logger.warn('[NormalModeHandler] Failed to route skill before preparing messages:', e);
+			}
 			
 			// Prepare messages with memory context
 			const messages = await prepareMessages(
@@ -188,13 +202,62 @@ export class NormalModeHandler implements INormalModeHandler {
 				stepIndicatorsEl,
 				memoryContext,
 				memoryMessages,
-				memoryEnabled
+				memoryEnabled,
+				routedSkill
 			);
-			
+
+			// Resolve normal mode tools: both built-in and MCP tools are available in
+			// normal mode, and active/routed skills can further narrow them via allowlist.
+			let normalTools: import('../../tools/unified-tool-manager').UnifiedTool[] | undefined;
+			try {
+				const skillManager = this.plugin.getSkillManager();
+				const toolManager = this.plugin.getToolManager();
+				if (toolManager) {
+					const allTools = await toolManager.getAllTools();
+
+					if (!skillManager || !skillManager.isSkillUsageEnabled(currentSession)) {
+						normalTools = allTools.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+						normalTools = normalTools.length > 0 ? normalTools : undefined;
+						if (normalTools) {
+							Logger.debug(`[NormalModeHandler] Normal mode exposes ${normalTools.length} tool(s):`, normalTools.map(t => t.name));
+						}
+					} else {
+						const invocableSkills = skillManager.getInvocableSkills(currentSession);
+						if (invocableSkills.length === 0) {
+							normalTools = allTools.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+							normalTools = normalTools.length > 0 ? normalTools : undefined;
+							if (normalTools) {
+								Logger.debug(`[NormalModeHandler] No invocable skills active, falling back to ${normalTools.length} tool(s):`, normalTools.map(t => t.name));
+							}
+						} else {
+							normalTools = routedSkill
+								? skillManager.filterToolsForSkill(allTools, routedSkill)
+								: skillManager
+									.filterToolsForSession(allTools, currentSession, rawUserInput)
+									.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+
+							if (normalTools.length > 0) {
+								if (routedSkill) {
+									Logger.debug(`[NormalModeHandler] Routed skill "${routedSkill.name}" provides ${normalTools.length} built-in tool(s):`, normalTools.map(t => t.name));
+								} else {
+									Logger.debug(`[NormalModeHandler] Multi-skill routing exposes ${normalTools.length} built-in tool(s):`, normalTools.map(t => t.name));
+								}
+							} else {
+								normalTools = undefined;
+							}
+						}
+					}
+				}
+			} catch (e) {
+				Logger.warn('[NormalModeHandler] Failed to resolve normal mode tools:', e);
+			}
+
 			// Execute normal mode agent
 			Logger.debug('[NormalModeHandler] Executing agent with messages');
 			await this.normalModeAgent.execute({
 				messages,
+				normalTools,
+				activeSkill: routedSkill,
 				onCompactionStart: () => {
 					// Update indicator to show "context compacting"
 					if (workingMessageEl) {

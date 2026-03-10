@@ -103,7 +103,7 @@ export class ChatView extends ItemView {
 	private guidedModeUIRenderer!: GuidedModeUIRenderer;
 	private guidedModeOrchestrator!: GuidedModeOrchestrator;
 
-	// Mastra Agent components for normal/guided modes
+	// Mastra Agent components for normal and guided-assist flows
 	private normalModeAgent: NormalModeAgent | null = null;
 	private guidedModeAgent: GuidedModeAgent | null = null;
 	private sharedMemoryManager: MemoryManager | null = null;
@@ -119,7 +119,7 @@ export class ChatView extends ItemView {
 	private languageChangeListener?: (language: string) => void;
 
 	/**
-	 * Check if any execution is in progress (streaming, plan-execute, or guided mode)
+	 * Check if any execution is in progress (streaming, plan-execute, or guided assist flow)
 	 */
 	public isExecuting(): boolean {
 		return this.streamManager?.getIsStreaming() || false;
@@ -387,11 +387,14 @@ export class ChatView extends ItemView {
 		this.guidedModeOrchestrator = new GuidedModeOrchestrator(
 			this.messageRenderer,
 			this.i18n,
-			{
-				getCurrentMessages: () => this.currentSession?.messages || [],
-				addMessageToUI: (message) => this.messageManager.addMessageToUI(message),
-				startGuidedConversationWithMastra:
-					this.startGuidedConversationWithMastra.bind(this),
+				{
+					getCurrentMessages: () => this.currentSession?.messages || [],
+					addMessageToUI: (message) => {
+						this.messageManager.addMessageToUI(message);
+						return this.messageRenderer.findMessageElement(message.id) ?? document.createElement('div');
+					},
+					startGuidedConversationWithMastra:
+						this.startGuidedConversationWithMastra.bind(this),
 				handleGuidedResponseWithMastra:
 					this.handleGuidedResponseWithMastra.bind(this),
 				getAIResponse: this.getAIResponse.bind(this),
@@ -697,7 +700,7 @@ export class ChatView extends ItemView {
 			);
 
 			// ============================================================
-			// Original Normal/Guided Mode Implementation (Fallback)
+			// Original normal/guided-assist implementation (fallback)
 			// ============================================================
 
 			Logger.debug("🎬 [ChatView] Entering Fallback Implementation");
@@ -706,16 +709,28 @@ export class ChatView extends ItemView {
 			const conversationMode =
 				this.plugin.settings.conversationMode || "normal";
 
-			// Get available tools (only in Agent conversation mode)
+			// Get available tools for modes that can expose tools.
 			let availableTools: any[] = [];
-			if (conversationMode === "agent") {
+			if (conversationMode === "agent" || conversationMode === "normal") {
 				try {
-					availableTools =
+					const allTools =
 						(await this.plugin.getToolManager()?.getAllTools()) || [];
-					Logger.debug(
-						"Available tools for agent mode:",
-						availableTools.length
-					);
+
+					if (conversationMode === "normal") {
+						availableTools = allTools.filter(
+							(tool) => tool.name !== "run_local_command"
+						);
+						Logger.debug(
+							"Available tools for normal mode:",
+							availableTools.length
+						);
+					} else {
+						availableTools = allTools;
+						Logger.debug(
+							"Available tools for agent mode:",
+							availableTools.length
+						);
+					}
 				} catch (error) {
 					Logger.error("Failed to get available tools:", error);
 				}
@@ -883,7 +898,8 @@ export class ChatView extends ItemView {
 					}
 				},
 				streamController.signal,
-				conversationMode === "agent" && availableTools.length > 0
+				(conversationMode === "agent" || conversationMode === "normal") &&
+				availableTools.length > 0
 					? availableTools
 					: undefined,
 				systemPrompt
@@ -914,7 +930,7 @@ export class ChatView extends ItemView {
 			);
 			if (assistantMessage) {
 				assistantMessage.content = displayContent;
-			} // Process Action mode responses for diff rendering (only in normal/guided mode, not agent mode)
+			} // Process Action mode responses for diff rendering (only in normal/guided-assist flow, not agent mode)
 			if (conversationMode !== "agent") {
 				await this.messageManager.processActionModeResponse(
 					assistantMessage,
@@ -924,8 +940,11 @@ export class ChatView extends ItemView {
 				);
 			}
 
-			// Process tool calls (only in Agent conversation mode)
-			if (conversationMode === "agent") {
+			// Process tool calls when the current mode exposes tools.
+			if (
+				(conversationMode === "agent" || conversationMode === "normal") &&
+				availableTools.length > 0
+			) {
 				await this.toolCoordinator.processToolCalls(
 					{ toolCalls: collectedToolCalls },
 					accumulatedContent,
@@ -1324,7 +1343,7 @@ export class ChatView extends ItemView {
 	}
 
 	/**
-	 * Handle Guided Mode conversation - delegates to GuidedModeOrchestrator
+	 * Handle a guided-assist conversation and delegate to GuidedModeOrchestrator.
 	 */
 	private async handleGuidedMode(
 		userMessage: ChatMessage,
@@ -1334,7 +1353,7 @@ export class ChatView extends ItemView {
 	}
 
 	/**
-	 * Start new guided conversation - delegates to GuidedModeOrchestrator
+	 * Start a new guided-assist conversation.
 	 */
 	private async startGuidedConversation(
 		userMessage: ChatMessage,
@@ -1347,7 +1366,7 @@ export class ChatView extends ItemView {
 	}
 
 	/**
-	 * Handle user response to guided question - delegates to GuidedModeOrchestrator
+	 * Handle the user's response to a guided-assist question.
 	 */
 	private async handleGuidedResponse(
 		userMessage: ChatMessage,
@@ -1485,6 +1504,8 @@ export class ChatView extends ItemView {
 	private refreshUIState(): void {
 		this.uiCoordinator.refreshUIState();
 		this.updateHeroVisibility();
+		this.uiBuilder.updateModeButton();
+		this.uiBuilder.updateSkillButtonPublic();
 
 		// Update provider select if needed
 		if (this.inputHandler) {
@@ -1543,6 +1564,10 @@ export class ChatView extends ItemView {
 	 */
 	public refreshAllMessages() {
 		this.messageManager.renderMessages(this.currentSession);
+	}
+
+	public getCurrentSession(): ChatSession | null {
+		return this.currentSession;
 	}
 
 	/**
@@ -1668,6 +1693,68 @@ export class ChatView extends ItemView {
 		this.uiCoordinator.displayVectorSearchResults(container, results);
 	}
 
+	private getMessageTextContent(content: ChatMessage["content"]): string {
+		if (typeof content === "string") {
+			return content.trim();
+		}
+
+		if (Array.isArray(content)) {
+			return content
+				.filter((item): item is { type: "text"; text: string } => item.type === "text")
+				.map((item) => item.text.trim())
+				.filter(Boolean)
+				.join("\n")
+				.trim();
+		}
+
+		return "";
+	}
+
+	private async ensureGuidedInitialGoal(
+		userMessage: ChatMessage
+	): Promise<string | undefined> {
+		if (!this.currentSession) {
+			return undefined;
+		}
+
+		const existingGoal = this.currentSession.guidedInitialGoal?.trim();
+		if (existingGoal) {
+			if (!userMessage.metadata) {
+				userMessage.metadata = {};
+			}
+			userMessage.metadata.guidedInitialGoal = existingGoal;
+			return existingGoal;
+		}
+
+		const initialGoal = this.getMessageTextContent(userMessage.content);
+		if (!initialGoal) {
+			return undefined;
+		}
+
+		this.currentSession.guidedInitialGoal = initialGoal;
+		if (!userMessage.metadata) {
+			userMessage.metadata = {};
+		}
+		userMessage.metadata.guidedInitialGoal = initialGoal;
+
+		const currentUserMessage = this.currentSession.messages.find(
+			(message) => message.id === userMessage.id
+		);
+		if (currentUserMessage) {
+			currentUserMessage.metadata = {
+				...currentUserMessage.metadata,
+				guidedInitialGoal: initialGoal,
+			};
+		}
+
+		await this.plugin.updateChatSession(this.currentSession.id, {
+			messages: this.currentSession.messages,
+			guidedInitialGoal: initialGoal,
+		});
+
+		return initialGoal;
+	}
+
 	/**
 	 * Remove step indicators
 	 */
@@ -1683,7 +1770,7 @@ export class ChatView extends ItemView {
 	}
 
 	/**
-	 * Start guided conversation using Mastra framework
+	 * Start the guided-assist flow using the Mastra framework.
 	 */
 	private async startGuidedConversationWithMastra(
 		userMessage: ChatMessage,
@@ -1691,23 +1778,28 @@ export class ChatView extends ItemView {
 	): Promise<void> {
 		const flowStartTime = Date.now();
 		Logger.debug(
-			"[GuidedMode-Mastra] ========== START startGuidedConversationWithMastra =========="
+			"[GuidedAssist-Mastra] ========== START startGuidedConversationWithMastra =========="
 		);
 		Logger.debug(
-			"[GuidedMode-Mastra] Flow start timestamp:",
+			"[GuidedAssist-Mastra] Flow start timestamp:",
 			new Date().toISOString()
 		);
-		Logger.debug("[GuidedMode-Mastra] Session ID:", this.currentSession?.id);
+		Logger.debug("[GuidedAssist-Mastra] Session ID:", this.currentSession?.id);
 		Logger.debug(
-			"[GuidedMode-Mastra] User message preview:",
+			"[GuidedAssist-Mastra] User message preview:",
 			typeof userMessage.content === "string"
 				? userMessage.content.substring(0, 150)
 				: JSON.stringify(userMessage.content).substring(0, 150)
 		);
 		Logger.debug(
-			"[GuidedMode-Mastra] Message history length:",
+			"[GuidedAssist-Mastra] Message history length:",
 			messages.length
 		);
+
+		const guidedInitialGoal = await this.ensureGuidedInitialGoal(userMessage);
+		Logger.debug("[GuidedAssist-Mastra] Guided initial goal:", guidedInitialGoal);
+		const guidedSkillRoutingInput = guidedInitialGoal
+			|| (typeof userMessage.content === 'string' ? userMessage.content : '');
 
 		let stepIndicatorsEl: HTMLElement | null = null;
 
@@ -1715,24 +1807,32 @@ export class ChatView extends ItemView {
 			// Initialize shared memory manager if not already done
 			if (!this.sharedMemoryManager) {
 				Logger.debug(
-					"[GuidedMode-Mastra] Initializing shared Memory Manager..."
+					"[GuidedAssist-Mastra] Initializing shared Memory Manager..."
 				);
 				this.sharedMemoryManager = await AgentFactory.createSharedMemoryManager(
 					this.plugin,
 					this.i18n
 				);
-				Logger.debug("[GuidedMode-Mastra] ✓ Shared Memory Manager initialized");
+				Logger.debug("[GuidedAssist-Mastra] ✓ Shared Memory Manager initialized");
 			}
 
 			// Get available tools
 			const toolsInitTime = Date.now();
-			const allTools = await this.plugin.toolManager.getAllTools();
+			let allTools = await this.plugin.toolManager.getAllTools();
+			const skillManager = this.plugin.getSkillManager();
+			if (skillManager && this.currentSession) {
+				allTools = skillManager.filterToolsForSession(
+					allTools,
+					this.currentSession,
+					guidedSkillRoutingInput
+				);
+			}
 			const toolsMap: Record<string, any> = {};
 			allTools.forEach((tool) => {
 				toolsMap[tool.name] = tool;
 			});
 			Logger.debug(
-				"[GuidedMode-Mastra] ✓ Tools available:",
+				"[GuidedAssist-Mastra] ✓ Tools available:",
 				Object.keys(toolsMap).length,
 				"| Time:",
 				Date.now() - toolsInitTime,
@@ -1747,7 +1847,7 @@ export class ChatView extends ItemView {
 			const currentProvider = provider.getProviderName();
 			const currentModel = provider.getModelName();
 
-			// Create or reuse Guided Mode Agent
+			// Create or reuse the guided-assist agent
 			// Recreate if: 1) agent doesn't exist, 2) session changed, 3) provider/model changed
 			const needsRecreate =
 				!this.guidedModeAgent ||
@@ -1756,7 +1856,7 @@ export class ChatView extends ItemView {
 				this.agentModel !== currentModel;
 
 			if (needsRecreate) {
-				Logger.debug("[GuidedMode-Mastra] Creating Guided Mode Agent:", {
+				Logger.debug("[GuidedAssist-Mastra] Creating guided-assist agent:", {
 					session: this.currentSession?.id,
 					provider: currentProvider,
 					model: currentModel,
@@ -1778,7 +1878,7 @@ export class ChatView extends ItemView {
 					onToolSuggestion: async (toolCall: any) => {
 						// Show tool confirmation UI and wait for user response
 						Logger.debug(
-							"[GuidedMode-Mastra] Tool suggested, waiting for user confirmation:",
+							"[GuidedAssist-Mastra] Tool suggested, waiting for user confirmation:",
 							toolCall.function?.name || toolCall.name
 						);
 
@@ -1806,7 +1906,7 @@ export class ChatView extends ItemView {
 							}
 
 							Logger.debug(
-								"[GuidedMode-Mastra] Found message element for tool card"
+								"[GuidedAssist-Mastra] Found message element for tool card"
 							);
 
 							// Clear any loading indicator from the message content
@@ -1966,7 +2066,7 @@ export class ChatView extends ItemView {
 				this.agentProvider = currentProvider;
 				this.agentModel = currentModel;
 
-				Logger.debug("[GuidedMode-Mastra] Guided Mode Agent created");
+				Logger.debug("[GuidedAssist-Mastra] Guided-assist agent created");
 			}
 
 			// Start streaming controller
@@ -2002,6 +2102,7 @@ export class ChatView extends ItemView {
 				metadata: {
 					isGuidedQuestion: true,
 					guidedStepNumber: 1,
+					guidedInitialGoal,
 					isStreaming: true,
 				},
 			};
@@ -2010,27 +2111,31 @@ export class ChatView extends ItemView {
 			let suggestedTools: any[] = [];
 
 			// Create stream callback state
-			const streamState: IStreamState = {
-				chunkCount: 0,
-				lastChunkTime: Date.now(),
-				accumulatedContent: "",
-				workingMessageEl: null,
-				followUpMessageEl: null,
-				isFollowUpResponse: false,
-				stepIndicatorsEl: stepIndicatorsEl,
-				toolPlaceholders: new Map(),
-			};
+				const streamState: IStreamState = {
+					chunkCount: 0,
+					lastChunkTime: Date.now(),
+					accumulatedContent: "",
+					workingMessageEl: null,
+					followUpMessageEl: null,
+					isFollowUpResponse: false,
+					stepIndicatorsEl: stepIndicatorsEl,
+					toolPlaceholders: new Map(),
+					waitingIndicatorEl: null,
+				};
 
 			// Create tool callback state
-			const toolState: IToolCallbackState = {
-				assistantMessage,
-				workingMessageEl: null,
-				followUpMessageEl: null,
-				isFollowUpResponse: false,
-				accumulatedContent: "",
-				stepIndicatorsEl: stepIndicatorsEl,
-				toolAnalysisTimer: null,
-			};
+				const toolState: IToolCallbackState = {
+					assistantMessage,
+					workingMessageEl: null,
+					followUpMessageEl: null,
+					isFollowUpResponse: false,
+					accumulatedContent: "",
+					stepIndicatorsEl: stepIndicatorsEl,
+					toolAnalysisTimer: null,
+					waitingIndicatorEl: null,
+					chunkCount: 0,
+					lastChunkTime: Date.now(),
+				};
 
 			// Create stream callbacks handler
 			const streamCallbacks = new GuidedModeStreamCallbacks({
@@ -2089,22 +2194,23 @@ export class ChatView extends ItemView {
 				handleSendMessage: (message: string) => this.handleSendMessage(message),
 			});
 
-			// Execute guided mode agent
+			// Execute guided-assist agent
 			const agentExecuteStartTime = Date.now();
 			Logger.debug(
-				"[GuidedMode-Mastra] ▶▶▶ Calling guidedModeAgent.execute() ▶▶▶"
+				"[GuidedAssist-Mastra] ▶▶▶ Calling guidedModeAgent.execute() ▶▶▶"
 			);
 			Logger.debug(
-				"[GuidedMode-Mastra] Agent execute start timestamp:",
+				"[GuidedAssist-Mastra] Agent execute start timestamp:",
 				new Date().toISOString()
 			);
-			Logger.debug("[GuidedMode-Mastra] Messages count:", messages.length);
+			Logger.debug("[GuidedAssist-Mastra] Messages count:", messages.length);
 			Logger.debug(
-				"[GuidedMode-Mastra] Last message preview:",
+				"[GuidedAssist-Mastra] Last message preview:",
 				messages[messages.length - 1]?.content?.toString().substring(0, 100)
 			);
 			await this.guidedModeAgent.execute({
 				messages,
+				guidedInitialGoal,
 				abortController: streamController,
 				onToolError: async (toolName: string, error: string) => {
 					return new Promise<"skip" | "retry" | "regenerate">((resolve) => {
@@ -2186,23 +2292,23 @@ export class ChatView extends ItemView {
 				onComplete: async (fullResponse: string) => {
 					const completeTime = Date.now();
 					Logger.debug(
-						"[GuidedMode-Mastra] ========== ✅ onComplete TRIGGERED =========="
+						"[GuidedAssist-Mastra] ========== ✅ onComplete TRIGGERED =========="
 					);
 					Logger.debug(
-						"[GuidedMode-Mastra] Timestamp:",
+						"[GuidedAssist-Mastra] Timestamp:",
 						new Date().toISOString()
 					);
 					Logger.debug(
-						"[GuidedMode-Mastra] Full response length:",
+						"[GuidedAssist-Mastra] Full response length:",
 						fullResponse.length
 					);
 					Logger.debug(
-						"[GuidedMode-Mastra] Total time since agent.execute():",
+						"[GuidedAssist-Mastra] Total time since agent.execute():",
 						completeTime - agentExecuteStartTime,
 						"ms"
 					);
 					Logger.debug(
-						"[GuidedMode-Mastra] Has follow-up message element:",
+						"[GuidedAssist-Mastra] Has follow-up message element:",
 						!!streamState.followUpMessageEl
 					);
 
@@ -2219,11 +2325,11 @@ export class ChatView extends ItemView {
 					);
 					if (toolCodeMatch && toolCodeMatch[1]) {
 						Logger.debug(
-							"[GuidedMode-Mastra] 🔧 Detected tool_code block in response"
+							"[GuidedAssist-Mastra] 🔧 Detected tool_code block in response"
 						);
 						try {
 							const toolJson = JSON.parse(toolCodeMatch[1].trim());
-							Logger.debug("[GuidedMode-Mastra] Parsed tool call:", toolJson);
+							Logger.debug("[GuidedAssist-Mastra] Parsed tool call:", toolJson);
 
 							// Clean the content to remove the tool_code block before updating UI
 							const cleanedContent = fullResponse
@@ -2268,7 +2374,7 @@ export class ChatView extends ItemView {
 
 							// Manually render tool cards using the existing infrastructure
 							Logger.debug(
-								"[GuidedMode-Mastra] Rendering tool cards for parsed tool"
+								"[GuidedAssist-Mastra] Rendering tool cards for parsed tool"
 							);
 							if (assistantMessage.metadata) {
 								assistantMessage.metadata.suggestedToolCalls = toolCalls;
@@ -2283,12 +2389,12 @@ export class ChatView extends ItemView {
 
 							// Don't save message yet - it will be saved after tool execution
 							Logger.debug(
-								"[GuidedMode-Mastra] Tool code detected, waiting for tool execution before saving"
+								"[GuidedAssist-Mastra] Tool code detected, waiting for tool execution before saving"
 							);
 							return;
 						} catch (error) {
 							Logger.error(
-								"[GuidedMode-Mastra] Failed to parse tool_code:",
+								"[GuidedAssist-Mastra] Failed to parse tool_code:",
 								error
 							);
 							// Continue with normal flow if parsing fails
@@ -2304,7 +2410,7 @@ export class ChatView extends ItemView {
 						// Check if it's the follow-up indicator (has the specific data attribute)
 						if (indicator.querySelector("[data-followup-streaming-content]")) {
 							Logger.debug(
-								"[GuidedMode-Mastra] Removing leftover thinking indicator"
+								"[GuidedAssist-Mastra] Removing leftover thinking indicator"
 							);
 							indicator.remove();
 						}
@@ -2315,7 +2421,7 @@ export class ChatView extends ItemView {
 						clearTimeout(toolState.toolAnalysisTimer);
 						toolState.toolAnalysisTimer = null;
 						Logger.debug(
-							"[GuidedMode-Mastra] 🎯 Cleared tool analysis timer in onComplete"
+							"[GuidedAssist-Mastra] 🎯 Cleared tool analysis timer in onComplete"
 						);
 					}
 
@@ -2325,7 +2431,7 @@ export class ChatView extends ItemView {
 					// If we have a follow-up message element, process and save it
 					if (streamState.followUpMessageEl) {
 						Logger.debug(
-							"[GuidedMode-Mastra] Processing follow-up message, content length:",
+							"[GuidedAssist-Mastra] Processing follow-up message, content length:",
 							streamState.accumulatedContent.length
 						);
 
@@ -2339,11 +2445,11 @@ export class ChatView extends ItemView {
 						for (const line of lines) {
 							if (/➤CHOICE:\s*SINGLE\s*$/i.test(line.trim())) {
 								isMultiSelect = false;
-								Logger.debug("[GuidedMode-Mastra] Found SINGLE mode marker");
+								Logger.debug("[GuidedAssist-Mastra] Found SINGLE mode marker");
 								break;
 							} else if (/➤CHOICE:\s*MULTIPLE\s*$/i.test(line.trim())) {
 								isMultiSelect = true;
-								Logger.debug("[GuidedMode-Mastra] Found MULTIPLE mode marker");
+								Logger.debug("[GuidedAssist-Mastra] Found MULTIPLE mode marker");
 								break;
 							}
 						}
@@ -2364,7 +2470,7 @@ export class ChatView extends ItemView {
 						}
 
 						Logger.debug(
-							"[GuidedMode-Mastra] Extracted options:",
+							"[GuidedAssist-Mastra] Extracted options:",
 							options.length,
 							options
 						);
@@ -2380,6 +2486,7 @@ export class ChatView extends ItemView {
 							metadata: {
 								isGuidedQuestion: true,
 								isFollowUpMessage: true,
+								guidedInitialGoal,
 								guidedOptions: options.length > 0 ? options : undefined,
 								isMultiSelect: isMultiSelect,
 							},
@@ -2405,11 +2512,11 @@ export class ChatView extends ItemView {
 									threadId || undefined
 								);
 								Logger.debug(
-									"[GuidedMode-Mastra] Follow-up message saved to Memory"
+									"[GuidedAssist-Mastra] Follow-up message saved to Memory"
 								);
 							} catch (error) {
 								Logger.warn(
-									"[GuidedMode-Mastra] Failed to save follow-up message to Memory:",
+									"[GuidedAssist-Mastra] Failed to save follow-up message to Memory:",
 									error
 								);
 							}
@@ -2418,7 +2525,7 @@ export class ChatView extends ItemView {
 						// Render options if found
 						if (options.length > 0) {
 							Logger.debug(
-								"[GuidedMode-Mastra] Found options in follow-up:",
+								"[GuidedAssist-Mastra] Found options in follow-up:",
 								options
 							);
 							const cardContainer = streamState.followUpMessageEl.querySelector(
@@ -2439,7 +2546,7 @@ export class ChatView extends ItemView {
 						// This ensures proper rendering of tool cards, options, etc.
 						// Force re-rendering to extract options from content (including numbered lists)
 						Logger.debug(
-							"[GuidedMode-Mastra] Stream complete, forcing guided card re-render to extract options"
+							"[GuidedAssist-Mastra] Stream complete, forcing guided card re-render to extract options"
 						);
 						this.guidedModeUIRenderer.renderGuidedCard(assistantMessage, false);
 					}
@@ -2462,12 +2569,12 @@ export class ChatView extends ItemView {
 						);
 						if (!assistantMessageExists) {
 							Logger.debug(
-								"[GuidedMode-Mastra] 💾 Saving assistant message to session (onComplete)..."
+								"[GuidedAssist-Mastra] 💾 Saving assistant message to session (onComplete)..."
 							);
 							this.currentSession.messages.push(assistantMessage);
 						} else {
 							Logger.debug(
-								"[GuidedMode-Mastra] ⚠️ Assistant message already in session (from onToolSuggested)"
+								"[GuidedAssist-Mastra] ⚠️ Assistant message already in session (from onToolSuggested)"
 							);
 						}
 
@@ -2487,24 +2594,24 @@ export class ChatView extends ItemView {
 				},
 				onError: (error: Error) => {
 					Logger.error(
-						"[GuidedMode-Mastra] ❌ Agent onError callback triggered ❌"
+						"[GuidedAssist-Mastra] ❌ Agent onError callback triggered ❌"
 					);
 					Logger.error(
-						"[GuidedMode-Mastra] Error type:",
+						"[GuidedAssist-Mastra] Error type:",
 						error.constructor.name
 					);
-					Logger.error("[GuidedMode-Mastra] Error message:", error.message);
-					Logger.error("[GuidedMode-Mastra] Error stack:", error.stack);
+					Logger.error("[GuidedAssist-Mastra] Error message:", error.message);
+					Logger.error("[GuidedAssist-Mastra] Error stack:", error.stack);
 					throw error;
 				},
 			});
 
 			Logger.debug(
-				"[GuidedMode-Mastra] Guided conversation completed successfully"
+				"[GuidedAssist-Mastra] Guided-assist conversation completed successfully"
 			);
 		} catch (error) {
 			Logger.error(
-				"[GuidedMode-Mastra] ❌❌❌ CRITICAL ERROR in guided conversation ❌❌❌"
+				"[GuidedAssist-Mastra] ❌❌❌ CRITICAL ERROR in guided-assist conversation ❌❌❌"
 			);
 
 			// Remove step indicators on error
@@ -2513,24 +2620,24 @@ export class ChatView extends ItemView {
 			}
 
 			Logger.error(
-				"[GuidedMode-Mastra] Error type:",
+				"[GuidedAssist-Mastra] Error type:",
 				error instanceof Error ? error.constructor.name : typeof error
 			);
 			Logger.error(
-				"[GuidedMode-Mastra] Error message:",
+				"[GuidedAssist-Mastra] Error message:",
 				error instanceof Error ? error.message : String(error)
 			);
 			Logger.error(
-				"[GuidedMode-Mastra] Error stack:",
+				"[GuidedAssist-Mastra] Error stack:",
 				error instanceof Error ? error.stack : "No stack trace"
 			);
-			Logger.error("[GuidedMode-Mastra] Error object:", error);
+			Logger.error("[GuidedAssist-Mastra] Error object:", error);
 			throw error;
 		}
 	}
 
 	/**
-	 * Handle guided response using Mastra framework
+	 * Handle a guided-assist response using the Mastra framework.
 	 */
 	private async handleGuidedResponseWithMastra(
 		userMessage: ChatMessage,
@@ -2538,11 +2645,11 @@ export class ChatView extends ItemView {
 	): Promise<void> {
 		const startTime = Date.now();
 		Logger.debug(
-			"[GuidedMode-Mastra] ========== START handleGuidedResponseWithMastra =========="
+			"[GuidedAssist-Mastra] ========== START handleGuidedResponseWithMastra =========="
 		);
-		Logger.debug("[GuidedMode-Mastra] Timestamp:", new Date().toISOString());
+		Logger.debug("[GuidedAssist-Mastra] Timestamp:", new Date().toISOString());
 		Logger.debug(
-			"[GuidedMode-Mastra] User message content preview:",
+			"[GuidedAssist-Mastra] User message content preview:",
 			typeof userMessage.content === "string"
 				? userMessage.content.substring(0, 100)
 				: JSON.stringify(userMessage.content).substring(0, 100)
@@ -2554,9 +2661,9 @@ export class ChatView extends ItemView {
 
 		const duration = Date.now() - startTime;
 		Logger.debug(
-			"[GuidedMode-Mastra] ========== END handleGuidedResponseWithMastra =========="
+			"[GuidedAssist-Mastra] ========== END handleGuidedResponseWithMastra =========="
 		);
-		Logger.debug("[GuidedMode-Mastra] Total duration:", duration, "ms");
+		Logger.debug("[GuidedAssist-Mastra] Total duration:", duration, "ms");
 	}
 
 	/**

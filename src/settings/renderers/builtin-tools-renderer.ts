@@ -28,7 +28,7 @@ interface ToolCardOptions {
 }
 
 // System tools that are always enabled and hidden from UI
-const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each'];
+const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each', 'run_local_command'];
 
 // Categories that should be hidden from UI (meta-tools, system tools, etc.)
 const HIDDEN_CATEGORIES = ['meta'];

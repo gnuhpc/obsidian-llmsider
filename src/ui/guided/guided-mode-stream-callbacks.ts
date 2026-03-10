@@ -1,7 +1,7 @@
 /**
  * Guided Mode Stream Callbacks
- * 
- * Handles streaming responses for Guided Mode conversations:
+ *
+ * Handles streaming responses for guided-assist conversations:
  * - onStream: Process streaming chunks and update UI
  * - UI state management for message elements
  * - Content cleaning and formatting
@@ -46,7 +46,7 @@ export interface IStreamCallbacksDeps {
 }
 
 /**
- * Guided Mode Stream Callbacks Handler
+ * Guided-assist stream callbacks handler
  */
 export class GuidedModeStreamCallbacks {
 	constructor(

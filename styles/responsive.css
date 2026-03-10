@@ -4725,16 +4725,17 @@
 /* Modern toggle switch */
 .llmsider-toggle-switch {
     position: relative;
-    width: 36px;
-    height: 20px;
-    background: var(--background-modifier-border);
-    border-radius: 10px;
+    width: 42px;
+    height: 24px;
+    background: color-mix(in srgb, var(--background-modifier-border) 88%, var(--background-primary) 12%);
+    border-radius: 12px;
     cursor: pointer;
     transition: background 0.3s ease;
+    box-shadow: none;
 }
 
 .llmsider-toggle-switch.active {
-    background: var(--interactive-accent);
+    background: color-mix(in srgb, var(--interactive-accent) 72%, white 28%);
 }
 
 .llmsider-toggle-switch.disabled {
@@ -4744,10 +4745,10 @@
 
 .llmsider-toggle-thumb {
     position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 16px;
-    height: 16px;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
     background: white;
     border-radius: 50%;
     transition: transform 0.3s ease;
@@ -4755,7 +4756,7 @@
 }
 
 .llmsider-toggle-switch.active .llmsider-toggle-thumb {
-    transform: translateX(16px);
+    transform: translateX(18px);
 }
 
 /* Category details container */
@@ -5058,6 +5059,14 @@
 /* Mode selector container */
 .llmsider-mode-selector {
     display: inline-flex;
+}
+
+.llmsider-skill-btn.has-skill {
+    color: var(--interactive-accent);
+}
+
+.llmsider-skill-btn.skill-disabled {
+    opacity: 0.75;
 }
 
 /* Mode selector button */
@@ -5935,6 +5944,58 @@
     animation: slideInUp 0.15s ease;
     z-index: 99999 !important;
     position: fixed !important;
+}
+
+.llmsider-skill-dropdown {
+    min-width: 240px;
+    overflow-y: auto;
+}
+
+.llmsider-skill-dropdown .llmsider-tools-header-row {
+    padding: 2px 4px;
+    margin-bottom: 0;
+}
+
+.llmsider-skill-dropdown .llmsider-tools-search-container {
+    padding: 6px 8px;
+}
+
+.llmsider-skill-dropdown .llmsider-tools-search-input {
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
+.llmsider-skill-dropdown .llmsider-mcp-tools-list {
+    padding-top: 2px;
+}
+
+.llmsider-skill-dropdown .llmsider-mcp-tool-item {
+    padding: 5px 8px;
+    gap: 8px;
+}
+
+.llmsider-skill-dropdown .tool-dot {
+    width: 3px !important;
+    height: 3px !important;
+}
+
+.llmsider-skill-dropdown .tool-info {
+    gap: 1px !important;
+}
+
+.llmsider-skill-dropdown .tool-name {
+    font-size: 12px !important;
+    line-height: 1.05 !important;
+}
+
+.llmsider-skill-dropdown .tool-description {
+    font-size: 11px !important;
+    line-height: 1.05 !important;
+}
+
+.llmsider-skill-dropdown .llmsider-tools-switch-container {
+    transform: scale(0.92);
+    transform-origin: center right;
 }
 
 @keyframes slideInUp {
@@ -7934,17 +7995,19 @@ pre.llmsider-error-description {
     position: absolute;
     animation: llmsider-popup-appear 0.2s ease-out;
     z-index: 1000;
+    --llmsider-popup-show-transform: translateY(0);
+    --llmsider-popup-hide-transform: translateY(-8px);
 }
 
 @keyframes llmsider-popup-appear {
     from {
         opacity: 0;
-        transform: translateX(-50%) translateY(-8px);
+        transform: var(--llmsider-popup-hide-transform);
     }
 
     to {
         opacity: 1;
-        transform: translateX(-50%) translateY(0);
+        transform: var(--llmsider-popup-show-transform);
     }
 }
 
@@ -7956,12 +8019,12 @@ pre.llmsider-error-description {
 @keyframes llmsider-popup-hide {
     from {
         opacity: 1;
-        transform: translateX(-50%) translateY(0);
+        transform: var(--llmsider-popup-show-transform);
     }
 
     to {
         opacity: 0;
-        transform: translateX(-50%) translateY(-8px);
+        transform: var(--llmsider-popup-hide-transform);
     }
 }
 

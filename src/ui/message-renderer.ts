@@ -55,7 +55,7 @@ export class MessageRenderer {
 
 		const messageClasses = [`llmsider-message`, `llmsider-${message.role}`];
 		
-		// Add guided mode class if this is a guided question
+		// Add guided-assist class if this is a guided question
 		if (message.metadata?.isGuidedQuestion) {
 			messageClasses.push('llmsider-guided-mode');
 		}
@@ -143,7 +143,7 @@ export class MessageRenderer {
 			return; // Don't render the original content
 		}
 
-		// Add action buttons for guided mode messages (after rendering content)
+		// Add action buttons for guided-assist messages (after rendering content)
 		if (message.metadata?.isGuidedQuestion) {
 			this.addMessageActions(messageEl, message);
 		}
@@ -230,7 +230,7 @@ export class MessageRenderer {
 			this.renderMarkdownContent(contentEl, this.extractTextContent(message.content));
 		}
 
-		// Add action buttons for assistant messages (unless already added for guided mode)
+		// Add action buttons for assistant messages (unless already added for guided assist)
 		// Skip if message is still working/streaming
 		if (!message.metadata?.isWorking && !message.metadata?.isGuidedQuestion) {
 			this.addMessageActions(messageEl, message);
@@ -467,7 +467,7 @@ export class MessageRenderer {
 		Logger.debug('Rendering working indicator');
 		contentEl.classList.add('llmsider-working-indicator');
 		
-		// Create three animated dots (same as Guided Mode)
+		// Create three animated dots (same as guided assist)
 		const dotsContainer = contentEl.createEl('div', { cls: 'llmsider-typing-dots' });
 		
 		// Create the middle dot with animation
@@ -1128,7 +1128,7 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			return;
 		}
 
-		// For Guided Mode messages with options, show action buttons (copy, generate note)
+		// For guided-assist messages with options, show action buttons (copy, generate note)
 		// This allows users to copy the question or generate notes from guided conversations
 		const metadata = message.metadata as any;
 		const isGuidedMode = metadata?.isGuidedQuestion === true;
@@ -1142,7 +1142,7 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			return;
 		}
 		
-		// No longer skip action buttons for guided mode messages
+		// No longer skip action buttons for guided-assist messages
 		// Users should be able to copy questions and generate notes
 
 		const actionsEl = this.ensureMessageFooter(messageEl, message);

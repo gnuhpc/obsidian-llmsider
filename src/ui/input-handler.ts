@@ -2058,7 +2058,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		Logger.debug('All options created, menu children count:', menu.children.length);
 
 		// Position the menu ABOVE the attach button
-		const attachBtn = this.sendButton.closest('.llmsider-input-container')?.querySelector('.llmsider-input-btn') as HTMLElement;
+		const attachBtn = this.sendButton.closest('.llmsider-input-container')?.querySelector('.llmsider-attach-context-btn') as HTMLElement;
 		Logger.debug('Attach button found:', attachBtn);
 
 		if (attachBtn) {

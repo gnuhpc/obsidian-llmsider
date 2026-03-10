@@ -51,11 +51,15 @@ textSearchReplace: {
 			name: '文本搜索替换',
 			description: '搜索文本中的模式并可选择性地替换它们'
 		},
-getCurrentTime: {
+	getCurrentTime: {
 			name: '获取当前时间',
 			description: '获取多种格式的当前日期和时间'
 		},
-append: {
+	runLocalCommand: {
+			name: '执行本地命令',
+			description: '在当前机器上执行本地 shell 命令，并返回 stdout、stderr 和退出状态'
+		},
+	append: {
 			name: '追加内容',
 			description: '向笔记末尾追加内容'
 		},

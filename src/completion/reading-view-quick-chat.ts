@@ -243,11 +243,9 @@ export class ReadingViewQuickChatHandler {
 									content: historyPrompt,
 									description: '',
 									isBuiltIn: false,
-									orderIndex: 999,
-									lastUsed: Date.now(),
-									createdAt: Date.now(),
-									updatedAt: Date.now()
-								});
+										order: 999,
+										lastUsed: Date.now()
+									});
 								const [, history] = await Promise.all([
 									refreshPrompts(),
 									this.plugin.configDb.getPromptHistory(3)

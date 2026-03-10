@@ -172,19 +172,10 @@ export class ContextManager {
 			activeFile = this.app.workspace.getActiveFile();
 		}
 
-		// Method 3: Try to get from active leaf
-		if (!activeFile) {
-			const activeLeaf = this.app.workspace.getLeaf();
-			if (activeLeaf && activeLeaf.view && (activeLeaf.view as any).file) {
-				activeFile = (activeLeaf.view as any).file;
-			}
-		}
-
 		Logger.debug('Active file detection:', {
 			activeView: !!activeView,
 			activeViewFile: activeView?.file?.path,
 			workspaceActiveFile: this.app.workspace.getActiveFile()?.path,
-			activeLeaf: !!this.app.workspace.getLeaf(),
 			foundFile: activeFile?.path
 		});
 

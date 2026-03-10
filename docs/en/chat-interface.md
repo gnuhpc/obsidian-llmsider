@@ -66,16 +66,17 @@ The LLMSider chat interface is your command center for AI interactions. It provi
 The input area features a comprehensive toolbar with multiple functions:
 
 ![Input Area Toolbar Buttons](../assets/screenshots/input-toolbar.png)
-*Input area toolbar buttons: add context, conversation mode, search, list, and model selector*
+*Input area toolbar buttons: add context, mode selector, guided assist toggle, search, list, and model selector*
 
 #### Left Side Buttons
 
 | Button | Icon | Description | Availability |
 |--------|------|-------------|-------------|
 | **Attach Context** | 📎 | Add files, folders, or selections to context | Always |
-| **Conversation Mode** | 🗣️/🎯/🤖 | Switch between Normal/Guided/Agent modes | Always |
-| **Built-in Tools Management** | 🛠️ | Enable/disable built-in tools by category | Guided/Agent modes only |
-| **MCP Servers** | 🔌 | Manage external MCP tool servers | Guided/Agent modes only |
+| **Conversation Mode** | 🗣️/🤖 | Switch between Normal and Agent modes | Always |
+| **Guided Assist** | 🎯 | Toggle step-by-step guidance inside Normal mode | Normal mode |
+| **Built-in Tools Management** | 🛠️ | Enable/disable built-in tools by category | Normal and Agent modes |
+| **MCP Servers** | 🔌 | Manage external MCP tool servers | Normal and Agent modes |
 | **Context Search** | 🔍 | Toggle automatic vector database search | When Vector DB enabled |
 | **Speed Reading** | 📖 | Analyze current note with AI | Always |
 
@@ -126,7 +127,7 @@ LLMSider manages conversation context automatically:
 Switch between three powerful modes:
 
 ![Conversation Mode Selection](../assets/screenshots/conversation-modes.png)
-*Conversation mode selection menu (highlighted area): Normal Mode (currently selected), Guided Mode, Agent Mode*
+*Conversation controls (highlighted area): Normal Mode, Guided Assist toggle, Agent Mode*
 
 ### 🗣️ Normal Mode
 **Direct conversation with AI**
@@ -141,22 +142,22 @@ You: Summarize this article: [paste URL]
 AI: Here's a summary...
 ```
 
-### 🎯 Guided Mode
-**Step-by-step task breakdown**
+### 🎯 Guided Assist
+**Step-by-step guidance inside Normal mode**
 
-- AI creates a plan with steps
-- You approve each step before execution
+- AI breaks the task into smaller next steps
+- The UI can render explicit options and confirmations
 - Best for: Complex tasks, learning workflows
 
 **Example:**
 ```
 You: Create a weekly blog post template
-AI: I'll break this into steps:
-    1. Define blog structure
-    2. Create template file
-    3. Add frontmatter fields
-    
-    Approve step 1? [Yes] [No] [Cancel]
+AI:
+    Which direction should we take first?
+    ➤CHOICE:SINGLE
+    ➤CHOICE: Define the blog structure
+    ➤CHOICE: Draft the template content
+    ➤CHOICE: Prepare frontmatter fields
 ```
 
 ### 🤖 Agent Mode
@@ -483,7 +484,7 @@ Configure per-model:
 
 **Writing Workflow:**
 1. Brainstorm with AI (Normal Mode)
-2. Outline structure (Guided Mode)
+2. Outline structure (Guided Assist)
 3. Generate draft sections (Agent Mode)
 4. Refine with targeted edits
 

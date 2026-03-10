@@ -174,16 +174,17 @@
 /* Modern toggle switch */
 .llmsider-toggle-switch {
     position: relative;
-    width: 36px;
-    height: 20px;
-    background: var(--background-modifier-border);
-    border-radius: 10px;
+    width: 42px;
+    height: 24px;
+    background: color-mix(in srgb, var(--background-modifier-border) 88%, var(--background-primary) 12%);
+    border-radius: 12px;
     cursor: pointer;
     transition: background 0.3s ease;
+    box-shadow: none;
 }
 
 .llmsider-toggle-switch.active {
-    background: var(--interactive-accent);
+    background: color-mix(in srgb, var(--interactive-accent) 72%, white 28%);
 }
 
 .llmsider-toggle-switch.disabled {
@@ -193,10 +194,10 @@
 
 .llmsider-toggle-thumb {
     position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 16px;
-    height: 16px;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
     background: white;
     border-radius: 50%;
     transition: transform 0.3s ease;
@@ -204,7 +205,7 @@
 }
 
 .llmsider-toggle-switch.active .llmsider-toggle-thumb {
-    transform: translateX(16px);
+    transform: translateX(18px);
 }
 
 /* ============================================================================

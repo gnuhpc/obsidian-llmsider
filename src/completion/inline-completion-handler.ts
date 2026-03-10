@@ -344,7 +344,14 @@ export class InlineCompletionHandler {
 	private getCacheKey(context: string): string {
 		// Use last 50 characters as cache key for better cache hits
 		// Similar contexts will have same key
-		const key = context.slice(-50).toLowerCase().trim();
+		const settings = this.plugin.settings.autocomplete;
+		const key = [
+			context.slice(-50).toLowerCase().trim(),
+			settings.granularity || 'phrase',
+			settings.tone || '',
+			settings.domain || '',
+			(settings.customPrompt || '').trim()
+		].join('||');
 		return key;
 	}
 	
@@ -510,6 +517,9 @@ export class InlineCompletionHandler {
 		
 		// Get number of suggestions (default to 1 for speed)
 		const numSuggestions = (settings as { maxSuggestions?: number }).maxSuggestions || 1;
+		const tone = ((settings as { tone?: string }).tone || '').trim();
+		const domain = ((settings as { domain?: string }).domain || '').trim();
+		const customPrompt = ((settings as { customPrompt?: string }).customPrompt || '').trim();
 		
 		// Define length limits based on granularity
 		let lengthLimit: string;
@@ -551,12 +561,18 @@ export class InlineCompletionHandler {
 		
 	// Build prompt
 	let prompt: string;
+	const zhToneLine = tone ? `\n4. 语气风格：${tone}` : '';
+	const zhDomainLine = domain ? `\n5. 领域背景：${domain}` : '';
+	const zhCustomPromptLine = customPrompt ? `\n6. 额外约束：${customPrompt}` : '';
+	const enToneLine = tone ? `\n4. Tone/style: ${tone}` : '';
+	const enDomainLine = domain ? `\n5. Domain/context: ${domain}` : '';
+	const enCustomPromptLine = customPrompt ? `\n6. Additional constraints: ${customPrompt}` : '';
 	
 if (isChinese) {
 	// Chinese prompt - simple and direct
 	if (hasAfter) {
-		const newSentenceNote = isNewSentence ? '\n5. 注意：这是一个新句子的开始，必须包含完整的主谓宾结构，不是前文的延续' : '';
-		const multipleNote = numSuggestions > 1 ? `\n6. 提供${numSuggestions}个不同的续写选项，每个一行` : '';
+		const newSentenceNote = isNewSentence ? '\n7. 注意：这是一个新句子的开始，必须包含完整的主谓宾结构，不是前文的延续' : '';
+		const multipleNote = numSuggestions > 1 ? `\n8. 提供${numSuggestions}个不同的续写选项，每个一行` : '';
 		prompt = `续写文本（光标位置）：
 前文：${contextBefore}
 后文：${contextAfter}
@@ -565,27 +581,27 @@ if (isChinese) {
 1. 长度限制：${lengthLimit}
 2. 保持前后衔接自然流畅
 3. 只输出续写内容，不要解释
-4. 使用中文${newSentenceNote}${multipleNote}
+4. 使用中文${zhToneLine}${zhDomainLine}${zhCustomPromptLine}${newSentenceNote}${multipleNote}
 
 续写：`;
 	} else {
-		const newSentenceNote = isNewSentence ? '\n4. 注意：这是一个新句子的开始，必须包含完整的主谓宾结构，不是前文的延续' : '';
-		const multipleNote = numSuggestions > 1 ? `\n5. 提供${numSuggestions}个不同的续写选项，每个一行` : '';
+		const newSentenceNote = isNewSentence ? '\n7. 注意：这是一个新句子的开始，必须包含完整的主谓宾结构，不是前文的延续' : '';
+		const multipleNote = numSuggestions > 1 ? `\n8. 提供${numSuggestions}个不同的续写选项，每个一行` : '';
 		prompt = `续写文本：
 ${contextBefore}
 
 要求：
 1. 长度限制：${lengthLimit}
 2. 只输出续写内容，不要解释
-3. 使用中文${newSentenceNote}${multipleNote}
+3. 使用中文${zhToneLine}${zhDomainLine}${zhCustomPromptLine}${newSentenceNote}${multipleNote}
 
 续写：`;
 		}
 		} else if (isEnglish) {
 	// English prompt - simple and direct
-	const spacingNote = endsWithSpace ? '' : '\n4. Start with a space if continuing the same line';
-	const newSentenceNote = isNewSentence ? '\n5. Note: This is the START of a NEW sentence with complete subject-verb-object structure, not a continuation of the previous one' : '';
-	const multipleNote = numSuggestions > 1 ? `\n6. Provide ${numSuggestions} different options, one per line` : '';
+	const spacingNote = endsWithSpace ? '' : '\n7. Start with a space if continuing the same line';
+	const newSentenceNote = isNewSentence ? '\n8. Note: This is the START of a NEW sentence with complete subject-verb-object structure, not a continuation of the previous one' : '';
+	const multipleNote = numSuggestions > 1 ? `\n9. Provide ${numSuggestions} different options, one per line` : '';
 	
 	if (hasAfter) {
 		prompt = `Continue the text at cursor position:
@@ -596,7 +612,7 @@ Requirements:
 1. Length: ${lengthLimit}
 2. Must connect naturally between before and after text
 3. Output ONLY the continuation, no explanations
-4. Use English${spacingNote}${newSentenceNote}${multipleNote}
+4. Use English${enToneLine}${enDomainLine}${enCustomPromptLine}${spacingNote}${newSentenceNote}${multipleNote}
 
 Continuation:`;
 		} else {
@@ -606,12 +622,17 @@ ${contextBefore}
 Requirements:
 1. Length: ${lengthLimit}
 2. Output ONLY the continuation, no explanations
-3. Use English${spacingNote}${newSentenceNote}${multipleNote}
+3. Use English${enToneLine}${enDomainLine}${enCustomPromptLine}${spacingNote}${newSentenceNote}${multipleNote}
 
 Continuation:`;
 		}
 		} else {
 			// Mixed or generic prompt
+			const genericConstraintBlock = [
+				tone ? `Tone/style: ${tone}` : '',
+				domain ? `Domain/context: ${domain}` : '',
+				customPrompt ? `Additional constraints: ${customPrompt}` : ''
+			].filter(Boolean).join('\n');
 			if (hasAfter) {
 				prompt = `Complete text at cursor:
 Before: ${contextBefore}
@@ -619,6 +640,7 @@ After: ${contextAfter}
 
 Length: ${lengthLimit}
 Output only the completion text that naturally connects before and after.
+${genericConstraintBlock ? `\n${genericConstraintBlock}` : ''}
 
 Completion:`;
 			} else {
@@ -627,6 +649,7 @@ ${contextBefore}
 
 Length: ${lengthLimit}
 Output only the continuation text.
+${genericConstraintBlock ? `\n${genericConstraintBlock}` : ''}
 
 Continuation:`;
 			}

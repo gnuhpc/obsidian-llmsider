@@ -145,6 +145,57 @@
   box-sizing: border-box !important;
 }
 
+.llmsider-speed-reading-modal .llmsider-input-btn,
+.speed-reading-fullscreen-overlay .llmsider-input-btn,
+.llmsider-mermaid-modal .llmsider-input-btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--text-muted) !important;
+  border-radius: 10px !important;
+  padding: 0 !important;
+}
+
+.llmsider-speed-reading-modal .llmsider-input-btn:hover,
+.speed-reading-fullscreen-overlay .llmsider-input-btn:hover,
+.llmsider-mermaid-modal .llmsider-input-btn:hover {
+  background: var(--background-modifier-hover) !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--text-normal) !important;
+  transform: none !important;
+}
+
+.llmsider-speed-reading-modal .llmsider-input-btn:active,
+.speed-reading-fullscreen-overlay .llmsider-input-btn:active,
+.llmsider-mermaid-modal .llmsider-input-btn:active {
+  background: var(--background-modifier-active-hover) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.llmsider-speed-reading-modal .llmsider-input-btn:focus,
+.llmsider-speed-reading-modal .llmsider-input-btn:focus-visible,
+.speed-reading-fullscreen-overlay .llmsider-input-btn:focus,
+.speed-reading-fullscreen-overlay .llmsider-input-btn:focus-visible,
+.llmsider-mermaid-modal .llmsider-input-btn:focus,
+.llmsider-mermaid-modal .llmsider-input-btn:focus-visible {
+  box-shadow: none !important;
+  outline: 1px solid var(--background-modifier-border-hover) !important;
+  outline-offset: 0 !important;
+}
+
+.llmsider-speed-reading-modal .speed-reading-button-group {
+  gap: 4px !important;
+}
+
+.llmsider-speed-reading-modal .speed-reading-button-group .llmsider-input-btn {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 8px !important;
+  padding: 0 !important;
+}
+
 /* Close Button */
 .speed-reading-close-btn {
   position: absolute;

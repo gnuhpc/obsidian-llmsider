@@ -38,6 +38,8 @@ import { memoryMonitor } from './utils/memory-monitor';
 import { OpenCodeServerManager } from './utils/opencode-server-manager';
 import { WebLLMManager } from './core/webllm/webllm-manager';
 import { getDefaultWebLLMModel } from './core/webllm/webllm-models';
+import { SkillManager } from './skills/skill-manager';
+import { SkillSelectionModal } from './ui/skill-selection-modal';
 
 type UpdateCheckResult = {
 	hasUpdate: boolean;
@@ -60,6 +62,7 @@ export default class LLMSiderPlugin extends Plugin {
 	configDb!: ConfigDatabase;
 	mcpManager!: MCPManager;
 	toolManager!: UnifiedToolManager;
+	skillManager!: SkillManager;
 	i18n!: I18nManager;
 	selectionPopup?: SelectionPopup;
 	selectionToolbar?: SelectionToolbar;
@@ -116,9 +119,9 @@ export default class LLMSiderPlugin extends Plugin {
 			await this.loadSettings();
 
 			// Initialize logger with debug setting
-			const { Logger } = await import('./utils/logger');
-			Logger.setDebugEnabled(this.settings.enableDebugLogging);
-			Logger.debug('[LoadSettings] After Logger init - vectorSettings.autoSearchEnabled:', this.settings.vectorSettings.autoSearchEnabled);
+			const loggerModule = await import('./utils/logger');
+			loggerModule.Logger.setDebugEnabled(this.settings.enableDebugLogging);
+			loggerModule.Logger.debug('[LoadSettings] After Logger init - vectorSettings.autoSearchEnabled:', this.settings.vectorSettings.autoSearchEnabled);
 
 			// Run migrations for data fixes
 			await this.runMigrations();
@@ -149,6 +152,9 @@ export default class LLMSiderPlugin extends Plugin {
 				Logger.debug('Using saved language preference:', this.settings.i18n.language);
 			}
 			Logger.debug('I18n system initialized with language:', this.i18n.getCurrentLanguage());
+
+			// Initialize local skills after i18n is ready so UI-facing notices can be localized later.
+			await this.initializeSkillManager();
 
 			// Initialize built-in prompts AFTER i18n is ready to ensure translations are loaded
 			// This must happen after i18n.initialize() but before other components that might use prompts
@@ -740,6 +746,7 @@ export default class LLMSiderPlugin extends Plugin {
 			// Load conversation mode settings
 			this.settings.defaultConversationMode = await this.configDb.getDefaultConversationMode();
 			this.settings.conversationMode = await this.configDb.getConversationMode();
+			this.settings.guidedModeEnabled = await this.configDb.getGuidedModeEnabled();
 			// Sync legacy agentMode
 			this.settings.agentMode = (this.settings.conversationMode === 'agent');
 			Logger.debug(`Loaded conversation mode from SQLite: ${this.settings.conversationMode}`);
@@ -824,6 +831,14 @@ export default class LLMSiderPlugin extends Plugin {
 				enableResourceBrowsing: await this.configDb.getMCPEnableResourceBrowsing(),
 			};
 
+			this.settings.skillsSettings = {
+				directory: await this.configDb.getSkillsDirectory(),
+				defaultActiveSkillId: await this.configDb.getDefaultActiveSkillId(),
+				globallyEnabled: await this.configDb.getSkillsGloballyEnabled(),
+				enabledSkills: await this.configDb.getEnabledSkillsState(),
+			};
+			this.settings.skillsMarketApiToken = await this.configDb.getConfig('skillsMarketApiToken') || '';
+
 			// Load tool auto-execute settings
 			this.settings.toolAutoExecute = await this.configDb.getToolAutoExecute();
 
@@ -858,6 +873,8 @@ export default class LLMSiderPlugin extends Plugin {
 		// Ensure settings have all required properties
 		if (!this.settings.chatSessions) this.settings.chatSessions = [];
 		if (!this.settings.customPrompts) this.settings.customPrompts = [];
+		if (!this.settings.skillsSettings) this.settings.skillsSettings = DEFAULT_SETTINGS.skillsSettings;
+		if (typeof this.settings.skillsMarketApiToken !== 'string') this.settings.skillsMarketApiToken = DEFAULT_SETTINGS.skillsMarketApiToken;
 		// builtInToolsPermissions removed - now managed in database only
 		if (!this.settings.i18n) this.settings.i18n = DEFAULT_SETTINGS.i18n;
 		if (typeof this.settings.i18n.initialized === 'undefined') {
@@ -1024,6 +1041,7 @@ export default class LLMSiderPlugin extends Plugin {
 				// Save conversation mode settings
 				await this.configDb.setConversationMode(this.settings.conversationMode);
 				await this.configDb.setDefaultConversationMode(this.settings.defaultConversationMode);
+				await this.configDb.setGuidedModeEnabled(this.settings.guidedModeEnabled);
 
 				// Save advanced settings
 				await this.configDb.setEnableDebugLogging(this.settings.enableDebugLogging);
@@ -1093,6 +1111,12 @@ export default class LLMSiderPlugin extends Plugin {
 				await this.configDb.setMCPServerPermissions(this.settings.mcpSettings.serverPermissions);
 				await this.configDb.setMCPEnableToolSuggestions(this.settings.mcpSettings.enableToolSuggestions);
 				await this.configDb.setMCPEnableResourceBrowsing(this.settings.mcpSettings.enableResourceBrowsing);
+
+				await this.configDb.setSkillsDirectory(this.settings.skillsSettings.directory);
+				await this.configDb.setDefaultActiveSkillId(this.settings.skillsSettings.defaultActiveSkillId);
+				await this.configDb.setSkillsGloballyEnabled(this.settings.skillsSettings.globallyEnabled !== false);
+				await this.configDb.setEnabledSkillsState(this.settings.skillsSettings.enabledSkills);
+				await this.configDb.setConfig('skillsMarketApiToken', this.settings.skillsMarketApiToken || '');
 
 				// Save tool auto-execute settings
 				await this.configDb.setToolAutoExecute(this.settings.toolAutoExecute);
@@ -1495,6 +1519,18 @@ export default class LLMSiderPlugin extends Plugin {
 		}
 	}
 
+	private async initializeSkillManager() {
+		try {
+			this.skillManager = new SkillManager(this.configDb, this.app.vault);
+			await this.skillManager.initialize();
+			this.settings.skillsSettings = this.skillManager.getStateSnapshot();
+			Logger.debug(`[Skills] Initialized ${this.skillManager.listSkills().length} local skill(s)`);
+		} catch (error) {
+			Logger.error('Failed to initialize Skill Manager:', error);
+			throw error;
+		}
+	}
+
 	private async initializeVectorDB() {
 		try {
 			Logger.debug('Initializing vector database in background...');
@@ -1603,6 +1639,40 @@ export default class LLMSiderPlugin extends Plugin {
 			name: 'Switch Chat Mode',
 			callback: () => this.switchChatMode()
 		});
+
+		this.addCommand({
+			id: 'skills-select-active',
+			name: 'Select Active Skill',
+			callback: () => this.selectActiveSkill()
+		});
+
+		this.addCommand({
+			id: 'skills-set-default',
+			name: 'Set Default Skill',
+			callback: () => this.selectDefaultSkill()
+		});
+
+		this.addCommand({
+			id: 'skills-clear-active',
+			name: 'Clear Active Skill',
+			callback: () => this.clearActiveSkill()
+		});
+
+		this.addCommand({
+			id: 'skills-reload-local',
+			name: 'Reload Local Skills',
+			callback: () => this.reloadLocalSkills()
+		});
+
+		if (this.skillManager) {
+			for (const skill of this.skillManager.listSkills()) {
+				this.addCommand({
+					id: `skills-activate-${skill.id}`,
+					name: `Activate Skill: ${skill.name}`,
+					callback: () => this.applySkillToCurrentContext(skill.id)
+				});
+			}
+		}
 
 		// Add selected text to context command
 		this.addCommand({
@@ -1897,6 +1967,189 @@ export default class LLMSiderPlugin extends Plugin {
 	async switchChatMode() {
 		// Mode switching is no longer supported - Agent mode is controlled via settings
 		new Notice(this.i18n.t('notifications.provider.modeSwitchingReplaced'));
+	}
+
+	async reloadLocalSkills() {
+		if (!this.skillManager) {
+			new Notice(this.i18n.t('ui.skillManagerNotInitialized') || 'Skill manager is not initialized');
+			return;
+		}
+
+		await this.skillManager.reload();
+		this.settings.skillsSettings = this.skillManager.getStateSnapshot();
+		const loadErrors = this.skillManager.getLoadErrors();
+		if (loadErrors.length > 0) {
+			new Notice(this.i18n.t('ui.skillsReloadedWithErrors', { count: String(loadErrors.length) }) || `Reloaded skills with ${loadErrors.length} error(s)`);
+			return;
+		}
+
+		new Notice(this.i18n.t('ui.skillsReloaded', { count: String(this.skillManager.listSkills().length) }) || `Reloaded ${this.skillManager.listSkills().length} local skill(s)`);
+	}
+
+	async selectActiveSkill() {
+		if (!this.skillManager) {
+			new Notice(this.i18n.t('ui.skillManagerNotInitialized') || 'Skill manager is not initialized');
+			return;
+		}
+
+		const items = [
+			{ skillId: '', title: this.i18n.t('ui.noSkill') || 'No Skill', description: this.i18n.t('ui.noSkillDesc') || 'Clear the current session skill' },
+			...this.skillManager.getEnabledSkills().map(skill => ({
+				skillId: skill.id,
+				title: skill.name,
+				description: skill.description,
+			})),
+		];
+
+		new SkillSelectionModal(this.app, items, (item) => {
+			void this.applySkillToCurrentContext(item.skillId || null);
+		}).open();
+	}
+
+	async selectDefaultSkill() {
+		if (!this.skillManager) {
+			new Notice(this.i18n.t('ui.skillManagerNotInitialized') || 'Skill manager is not initialized');
+			return;
+		}
+
+		const items = [
+			{ skillId: '', title: this.i18n.t('ui.noDefaultSkill') || 'No Default Skill', description: this.i18n.t('ui.noDefaultSkillDesc') || 'New chats will start without a skill' },
+			...this.skillManager.getEnabledSkills().map(skill => ({
+				skillId: skill.id,
+				title: skill.name,
+				description: skill.description,
+			})),
+		];
+
+		new SkillSelectionModal(this.app, items, (item) => {
+			void this.setDefaultSkill(item.skillId || null);
+		}).open();
+	}
+
+	async clearActiveSkill() {
+		await this.applySkillToCurrentContext(null);
+	}
+
+	async setDefaultSkill(skillId: string | null): Promise<void> {
+		if (!this.skillManager) {
+			throw new Error('Skill manager is not initialized');
+		}
+
+		await this.skillManager.setDefaultActiveSkillId(skillId || '');
+		this.settings.skillsSettings = this.skillManager.getStateSnapshot();
+		window.dispatchEvent(new CustomEvent('llmsider-skill-changed', {
+			detail: { skillId: skillId || '' }
+		}));
+		new Notice(skillId
+			? this.i18n.t('ui.defaultSkillSet', { skillId }) || `Default skill set to ${skillId}`
+			: this.i18n.t('ui.defaultSkillCleared') || 'Default skill cleared');
+	}
+
+	async applySkillToCurrentContext(skillId: string | null): Promise<void> {
+		const chatView = this.getChatView();
+		const currentSession = chatView?.getCurrentSession() || null;
+
+		if (currentSession) {
+			await this.updateChatSession(currentSession.id, {
+				activeSkillId: skillId || undefined,
+				skillsEnabled: true,
+			});
+			window.dispatchEvent(new CustomEvent('llmsider-skill-changed', {
+				detail: { skillId: skillId || '', skillsEnabled: true }
+			}));
+			new Notice(skillId
+				? this.i18n.t('ui.activeSkillSet', { skillId }) || `Active skill set to ${skillId}`
+				: this.i18n.t('ui.activeSkillCleared') || 'Active skill cleared for current chat');
+			return;
+		}
+
+		await this.setDefaultSkill(skillId);
+	}
+
+	async setSkillsEnabledForCurrentContext(enabled: boolean): Promise<void> {
+		const chatView = this.getChatView();
+		const currentSession = chatView?.getCurrentSession() || null;
+
+		if (currentSession) {
+			await this.updateChatSession(currentSession.id, { skillsEnabled: enabled });
+			window.dispatchEvent(new CustomEvent('llmsider-skill-changed', {
+				detail: { skillId: currentSession.activeSkillId || '', skillsEnabled: enabled }
+			}));
+			new Notice(enabled
+				? this.i18n.t('ui.skillsEnabled') || 'Skills enabled for current chat'
+				: this.i18n.t('ui.skillsDisabled') || 'Skills disabled for current chat');
+			return;
+		}
+
+		new Notice(this.i18n.t('ui.noActiveChatSession') || 'No active chat session');
+	}
+
+	async toggleSkillsForCurrentContext(): Promise<boolean> {
+		const chatView = this.getChatView();
+		const currentSession = chatView?.getCurrentSession() || null;
+		const currentEnabled = currentSession?.skillsEnabled !== false;
+		const nextEnabled = !currentEnabled;
+		await this.setSkillsEnabledForCurrentContext(nextEnabled);
+		return nextEnabled;
+	}
+
+	async setLocalSkillEnabled(skillId: string, enabled: boolean): Promise<void> {
+		if (!this.skillManager) {
+			throw new Error('Skill manager is not initialized');
+		}
+
+		const skill = this.skillManager.getSkill(skillId);
+		if (!skill) {
+			throw new Error(`Unknown skill: ${skillId}`);
+		}
+
+		await this.skillManager.setSkillEnabled(skillId, enabled);
+		this.settings.skillsSettings = this.skillManager.getStateSnapshot();
+
+		const chatView = this.getChatView();
+		const currentSession = chatView?.getCurrentSession() || null;
+		if (!enabled && currentSession?.activeSkillId === skillId) {
+			await this.updateChatSession(currentSession.id, { activeSkillId: undefined });
+		}
+
+		const refreshedSession = this.getChatView()?.getCurrentSession() || currentSession;
+		window.dispatchEvent(new CustomEvent('llmsider-skill-changed', {
+			detail: {
+				skillId: refreshedSession?.activeSkillId || '',
+				skillsEnabled: refreshedSession?.skillsEnabled !== false,
+			}
+		}));
+
+		new Notice(`${skill.name}: ${enabled
+			? (this.i18n.t('ui.skillEnabled') || 'Enabled')
+			: (this.i18n.t('ui.skillDisabled') || 'Disabled')}`);
+	}
+
+	async setAllLocalSkillsEnabled(enabled: boolean): Promise<void> {
+		if (!this.skillManager) {
+			throw new Error('Skill manager is not initialized');
+		}
+
+		await this.skillManager.setAllSkillsEnabled(enabled);
+		this.settings.skillsSettings = this.skillManager.getStateSnapshot();
+
+		const chatView = this.getChatView();
+		const currentSession = chatView?.getCurrentSession() || null;
+		if (!enabled && currentSession?.activeSkillId) {
+			await this.updateChatSession(currentSession.id, { activeSkillId: undefined });
+		}
+
+		const refreshedSession = this.getChatView()?.getCurrentSession() || currentSession;
+		window.dispatchEvent(new CustomEvent('llmsider-skill-changed', {
+			detail: {
+				skillId: refreshedSession?.activeSkillId || '',
+				skillsEnabled: refreshedSession?.skillsEnabled !== false,
+			}
+		}));
+
+		new Notice(enabled
+			? (this.i18n.t('ui.allSkillsEnabled') || 'All skills enabled')
+			: (this.i18n.t('ui.allSkillsDisabled') || 'All skills disabled'));
 	}
 
 	async switchProvider(providerId: string) {
@@ -2234,7 +2487,11 @@ export default class LLMSiderPlugin extends Plugin {
 			updated: Date.now(),
 			provider: this.settings.activeProvider,
 			mode: 'ask', // Default mode for compatibility
-			conversationMode: this.settings.conversationMode // Save current conversation mode
+			conversationMode: this.settings.conversationMode, // Save current conversation mode
+			guidedModeEnabled: this.settings.guidedModeEnabled,
+			guidedInitialGoal: undefined,
+			activeSkillId: this.settings.skillsSettings.defaultActiveSkillId || undefined,
+			skillsEnabled: true,
 		};
 
 		this.settings.chatSessions.unshift(session);
@@ -2457,6 +2714,10 @@ export default class LLMSiderPlugin extends Plugin {
 	// Public method to access Tool Manager (for use by other components)
 	getToolManager(): UnifiedToolManager | null {
 		return this.toolManager || null;
+	}
+
+	getSkillManager(): SkillManager | null {
+		return this.skillManager || null;
 	}
 
 	// Public method to access I18n Manager (for use by other components)

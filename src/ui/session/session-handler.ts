@@ -85,10 +85,17 @@ export class SessionHandler {
 
 		// Keep current conversation mode
 		Logger.debug('Using current conversation mode:', this.plugin.settings.conversationMode);
+		newSession.guidedModeEnabled = this.plugin.settings.guidedModeEnabled;
 		
 		// Update mode selector UI to reflect current mode
 		window.dispatchEvent(new CustomEvent('llmsider-conversation-mode-changed', { 
 			detail: { mode: this.plugin.settings.conversationMode } 
+		}));
+		window.dispatchEvent(new CustomEvent('llmsider-guided-mode-changed', {
+			detail: { enabled: this.plugin.settings.guidedModeEnabled }
+		}));
+		window.dispatchEvent(new CustomEvent('llmsider-skill-changed', {
+			detail: { skillId: newSession.activeSkillId || '' }
 		}));
 
 		// Clear and re-render messages
@@ -129,10 +136,25 @@ export class SessionHandler {
 			window.dispatchEvent(new CustomEvent('llmsider-conversation-mode-changed', { 
 				detail: { mode: session.conversationMode } 
 			}));
+			window.dispatchEvent(new CustomEvent('llmsider-skill-changed', {
+				detail: { skillId: session.activeSkillId || '' }
+			}));
+			window.dispatchEvent(new CustomEvent('llmsider-guided-mode-changed', {
+				detail: { enabled: session.guidedModeEnabled === true }
+			}));
+			this.plugin.settings.guidedModeEnabled = session.guidedModeEnabled === true;
 			// Save the restored mode
 			this.plugin.saveSettings().catch(error => {
 				Logger.error('Failed to save settings after restoring conversation mode:', error);
 			});
+		} else {
+			this.plugin.settings.guidedModeEnabled = session.guidedModeEnabled === true;
+			window.dispatchEvent(new CustomEvent('llmsider-guided-mode-changed', {
+				detail: { enabled: this.plugin.settings.guidedModeEnabled }
+			}));
+			window.dispatchEvent(new CustomEvent('llmsider-skill-changed', {
+				detail: { skillId: session.activeSkillId || '' }
+			}));
 		}
 
 		// Update session name in header
@@ -192,6 +214,7 @@ export class SessionHandler {
 		// Save the updated session
 		await this.plugin.updateChatSession(currentSession.id, {
 			messages: [],
+			guidedInitialGoal: undefined,
 			updated: Date.now()
 		});
 

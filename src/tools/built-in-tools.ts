@@ -284,6 +284,7 @@ async function loadAllTools(): Promise<Record<string, BuiltInTool>> {
       await import('./google-search-tools.mastra'),
       await import('./hacker-news-tools.mastra'),
       await import('./imdb-tools.mastra'),
+      await import('./local-command-tool.mastra'),
       await import('./market-data-tools.mastra'),
       await import('./news-aggregation-tools.mastra'),
       await import('./note-management-tools.mastra'),

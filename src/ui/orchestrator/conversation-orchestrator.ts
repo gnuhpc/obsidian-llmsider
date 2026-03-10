@@ -71,12 +71,13 @@ export class ConversationOrchestrator implements IConversationOrchestrator {
 		
 		// Determine conversation mode
 		const conversationMode = currentSession.conversationMode || this.plugin.settings.conversationMode || 'normal';
+		const guidedModeEnabled = currentSession.guidedModeEnabled ?? this.plugin.settings.guidedModeEnabled ?? false;
+
+		Logger.debug(`[ConversationOrchestrator] Routing conversation, mode: ${conversationMode}, guided: ${guidedModeEnabled}`);
 		
-		Logger.debug(`[ConversationOrchestrator] Routing conversation, mode: ${conversationMode}`);
-		
-		// Route to Guided Mode
-		if (conversationMode === 'guided') {
-			Logger.debug('[ConversationOrchestrator] Routing to Guided Mode Handler');
+		// Route to the guided-assist flow when normal mode enables it.
+		if (conversationMode === 'normal' && guidedModeEnabled) {
+			Logger.debug('[ConversationOrchestrator] Routing to guided-assist handler');
 			
 			const messages = await prepareMessages(
 				userMessage,
@@ -86,7 +87,7 @@ export class ConversationOrchestrator implements IConversationOrchestrator {
 				memoryEnabled
 			);
 			
-			// Remove the temporary assistant message since guided mode handles its own UI
+			// Remove the temporary assistant message since the guided-assist flow handles its own UI
 			if (workingMessageEl) {
 				workingMessageEl.remove();
 			}
@@ -124,8 +125,16 @@ export class ConversationOrchestrator implements IConversationOrchestrator {
 		if (conversationMode === 'agent') {
 			try {
 				const toolManager = this.plugin.getToolManager();
+				const skillManager = this.plugin.getSkillManager();
 				if (toolManager) {
 					availableTools = await toolManager.getAllTools();
+					if (skillManager) {
+						availableTools = skillManager.filterToolsForSession(
+							availableTools,
+							currentSession,
+							typeof userMessage.content === 'string' ? userMessage.content : ''
+						);
+					}
 					Logger.debug(`[ConversationOrchestrator] Retrieved ${availableTools.length} tools for Agent mode`);
 				}
 			} catch (error) {

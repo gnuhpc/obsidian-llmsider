@@ -1038,7 +1038,7 @@ select.llmsider-model-select-dropdown option {
 .llmsider-optimize-status {
     position: absolute;
     top: 10px;
-    right: 12px;
+    right: 48px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1050,6 +1050,37 @@ select.llmsider-model-select-dropdown option {
     border-radius: 999px;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     pointer-events: none;
+}
+
+.llmsider-input-wrapper .llmsider-optimize-prompt-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 30px;
+    height: 30px;
+    padding: 6px;
+    border-radius: 8px;
+    z-index: 3;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--text-muted) !important;
+}
+
+.llmsider-input-wrapper .llmsider-optimize-prompt-btn:hover {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--text-normal) !important;
+}
+
+.llmsider-input-wrapper .llmsider-optimize-prompt-btn:active {
+    transform: none;
+}
+
+.llmsider-input-wrapper .llmsider-optimize-prompt-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
 .llmsider-input-wrapper:focus-within {
@@ -1089,6 +1120,7 @@ select.llmsider-model-select-dropdown option {
 }
 
 .llmsider-button-row-left .llmsider-mode-selector,
+.llmsider-button-row-left .llmsider-skill-selector,
 .llmsider-button-row-left .llmsider-tools-manager,
 .llmsider-button-row-left .llmsider-mcp-manager,
 .llmsider-button-row-left .llmsider-context-search-toggle,
@@ -1098,6 +1130,7 @@ select.llmsider-model-select-dropdown option {
 
 .llmsider-button-row-left .llmsider-input-btn,
 .llmsider-button-row-left .llmsider-mode-btn,
+.llmsider-button-row-left .llmsider-skill-btn,
 .llmsider-button-row-left .llmsider-tools-btn,
 .llmsider-button-row-left .llmsider-context-search-btn,
 .llmsider-button-row-left .llmsider-mcp-btn,
@@ -1114,6 +1147,7 @@ select.llmsider-model-select-dropdown option {
 
 .llmsider-button-row-left .llmsider-input-btn svg,
 .llmsider-button-row-left .llmsider-mode-btn svg,
+.llmsider-button-row-left .llmsider-skill-btn svg,
 .llmsider-button-row-left .llmsider-tools-btn svg,
 .llmsider-button-row-left .llmsider-context-search-btn svg,
 .llmsider-button-row-left .llmsider-mcp-btn svg,
@@ -1125,6 +1159,7 @@ select.llmsider-model-select-dropdown option {
 
 .llmsider-button-row-left .llmsider-input-btn:hover,
 .llmsider-button-row-left .llmsider-mode-btn:hover,
+.llmsider-button-row-left .llmsider-skill-btn:hover,
 .llmsider-button-row-left .llmsider-tools-btn:hover,
 .llmsider-button-row-left .llmsider-context-search-btn:hover,
 .llmsider-button-row-left .llmsider-mcp-btn:hover,
@@ -1246,7 +1281,7 @@ select.llmsider-model-select-dropdown option {
     max-height: 160px;
     overflow-y: auto;
     caret-color: var(--interactive-accent);
-    padding: 4px 8px !important;
+    padding: 4px 44px 4px 8px !important;
     scrollbar-width: thin;
     scrollbar-color: var(--background-modifier-border) transparent;
 }

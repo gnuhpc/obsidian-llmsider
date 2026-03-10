@@ -862,13 +862,11 @@ export abstract class BaseLLMProvider {
 			finishReason: toolCalls.length > 0 ? 'tool_calls' : (result.finishReason === 'length' ? 'length' : 'stop'),
 			toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
 			images: images && images.length > 0 ? images : undefined,
-			metadata: {
-				provider: this.getProviderName(),
-				rawResponse: result
-			},
-			isLoaded: true,
-			providerStatuses: {}
-		};
+				metadata: {
+					provider: this.getProviderName(),
+					rawResponse: result
+				}
+			};
 	}
 
 	protected extractTextFromContent(content: MessageContent[]): string {

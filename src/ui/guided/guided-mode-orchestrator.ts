@@ -1,7 +1,7 @@
 /**
  * Guided Mode Orchestrator
  * 
- * Coordinates the high-level flow of Guided Mode conversations:
+ * Coordinates the high-level flow of guided-assist conversations:
  * - Entry point routing (new conversation vs. response)
  * - Error handling and recovery
  * - Delegation to Mastra-based implementation
@@ -29,12 +29,12 @@ export interface IGuidedModeOrchestratorCallbacks {
 	getCurrentMessages: () => ChatMessage[];
 	
 	/**
-	 * Start guided conversation with Mastra framework
+	 * Start a guided-assist conversation with the Mastra framework
 	 */
 	startGuidedConversationWithMastra: (userMessage: ChatMessage, messages: ChatMessage[]) => Promise<void>;
 	
 	/**
-	 * Handle guided response with Mastra framework
+	 * Handle a guided-assist response with the Mastra framework
 	 */
 	handleGuidedResponseWithMastra: (userMessage: ChatMessage, messages: ChatMessage[]) => Promise<void>;
 	
@@ -54,12 +54,12 @@ export interface IGuidedModeOrchestratorCallbacks {
  */
 export interface IGuidedModeOrchestrator {
 	/**
-	 * Main entry point for Guided Mode
+	 * Main entry point for guided assist
 	 */
 	handleGuidedMode(userMessage: ChatMessage, messages: ChatMessage[]): Promise<void>;
 	
 	/**
-	 * Start new guided conversation
+	 * Start a new guided-assist conversation
 	 */
 	startGuidedConversation(userMessage: ChatMessage, messages: ChatMessage[]): Promise<void>;
 	
@@ -72,7 +72,7 @@ export interface IGuidedModeOrchestrator {
 /**
  * Guided Mode Orchestrator
  * 
- * Handles high-level conversation flow control for Guided Mode
+ * Handles high-level conversation flow control for guided-assist conversations
  */
 export class GuidedModeOrchestrator implements IGuidedModeOrchestrator {
 	constructor(
@@ -82,19 +82,19 @@ export class GuidedModeOrchestrator implements IGuidedModeOrchestrator {
 	) {}
 	
 	/**
-	 * Main entry point for Guided Mode - routes to appropriate handler
+	 * Main entry point for guided assist - routes to the appropriate handler
 	 */
 	async handleGuidedMode(userMessage: ChatMessage, messages: ChatMessage[]): Promise<void> {
-		Logger.debug('[GuidedMode] ========== START handleGuidedMode ==========');
-		Logger.debug('[GuidedMode] Timestamp:', new Date().toISOString());
+		Logger.debug('[GuidedAssist] ========== START handleGuidedMode ==========');
+		Logger.debug('[GuidedAssist] Timestamp:', new Date().toISOString());
 		
 		try {
 			// Check if this is a response to a guided question
 			const lastMessage = messages[messages.length - 2]; // -2 because last is current user message
 			const isGuidedResponse = lastMessage?.metadata?.isGuidedQuestion;
 			
-			Logger.debug('[GuidedMode] isGuidedResponse:', isGuidedResponse);
-			Logger.debug('[GuidedMode] About to call', isGuidedResponse ? 'handleGuidedResponse' : 'startGuidedConversation');
+			Logger.debug('[GuidedAssist] isGuidedResponse:', isGuidedResponse);
+			Logger.debug('[GuidedAssist] About to call', isGuidedResponse ? 'handleGuidedResponse' : 'startGuidedConversation');
 			
 			if (isGuidedResponse) {
 				// User is responding to a guided question
@@ -104,13 +104,13 @@ export class GuidedModeOrchestrator implements IGuidedModeOrchestrator {
 				await this.startGuidedConversation(userMessage, messages);
 			}
 			
-			Logger.debug('[GuidedMode] ✅ Guided mode completed successfully');
+			Logger.debug('[GuidedAssist] ✅ Guided-assist flow completed successfully');
 		} catch (error) {
-			Logger.error('[GuidedMode] ❌❌❌ CAUGHT ERROR IN handleGuidedMode ❌❌❌');
-			Logger.error('[GuidedMode] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-			Logger.error('[GuidedMode] Error message:', error instanceof Error ? error.message : String(error));
-			Logger.error('[GuidedMode] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-			Logger.error('[GuidedMode] Error object:', error);
+			Logger.error('[GuidedAssist] ❌❌❌ CAUGHT ERROR IN handleGuidedMode ❌❌❌');
+			Logger.error('[GuidedAssist] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+			Logger.error('[GuidedAssist] Error message:', error instanceof Error ? error.message : String(error));
+			Logger.error('[GuidedAssist] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+			Logger.error('[GuidedAssist] Error object:', error);
 			
 			// Find the assistant message element to render error
 			const currentMessages = this.callbacks.getCurrentMessages();
@@ -151,7 +151,7 @@ export class GuidedModeOrchestrator implements IGuidedModeOrchestrator {
 						// Retry by finding the user message that triggered this
 						const userMsg = messages[messages.length - 1];
 						if (userMsg && userMsg.role === 'user') {
-							Logger.debug('[GuidedModeOrchestrator] Retrying guided mode request...');
+							Logger.debug('[GuidedModeOrchestrator] Retrying guided-assist request...');
 							await this.callbacks.getAIResponse(userMsg);
 						}
 					}
@@ -161,24 +161,24 @@ export class GuidedModeOrchestrator implements IGuidedModeOrchestrator {
 	}
 	
 	/**
-	 * Start new guided conversation
-	 */
+	 * Start a new guided-assist conversation
+ */
 	async startGuidedConversation(userMessage: ChatMessage, messages: ChatMessage[]): Promise<void> {
-		Logger.debug('[GuidedMode] Starting new guided conversation');
-		Logger.debug('[GuidedMode-Mastra] Using Mastra framework for guided mode');
+		Logger.debug('[GuidedAssist] Starting new guided-assist conversation');
+		Logger.debug('[GuidedAssist-Mastra] Using Mastra framework for guided assist');
 		await this.callbacks.startGuidedConversationWithMastra(userMessage, messages);
 	}
 	
 	/**
-	 * Handle user response to guided question
-	 */
+	 * Handle the user's response to a guided-assist question
+ */
 	async handleGuidedResponse(userMessage: ChatMessage, messages: ChatMessage[]): Promise<void> {
-		Logger.debug('[GuidedMode] ========== START handleGuidedResponse ==========');
-		Logger.debug('[GuidedMode] User message:', userMessage.content);
-		Logger.debug('[GuidedMode] Message history length:', messages.length);
+		Logger.debug('[GuidedAssist] ========== START handleGuidedResponse ==========');
+		Logger.debug('[GuidedAssist] User message:', userMessage.content);
+		Logger.debug('[GuidedAssist] Message history length:', messages.length);
 		
-		Logger.debug('[GuidedMode-Mastra] ✓ Using Mastra framework for guided response');
+		Logger.debug('[GuidedAssist-Mastra] ✓ Using Mastra framework for guided response');
 		await this.callbacks.handleGuidedResponseWithMastra(userMessage, messages);
-		Logger.debug('[GuidedMode-Mastra] ✓ Mastra framework completed successfully');
+		Logger.debug('[GuidedAssist-Mastra] ✓ Mastra framework completed successfully');
 	}
 }

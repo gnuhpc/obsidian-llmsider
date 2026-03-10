@@ -513,6 +513,22 @@ export class ConnectionModelRenderer {
 				});
 			});
 
+		// Custom prompt constraints
+		new Setting(autocompletionContainer)
+			.setName(this.i18n.t('autocomplete.customPrompt'))
+			.setDesc(this.i18n.t('autocomplete.customPromptDesc'))
+			.addTextArea(text => {
+				text.setPlaceholder(this.i18n.t('autocomplete.customPromptPlaceholder'));
+				text.setValue(this.plugin.settings.autocomplete.customPrompt || '');
+				text.inputEl.rows = 4;
+				text.inputEl.style.width = '100%';
+				text.inputEl.style.minHeight = '96px';
+				text.onChange(async (value) => {
+					this.plugin.settings.autocomplete.customPrompt = value.trim();
+					await this.plugin.saveSettings();
+				});
+			});
+
 		// Trigger delay
 		new Setting(autocompletionContainer)
 			.setName(this.i18n.t('autocomplete.triggerDelay'))

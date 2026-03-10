@@ -9,7 +9,7 @@
  * Memory will be preserved during the Obsidian session but lost on restart.
  * 
  * Note: Memory processors are handled via agent input/output processors.
- * Conversation compaction is applied before sending in guided/normal modes.
+ * Conversation compaction is applied before sending in normal and guided-assist flows.
  */
 
 import { Memory } from '@mastra/memory';
@@ -498,7 +498,7 @@ export class MemoryManager {
 		if (config.enableConversationHistory) {
 			memoryOptions.options.lastMessages = config.conversationHistoryLimit;
 			
-			// Conversation compaction is applied before sending in guided/normal modes.
+			// Conversation compaction is applied before sending in normal and guided-assist flows.
 		}
 
 		// Configure semantic recall with independent vector storage

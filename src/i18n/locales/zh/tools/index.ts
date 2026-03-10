@@ -3,6 +3,7 @@
  */
 
 import { zhNoteManagementTools } from './note-management';
+import { zhCoreTools } from './core';
 import { zhWeatherTools } from './weather';
 import { zhWebTools } from './web';
 import { zhStockTools } from './stock';
@@ -32,6 +33,7 @@ import { zhEntertainmentTools } from './entertainment';
 import { zhIMDBTools } from './imdb';
 
 export const zhTools = {
+	...zhCoreTools,
 	...zhNoteManagementTools,
 	...zhWeatherTools,
 	...zhWebTools,

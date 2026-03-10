@@ -3,6 +3,9 @@ import LLMSiderPlugin from '../../main';
 import { ToolExecutionManager } from '../../tools/tool-execution-manager';
 import { I18nManager } from '../../i18n/i18n-manager';
 import { Logger } from '../../utils/logger';
+import type { ResolvedSkill } from '../../types';
+
+const RUN_LOCAL_COMMAND_TOOL = 'run_local_command';
 
 /**
  * Callbacks for ToolCoordinator
@@ -84,25 +87,43 @@ export class ToolCoordinator {
 	/**
 	 * Get available tools information for system prompt
 	 */
-	public async getAvailableToolsInfo(): Promise<string> {
-		// Only provide tool information in Agent conversation mode
+	public async getAvailableToolsInfo(routedSkill: ResolvedSkill | null = null): Promise<string> {
 		const conversationMode = this.plugin.settings.conversationMode || 'normal';
-		if (conversationMode !== 'agent') {
-			return "AVAILABLE TOOLS: None (Not in Agent conversation mode)";
-		}
 
 		try {
 			const toolManager = this.plugin.getToolManager();
+			const skillManager = this.plugin.getSkillManager();
 			if (!toolManager) {
 				return "AVAILABLE TOOLS: None";
 			}
 
-			const tools = await toolManager.getAllTools();
+			let tools = await toolManager.getAllTools();
+			const currentSession = this.callbacks.getCurrentSession();
+
+			if (conversationMode === 'normal') {
+				const effectiveSkill = skillManager?.getEffectiveSkill(currentSession) || routedSkill;
+				if (skillManager && effectiveSkill) {
+					tools = skillManager.filterToolsForSkill(tools, effectiveSkill);
+				} else if (skillManager && skillManager.isSkillUsageEnabled(currentSession) && skillManager.getInvocableSkills(currentSession).length > 0) {
+					tools = skillManager
+						.filterToolsForSession(tools, currentSession)
+						.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+				} else {
+					tools = tools.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+				}
+			} else if (skillManager) {
+				tools = skillManager.filterToolsForSession(tools, currentSession);
+			}
 			if (tools.length === 0) {
-				return "AVAILABLE TOOLS: None";
+				return conversationMode === 'normal'
+					? "AVAILABLE TOOLS: None (No tools enabled for normal mode)"
+					: "AVAILABLE TOOLS: None";
 			}
 
-			let toolsInfo = "AVAILABLE TOOLS:\n";
+			let toolsInfo = "AVAILABLE TOOLS (exact callable names only):\n";
+			toolsInfo += "- Call only the exact tool names listed below.\n";
+			toolsInfo += "- Skill names and category names are not callable tool names.\n";
+			toolsInfo += "- Never invent aliases or shorthand tool names.\n";
 
 			// Group tools by source
 			const builtInTools = tools.filter(t => t.source === 'built-in' && !t.server);
@@ -112,14 +133,14 @@ export class ToolCoordinator {
 			if (builtInTools.length > 0) {
 				toolsInfo += "\nBuilt-in Tools:\n";
 				builtInTools.forEach(tool => {
-					toolsInfo += `- ${tool.name}: ${tool.description}\n`;
+					toolsInfo += `- ${tool.name} (exact name): ${tool.description}\n`;
 				});
 			}
 
 			if (fileEditingTools.length > 0) {
 				toolsInfo += "\nFile Editing Tools:\n";
 				fileEditingTools.forEach(tool => {
-					toolsInfo += `- ${tool.name}: ${tool.description}\n`;
+					toolsInfo += `- ${tool.name} (exact name): ${tool.description}\n`;
 				});
 			}
 
@@ -136,7 +157,7 @@ export class ToolCoordinator {
 				Object.entries(mcpByServer).forEach(([server, serverTools]) => {
 					toolsInfo += `\nFrom ${server} server:\n`;
 					serverTools.forEach(tool => {
-						toolsInfo += `- ${tool.name}: ${tool.description}\n`;
+						toolsInfo += `- ${tool.name} (exact name): ${tool.description}\n`;
 					});
 				});
 			}

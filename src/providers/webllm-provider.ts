@@ -95,17 +95,15 @@ export class WebLLMProviderImpl extends BaseLLMProvider {
             return {
                 content: result.content,
                 model: this.model,
-                usage: result.usage || {
-                    promptTokens: 0,
-                    completionTokens: 0,
-                    totalTokens: 0,
-                },
-                finishReason: 'stop',
-                isLoaded: true,
-                providerStatuses: {},
-                metadata: {
-                    provider: 'webllm',
-                    local: true,
+	                usage: result.usage || {
+	                    promptTokens: 0,
+	                    completionTokens: 0,
+	                    totalTokens: 0,
+	                },
+	                finishReason: 'stop',
+	                metadata: {
+	                    provider: 'webllm',
+	                    local: true,
                 },
             };
         } catch (error) {

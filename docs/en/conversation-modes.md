@@ -2,7 +2,7 @@
 
 ## Overview
 
-LLMSider offers three distinct conversation modes, each optimized for different use cases. Choose the right mode to match your workflow and get the best results from AI assistance.
+LLMSider offers two conversation modes plus a guided assist toggle, each optimized for different use cases. Choose the right mode and enable guided assist when you want step-by-step interaction.
 
 ---
 
@@ -75,11 +75,11 @@ AI: 1. The 2-Minute Rule: How Small Actions Lead to Big Results
 
 ---
 
-## 🎯 Guided Mode
+## 🎯 Guided Assist
 
-### What is Guided Mode?
+### What is Guided Assist?
 
-**Interactive, step-by-step conversation with tool confirmation** - The AI suggests actions one at a time, and you approve them before execution.
+**A toggle inside Normal mode for interactive, step-by-step guidance**. The AI can ask focused follow-up questions, render explicit options, and request confirmation before sensitive actions.
 
 ```
 You: Create a research note on machine learning
@@ -104,7 +104,7 @@ AI: File created. Now, should I search for some key concepts to add?
 | **Speed** | ⚡⚡ Moderate (requires approvals) |
 | **Complexity** | Moderate to high |
 | **Control** | ⭐⭐⭐ High user control |
-| **Tool Use** | One-by-one with approval |
+| **Tool Use** | Guided suggestions and confirmations |
 | **Best For** | Learning, complex tasks, safety |
 
 ### When to Use
@@ -471,7 +471,7 @@ History Context: 10 messages
 Tool Confirmation: Always ask
 ```
 
-#### Guided Mode
+#### Guided Assist
 ```yaml
 Auto-approve Safe Tools: false
 Show Tool Preview: true
@@ -497,7 +497,7 @@ Parallel Execution: true
 ```
 Simple task → Normal
   ↓ (if tools needed)
-Add complexity → Guided
+Add complexity → Guided Assist
   ↓ (if confident)
 Full automation → Agent
 ```
@@ -507,9 +507,9 @@ Full automation → Agent
 □ Does it require tools?
   → No: Normal | Yes: Continue
 □ Do I need to review each step?
-  → Yes: Guided | No: Continue
+  → Yes: Guided Assist | No: Continue
 □ Can AI decide autonomously?
-  → Yes: Agent | No: Guided
+  → Yes: Agent | No: Guided Assist
 ```
 
 ### 🚀 Workflow Optimization
@@ -520,7 +520,7 @@ Full automation → Agent
 3. Use follow-up questions
 4. Reference previous context
 
-**Guided Mode Tips:**
+**Guided Assist Tips:**
 1. Review plan before approving
 2. Modify steps if needed
 3. Skip unnecessary steps
@@ -539,7 +539,7 @@ Full automation → Agent
 - ✅ No automatic changes
 - ✅ Full control
 
-**Guided Mode:**
+**Guided Assist:**
 - ✅ Review before approval
 - ✅ Skip destructive steps
 - ✅ Modify if uncertain
@@ -562,7 +562,7 @@ Full automation → Agent
 3. ✅ Restart Obsidian
 4. ✅ Clear cache
 
-**Tools not working in Guided:**
+**Tools not working in Guided Assist:**
 1. ✅ Ensure tools are enabled
 2. ✅ Check permissions
 3. ✅ Approve step fully
@@ -570,11 +570,11 @@ Full automation → Agent
 
 **Agent too aggressive:**
 1. ✅ Reduce tool permissions
-2. ✅ Use Guided mode instead
+2. ✅ Use Guided Assist instead
 3. ✅ Set clearer constraints
 4. ✅ Monitor and stop if needed
 
-**Guided mode stuck:**
+**Guided Assist seems stuck:**
 1. ✅ Approve or skip step
 2. ✅ Cancel and restart
 3. ✅ Check tool status
@@ -594,7 +594,7 @@ Full automation → Agent
 5. "Summarize this article: [paste URL]"
 ```
 
-### Guided Mode Examples
+### Guided Assist Examples
 
 ```markdown
 1. "Create a comprehensive project plan for a blog"

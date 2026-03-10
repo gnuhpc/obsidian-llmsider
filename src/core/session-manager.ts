@@ -48,7 +48,12 @@ export class SessionManager {
 			created: Date.now(),
 			updated: Date.now(),
 			provider: this.plugin.settings.activeProvider,
-			mode: 'ask' // Default mode for compatibility
+			mode: 'ask', // Default mode for compatibility
+			conversationMode: this.plugin.settings.conversationMode,
+			guidedModeEnabled: this.plugin.settings.guidedModeEnabled,
+			guidedInitialGoal: undefined,
+			activeSkillId: this.plugin.settings.skillsSettings.defaultActiveSkillId || undefined,
+			skillsEnabled: true,
 		};
 
 		// Increment nextSessionId for the next session
@@ -82,9 +87,13 @@ export class SessionManager {
 	async clearChat(currentSession: ChatSession | null): Promise<void> {
 		if (currentSession) {
 			currentSession.messages = [];
+			currentSession.guidedInitialGoal = undefined;
 
 			// Save settings asynchronously in background
-			this.plugin.updateChatSession(currentSession.id, { messages: [] }).catch(error => {
+			this.plugin.updateChatSession(currentSession.id, {
+				messages: [],
+				guidedInitialGoal: undefined
+			}).catch(error => {
 				Logger.error('Failed to save settings after clearing chat:', error);
 			});
 		}

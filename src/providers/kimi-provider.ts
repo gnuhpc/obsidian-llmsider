@@ -116,12 +116,10 @@ export class KimiProviderImpl extends BaseLLMProvider {
 					promptTokens: data.usage?.prompt_tokens || 0,
 					completionTokens: data.usage?.completion_tokens || 0,
 					totalTokens: data.usage?.total_tokens || 0
-				},
-				finishReason: toolCalls.length > 0 ? 'tool_calls' : (choice?.finish_reason === 'length' ? 'length' : 'stop'),
-				toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-				isLoaded: true,
-				providerStatuses: {}
-			};
+					},
+					finishReason: toolCalls.length > 0 ? 'tool_calls' : (choice?.finish_reason === 'length' ? 'length' : 'stop'),
+					toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+				};
 
 			this.logEnhancedResponse(requestId, llmResponse, Date.now() - startTime, false);
 			return llmResponse;

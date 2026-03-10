@@ -300,13 +300,14 @@ export interface ChatMessage {
     planTasks?: unknown[]; // Saved plan tasks for reload reconstruction
     executionMode?: 'sequential' | 'dag'; // Execution mode for plan-execute framework
     // Guided mode metadata
-    isGuidedQuestion?: boolean; // Whether this is a guided mode question from AI
+    isGuidedQuestion?: boolean; // Whether this is a guided-assist question from AI
     guidedOptions?: string[]; // Available options for user to choose
     isMultiSelect?: boolean; // Whether options allow multiple selection
     guidedStepNumber?: number; // Current step number in guided flow
-    guidedContext?: string; // Context/state for current guided conversation
+    guidedContext?: string; // Context/state for the current guided-assist conversation
+    guidedInitialGoal?: string; // Original user goal that guided mode must stay focused on
     // Guided mode tool support
-    suggestedToolCalls?: unknown[]; // Tools suggested by AI in guided mode
+    suggestedToolCalls?: unknown[]; // Tools suggested by AI in the guided-assist flow
     requiresToolConfirmation?: boolean; // Whether user needs to confirm tool execution
     toolExecutionApproved?: boolean; // Whether user approved the tool execution
     isPreToolExplanation?: boolean; // Whether this is explanation text before tool execution
@@ -326,7 +327,12 @@ export interface ChatSession {
   updated: number;
   provider: string;
   mode: 'ask' | 'action';
-  conversationMode?: ConversationMode; // Save conversation mode (normal/guided/agent) for this session
+  conversationMode?: ConversationMode; // Save conversation mode (normal/agent) for this session
+  guidedModeEnabled?: boolean; // Session-level guided assistant toggle
+  guidedInitialGoal?: string; // Original user goal captured when guided mode starts
+  activeSkillId?: string;
+  /** Session-level switch: false means disable all skill loading/calling for this chat. */
+  skillsEnabled?: boolean;
 }
 
 // ============================================================================
@@ -374,11 +380,10 @@ export type ChatMode = 'ask' | 'action';
 
 /**
  * Conversation Mode - different interaction patterns
- * - normal: Basic Q&A mode without tools
+ * - normal: Basic Q&A mode, optionally enhanced by guided prompting
  * - agent: Autonomous agent mode with plan-execute framework
- * - guided: Interactive guided mode with step-by-step questions and options
  */
-export type ConversationMode = 'normal' | 'agent' | 'guided';
+export type ConversationMode = 'normal' | 'agent';
 
 // ============================================================================
 // Prompt Template Interfaces
@@ -398,6 +403,64 @@ export interface PromptTemplate {
   isUserModified?: boolean;
   isDeleted?: boolean;
   type?: 'chat' | 'speed-reading';
+}
+
+export interface SkillPromptTemplate {
+  id: string;
+  title: string;
+  description?: string;
+  content?: string;
+  contentFile?: string;
+}
+
+export interface SkillSettingFieldSchema {
+  type: 'string' | 'number' | 'boolean' | 'enum';
+  title: string;
+  description?: string;
+  default?: string | number | boolean;
+  options?: string[];
+}
+
+export interface LocalSkillManifest {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  instructions?: string;
+  instructionsFile?: string;
+  preferredConversationMode?: ConversationMode;
+  prompts?: SkillPromptTemplate[];
+  toolAllowlist?: string[];
+  enabledByDefault?: boolean;
+  icon?: string;
+  settingsSchema?: Record<string, SkillSettingFieldSchema>;
+  /** Prevent the LLM from auto-invoking this skill (user must call it explicitly). */
+  disableModelInvocation?: boolean;
+  /** Hide this skill from the / menu so only the model can invoke it. */
+  userInvocable?: boolean;
+  /** Hint shown in autocomplete describing expected arguments. */
+  argumentHint?: string;
+}
+
+export interface ResolvedSkill extends LocalSkillManifest {
+  rootPath: string;
+  manifestPath: string;
+  instructionsContent: string;
+  prompts: Array<SkillPromptTemplate & { content: string }>;
+  toolAllowlist: string[];
+}
+
+export interface SkillLoadError {
+  path: string;
+  message: string;
+  skillId?: string;
+}
+
+export interface SkillStateSnapshot {
+  directory: string;
+  defaultActiveSkillId: string;
+  globallyEnabled: boolean;
+  enabledSkills: Record<string, boolean>;
 }
 
 // ============================================================================
@@ -549,6 +612,7 @@ export interface LLMSiderSettings {
   agentMode: boolean; // Deprecated: kept for migration, use conversationMode instead
   conversationMode: ConversationMode; // Current conversation mode
   defaultConversationMode: ConversationMode; // Default conversation mode when starting new chat
+  guidedModeEnabled: boolean; // Global guided assistant toggle for new/current chats
   showSidebar: boolean;
   sidebarPosition: 'left' | 'right';
 
@@ -565,6 +629,10 @@ export interface LLMSiderSettings {
 
   // Custom prompts
   customPrompts: PromptTemplate[];
+
+  // Local skills state
+  skillsSettings: SkillStateSnapshot;
+  skillsMarketApiToken: string;
 
   // MCP configuration - Claude Desktop compatible
   mcpSettings: {
@@ -590,6 +658,7 @@ export interface LLMSiderSettings {
     granularity: 'phrase' | 'short-sentence' | 'long-sentence'; // Completion length
     tone: string; // Writing tone (formal, casual, professional, friendly)
     domain: string; // Domain/field for context (technical, academic, creative, general)
+    customPrompt: string; // Additional user-defined constraints for completion
     triggerDelay: number; // Delay before triggering completion (ms)
     maxSuggestions: number; // Maximum number of suggestions
   };
@@ -772,7 +841,9 @@ export interface LLMResponse {
   metadata?: Record<string, unknown>;
   toolCalls?: ToolCall[];
   images?: GeneratedImage[]; // Generated images for image generation models
+}
 
+export interface PluginState {
   isLoaded: boolean;
   isLoadingSession?: boolean;
   activeView?: string;
@@ -799,6 +870,7 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
   agentMode: false, // Deprecated: kept for migration
   conversationMode: 'normal', // Default to normal Q&A mode
   defaultConversationMode: 'normal', // Default conversation mode when starting new chat
+  guidedModeEnabled: false,
   showSidebar: true,
   sidebarPosition: 'right',
   i18n: {
@@ -809,6 +881,13 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
   maxChatHistory: 50,
   nextSessionId: 1, // Start auto-incrementing from 1
   customPrompts: [],
+  skillsSettings: {
+    directory: 'skills',
+    defaultActiveSkillId: '',
+    globallyEnabled: true,
+    enabledSkills: {}
+  },
+  skillsMarketApiToken: '',
   mcpSettings: {
     serversConfig: {
       mcpServers: {}
@@ -825,6 +904,7 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
     granularity: 'phrase',
     tone: 'professional',
     domain: 'general',
+    customPrompt: '',
     triggerDelay: 500,
     maxSuggestions: 1
   },

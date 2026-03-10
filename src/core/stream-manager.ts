@@ -115,7 +115,7 @@ export class StreamManager {
 		this.stopButton.style.display = 'inline-block';
 
 		// Keep input enabled - users should be able to type during streaming/tool execution
-		// This is especially important for guided mode where users may want to add context
+		// This is especially important for guided assist flows where users may want to add context
 		// if (this.inputElement) {
 		// 	this.inputElement.disabled = true;
 		// }

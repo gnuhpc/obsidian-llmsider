@@ -6,7 +6,7 @@ import { I18nManager } from '../../i18n/i18n-manager';
 
 // System tools that are always enabled and hidden from UI
 // These tools don't count towards the tool limit
-const HIDDEN_SYSTEM_TOOLS = ['get_timedate'];
+const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each', 'run_local_command'];
 
 /**
  * Handles tool permission management for both built-in and MCP tools

@@ -4,7 +4,7 @@
  * Provides consistent error handling and display across all conversation modes:
  * - normal mode (basic Q&A)
  * - agent mode (plan-execute with tools)
- * - guided mode (structured conversation)
+ * - guided assist flow (structured conversation)
  */
 
 import { setIcon } from 'obsidian';

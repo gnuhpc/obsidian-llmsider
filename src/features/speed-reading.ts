@@ -23,6 +23,7 @@ export class SpeedReadingManager {
 	private drawerContainerEl: HTMLElement | null = null;
 	private isStreaming = false;
 	private currentFilePath: string | null = null;
+	private currentNoteTitle: string | null = null;
 	private streamingContent = '';
 	private lastParsedNodeCount = 0;
 	private lastParsedMindMapLength = 0;
@@ -102,6 +103,7 @@ export class SpeedReadingManager {
 			}
 
 			this.currentFilePath = file.path;
+			this.currentNoteTitle = file.basename;
 			this.streamingContent = '';
 
 			const content = await this.plugin.app.vault.read(file);
@@ -111,6 +113,7 @@ export class SpeedReadingManager {
 			new Notice(this.plugin.i18n.t('ui.speedReadingProcessFailed') + ': ' + (error instanceof Error ? error.message : String(error)));
 			this.isStreaming = false;
 			this.currentFilePath = null;
+			this.currentNoteTitle = null;
 		}
 	}
 
@@ -130,12 +133,6 @@ export class SpeedReadingManager {
 
 		// If drawer is open, simply toggle it closed
 		if (this.drawer?.isDrawerOpen()) {
-			// If streaming for same file, keep drawer open to continue viewing
-			if (this.isStreaming && this.currentFilePath === activeFile.path) {
-				return;
-			}
-			// Otherwise stop analysis and close the drawer
-			this.stopAnalysis();
 			this.drawer.close();
 			return;
 		}
@@ -171,6 +168,7 @@ export class SpeedReadingManager {
 		// Start streaming analysis
 		new Notice(this.plugin.i18n.t('ui.speedReadingAnalyzingDocument'));
 		this.currentFilePath = activeFile.path;
+		this.currentNoteTitle = activeFile.basename;
 		this.streamingContent = '';
 
 		try {
@@ -184,6 +182,7 @@ export class SpeedReadingManager {
 			new Notice(this.plugin.i18n.t('ui.speedReadingProcessFailed') + ': ' + (error instanceof Error ? error.message : String(error)));
 			this.isStreaming = false;
 			this.currentFilePath = null;
+			this.currentNoteTitle = null;
 		}
 	}
 
@@ -399,11 +398,46 @@ Notes:
 
 			new Notice(this.plugin.i18n.t('ui.speedReadingComplete'));
 		} catch (error) {
+			if (this.abortController?.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+				const parsed = fullResponse
+					? this.parseResponse(fullResponse, customSRPrompts)
+					: {
+						summary: '',
+						keyPoints: [],
+						mindMap: '',
+						extendedReading: [],
+						guessYouCareAbout: [],
+						customSections: []
+					};
+
+				const stoppedResult: SpeedReadingResult = {
+					id: initialResult.id,
+					noteTitle: file.basename,
+					notePath: file.path,
+					summary: parsed.summary,
+					keyPoints: parsed.keyPoints,
+					mindMap: parsed.mindMap,
+					extendedReading: parsed.extendedReading,
+					guessYouCareAbout: parsed.guessYouCareAbout,
+					customSections: parsed.customSections,
+					createdAt: initialResult.createdAt,
+					updatedAt: Date.now()
+				};
+
+				this.drawer?.updateContent(stoppedResult, false);
+				new Notice(this.plugin.i18n.t('ui.generationStopped'));
+				return;
+			}
+
 			Logger.error('[SpeedReading] Streaming error:', error);
 			throw error;
 		} finally {
 			this.isStreaming = false;
 			this.abortController = null;
+			if (!this.currentFilePath || this.currentFilePath === file.path) {
+				this.currentFilePath = null;
+				this.currentNoteTitle = null;
+			}
 		}
 	}
 
@@ -416,6 +450,18 @@ Notes:
 			this.abortController = null;
 		}
 		this.isStreaming = false;
+	}
+
+	isAnalyzing(): boolean {
+		return this.isStreaming;
+	}
+
+	getCurrentFilePath(): string | null {
+		return this.currentFilePath;
+	}
+
+	getCurrentNoteTitle(): string | null {
+		return this.currentNoteTitle;
 	}
 
 	/**

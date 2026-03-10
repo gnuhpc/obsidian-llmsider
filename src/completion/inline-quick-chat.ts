@@ -633,11 +633,9 @@ class QuickChatBlockWidget extends WidgetType {
 									content: historyPrompt,
 									description: '',
 									isBuiltIn: false,
-									orderIndex: 999,
-									lastUsed: Date.now(),
-									createdAt: Date.now(),
-									updatedAt: Date.now()
-								});
+									order: 999,
+									lastUsed: Date.now()
+									});
 								
 								// Reload and re-render
 								const [, history] = await Promise.all([

@@ -59,11 +59,15 @@ textSearchReplace: {
 			name: 'Text Search & Replace',
 			description: 'Search for patterns in text and optionally replace them'
 		},
-getCurrentTime: {
+	getCurrentTime: {
 			name: 'Get Current Time',
 			description: 'Get the current date and time in various formats'
 		},
-append: {
+	runLocalCommand: {
+			name: 'Run Local Command',
+			description: 'Execute a local shell command on this machine and return stdout, stderr, and exit status'
+		},
+	append: {
 			name: 'Append',
 			description: 'Append content to the end of a note'
 		},

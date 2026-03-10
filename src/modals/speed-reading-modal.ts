@@ -136,7 +136,7 @@ export class SpeedReadingDrawer {
 	 */
 	open(result: SpeedReadingResult, streaming = false): void {
 		if (this.isOpen) {
-			this.updateContent(result);
+			this.updateContent(result, streaming);
 			return;
 		}
 
@@ -322,12 +322,6 @@ export class SpeedReadingDrawer {
 	 */
 	close(): void {
 		if (!this.isOpen || !this.drawerEl) return;
-
-		// Stop analysis if streaming
-		const speedReadingManager = this.plugin.getSpeedReadingManager();
-		if (speedReadingManager && this.isStreaming) {
-			speedReadingManager.stopAnalysis();
-		}
 
 		// Remove ESC key listener
 		if (this.contentEl && (this.contentEl as any)._escKeyHandler) {
@@ -613,24 +607,43 @@ export class SpeedReadingDrawer {
 			await this.exportToNote(result);
 		};
 
-		// Regenerate button
-		const regenerateBtn = buttonGroup.createEl('button', {
-			cls: 'llmsider-input-btn',
-			attr: {
-				'aria-label': this.plugin.i18n.t('ui.speedReadingRegenerate'),
-				'title': this.plugin.i18n.t('ui.speedReadingRegenerateTooltip')
-			}
-		});
-		regenerateBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`;
-		regenerateBtn.onclick = async () => {
-			// Trigger regeneration via speed reading manager
-			const speedReadingManager = this.plugin.getSpeedReadingManager();
-			if (speedReadingManager) {
-				await speedReadingManager.regenerateReport(result.notePath);
-			} else {
-				new Notice(this.plugin.i18n.t('ui.speedReadingNotInitialized'));
-			}
-		};
+		const speedReadingManager = this.plugin.getSpeedReadingManager();
+
+		if (this.isStreaming) {
+			const stopBtn = buttonGroup.createEl('button', {
+				cls: 'llmsider-input-btn',
+				attr: {
+					'aria-label': this.plugin.i18n.t('ui.stopGenerating'),
+					'title': this.plugin.i18n.t('ui.stopGenerating')
+				}
+			});
+			stopBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>`;
+			stopBtn.onclick = () => {
+				if (!speedReadingManager) {
+					new Notice(this.plugin.i18n.t('ui.speedReadingNotInitialized'));
+					return;
+				}
+
+				stopBtn.disabled = true;
+				speedReadingManager.stopAnalysis();
+			};
+		} else {
+			const regenerateBtn = buttonGroup.createEl('button', {
+				cls: 'llmsider-input-btn',
+				attr: {
+					'aria-label': this.plugin.i18n.t('ui.speedReadingRegenerate'),
+					'title': this.plugin.i18n.t('ui.speedReadingRegenerateTooltip')
+				}
+			});
+			regenerateBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`;
+			regenerateBtn.onclick = async () => {
+				if (speedReadingManager) {
+					await speedReadingManager.regenerateReport(result.notePath);
+				} else {
+					new Notice(this.plugin.i18n.t('ui.speedReadingNotInitialized'));
+				}
+			};
+		}
 
 		// Close button
 		const closeBtn = buttonGroup.createEl('button', {

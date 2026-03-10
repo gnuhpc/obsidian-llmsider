@@ -1,15 +1,16 @@
 /**
- * Normal Mode Agent - Simple Q&A without tools
+ * Normal Mode Agent - Simple Q&A with optional built-in tools
  * 
  * This agent extends MastraAgent to provide simple conversational capabilities
- * without tool execution. It focuses on:
+ * with optional built-in tool execution. It focuses on:
  * - Direct Q&A responses
  * - Automatic Memory management (Working Memory + Conversation History)
  * - Semantic recall of relevant past conversations
  * - Streaming responses
  * 
  * Key differences from Plan-Execute Agent:
- * - No tools: tools = []
+ * - Tools are not bound at initialization; eligible built-in tools can be
+ *   passed per request through execute({ normalTools })
  * - No planning: direct LLM call
  * - Simpler prompts: focus on conversation quality
  * 
@@ -18,12 +19,13 @@
 
 import { Logger } from '../../utils/logger';
 import LLMSiderPlugin from '../../main';
-import { ChatMessage } from '../../types';
+import { ChatMessage, ResolvedSkill } from '../../types';
 import { I18nManager } from '../../i18n/i18n-manager';
 import { MastraAgent, MastraAgentConfig } from './mastra-agent';
 import { MemoryManager } from './memory-manager';
 import type { ContextManager } from '../context-manager';
 import { TokenManager } from '../../utils/token-manager';
+import { UnifiedTool } from '../../tools/unified-tool-manager';
 
 /**
  * Configuration for Normal Mode Agent
@@ -47,6 +49,10 @@ export interface NormalModeExecuteOptions {
 	messages: ChatMessage[];
 	/** Abort controller for cancellation */
 	abortController?: AbortController;
+	/** Tools to expose to the LLM in normal mode. */
+	normalTools?: UnifiedTool[];
+	/** Routed or active skill for this request, if any. */
+	activeSkill?: ResolvedSkill | null;
 	/** Callback for streaming updates */
 	onStream?: (chunk: unknown) => void;
 	/** Callback for complete response */
@@ -226,6 +232,19 @@ export class NormalModeAgent extends MastraAgent {
 			if (contextPrompt && !combinedSystemMessage.includes(contextPrompt)) {
 				combinedSystemMessage = `${combinedSystemMessage}\n\n${contextPrompt}`;
 			}
+
+			if (options.normalTools && options.normalTools.length > 0) {
+				const toolLines = options.normalTools.map(tool => `- ${tool.name}: ${tool.description || 'No description provided'}`);
+				combinedSystemMessage = `${combinedSystemMessage}
+
+You may use tools when they are genuinely needed to answer the user accurately or complete an action.
+- Prefer answering directly when no tool is needed.
+- When a tool is needed, call only the exact tool names listed below.
+- Never invent tool names or parameters.
+
+Available tools:
+${toolLines.join('\n')}`;
+			}
 			
 		// Only include user/assistant messages in the conversationMessages array
 		// Filter out any system messages from options.messages to avoid conflicts
@@ -357,6 +376,7 @@ export class NormalModeAgent extends MastraAgent {
 			let fullResponse = '';
 			let responseStarted = false;
 			const accumulatedImages: any[] = [];
+			const collectedToolCalls: any[] = [];
 			Logger.info('[NormalModeAgent] 🎯 Calling LLM with streaming...');
 		
 		// Set thread ID on provider for session management (e.g. Free Qwen)
@@ -369,6 +389,10 @@ export class NormalModeAgent extends MastraAgent {
 				await provider.sendStreamingMessage(
 					conversationMessages,
 					(chunk: any) => {
+						if (chunk?.toolCalls && Array.isArray(chunk.toolCalls) && chunk.toolCalls.length > 0) {
+							collectedToolCalls.push(...chunk.toolCalls);
+						}
+
 						// Handle streaming chunks - support both new (content) and old (delta) formats
 						const textContent = chunk.content || chunk.delta;
 						if (textContent) {
@@ -390,13 +414,14 @@ export class NormalModeAgent extends MastraAgent {
 						const streamChunk = {
 							delta: textContent || '',
 							content: textContent || '',
-							images: accumulatedImages.length > 0 ? [...accumulatedImages] : undefined
+								images: accumulatedImages.length > 0 ? [...accumulatedImages] : undefined,
+								toolCalls: chunk?.toolCalls
 						};
 						options.onStream(streamChunk);
 					}
 				},
 					options.abortController?.signal,
-					undefined, // tools
+					options.normalTools,
 					combinedSystemMessage // systemMessage parameter
 				);
 			} catch (error) {
@@ -415,7 +440,7 @@ export class NormalModeAgent extends MastraAgent {
 				
 				const response = await provider.sendMessage(
 					conversationMessages,
-					undefined,
+					options.normalTools,
 					combinedSystemMessage
 				);
 				
@@ -433,6 +458,91 @@ export class NormalModeAgent extends MastraAgent {
 				}
 				
 				return;
+			}
+
+			// If model emitted native tool calls, execute tools and request final answer.
+			if (collectedToolCalls.length > 0) {
+				Logger.debug(`[NormalModeAgent] Detected ${collectedToolCalls.length} tool call(s), executing...`);
+				const plugin = (this as any).plugin as LLMSiderPlugin;
+				const toolManager = plugin?.getToolManager?.();
+				const toolResults: string[] = [];
+
+				for (const toolCall of collectedToolCalls) {
+					try {
+						const functionName = toolCall?.function?.name || toolCall?.toolName;
+						const rawArgs = toolCall?.function?.arguments ?? toolCall?.arguments ?? '{}';
+						if (!functionName || !toolManager) {
+							continue;
+						}
+
+						let parsedArgs: unknown = {};
+						if (typeof rawArgs === 'string') {
+							parsedArgs = rawArgs.trim() ? JSON.parse(rawArgs) : {};
+						} else {
+							parsedArgs = rawArgs || {};
+						}
+
+						const result = await toolManager.executeTool(functionName, parsedArgs, {
+							skill: options.activeSkill ?? null,
+							skillRootPath: options.activeSkill?.rootPath,
+						});
+						const failureDetails = !result.success
+							? JSON.stringify({
+								error: result.error || 'Tool execution failed',
+								result: result.result,
+							}, null, 2)
+							: '';
+						const renderedResult = result.success
+							? JSON.stringify(result.result)
+							: `ERROR DETAILS:\n${failureDetails}`;
+						toolResults.push(`- ${functionName}: ${renderedResult}`);
+					} catch (toolError) {
+						const msg = toolError instanceof Error ? toolError.message : String(toolError);
+						toolResults.push(`- ${toolCall?.function?.name || 'unknown_tool'}: ERROR: ${msg}`);
+					}
+				}
+
+				const followupMessages: ChatMessage[] = [
+					...conversationMessages,
+					{
+						id: `assistant-tool-calls-${Date.now()}`,
+						role: 'assistant',
+						content: fullResponse || 'Tool calls requested.',
+						timestamp: Date.now(),
+					},
+					{
+						id: `tool-results-${Date.now()}`,
+						role: 'user',
+						content: `Tool execution results:\n${toolResults.join('\n')}\n\nIf any tool failed, analyze the concrete error details, explain the most likely causes, and provide practical ways to fix or work around the failure. If the tool succeeded, answer the original user request directly based on the tool results.`,
+						timestamp: Date.now(),
+					},
+				];
+
+				fullResponse = '';
+				await provider.sendStreamingMessage(
+					followupMessages,
+					(chunk: any) => {
+						const textContent = chunk.content || chunk.delta;
+						if (textContent) {
+							fullResponse += textContent;
+						}
+
+						if (chunk.images && Array.isArray(chunk.images)) {
+							accumulatedImages.push(...chunk.images);
+						}
+
+						if (options.onStream) {
+							options.onStream({
+								delta: textContent || '',
+								content: textContent || '',
+								images: accumulatedImages.length > 0 ? [...accumulatedImages] : undefined,
+							});
+						}
+					},
+					options.abortController?.signal,
+					options.normalTools,
+					combinedSystemMessage
+				);
 			}
 			
 		// Phase 4: Memory is handled automatically by Mastra Agent
@@ -469,7 +579,8 @@ export class NormalModeAgent extends MastraAgent {
 	
 	/**
 	 * Build default system prompt for normal mode
-	 * This provides basic conversational guidelines without tool instructions
+	 * This provides basic conversational guidance; tool instructions are appended
+	 * dynamically when execute() receives normalTools.
 	 */
 	private buildDefaultSystemPrompt(): string {
 		return `You are a helpful AI assistant integrated into Obsidian, a note-taking and knowledge management application.

@@ -431,8 +431,10 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 		if (chatMessagesContainer) {
 			const allToolCards = Array.from(chatMessagesContainer.querySelectorAll('.llmsider-tool-card-message'));
 			const allIndicators = Array.from(chatMessagesContainer.querySelectorAll('.llmsider-plan-execute-tool-indicator'));
+			const firstToolCall = toolCalls[0] as any;
+			const firstToolName = firstToolCall?.name || firstToolCall?.function?.name || 'Unknown Tool';
 			
-			Logger.debug(`[renderGuidedToolCallsAsIndependent] Tool: ${tool.name}, Found ${allToolCards.length} cards, ${allIndicators.length} indicators`);
+			Logger.debug(`[renderGuidedToolCallsAsIndependent] Tool: ${firstToolName}, Found ${allToolCards.length} cards, ${allIndicators.length} indicators`);
 
 			const lastToolCard = allToolCards[allToolCards.length - 1];
 			const lastIndicator = allIndicators[allIndicators.length - 1];
@@ -464,7 +466,8 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 			Logger.debug('[ToolCards] 📍 No existing tool flow, inserting after message');
 		}
 		
-		Logger.debug(`[renderGuidedToolCallsAsIndependent] Final insertion: ${tool.name} after`, insertAfter);
+		const firstToolCall = toolCalls[0] as any;
+		Logger.debug(`[renderGuidedToolCallsAsIndependent] Final insertion: ${firstToolCall?.name || firstToolCall?.function?.name || 'Unknown Tool'} after`, insertAfter);
 		
 		// Extract purpose statement
 		const purposeMatch = actionDescription.match(/^([^。！？\.\!\?]+[。！？\.\!\?]?)/);
@@ -1240,6 +1243,7 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 			this.messageManager.scrollToBottom();
 			
 			// Create "Waiting for AI response" indicator after the tool card
+			const i18n = this.plugin.getI18nManager();
 			const thinkingIndicator = cardContainer.parentElement?.createDiv() || document.createElement('div');
 			thinkingIndicator.className = 'llmsider-step-indicator active llmsider-plan-execute-tool-indicator';
 			thinkingIndicator.style.cssText = 'margin: 8px 0;';
@@ -1260,7 +1264,6 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 			this.messageManager.scrollToBottom();
 			
 			// Add tool result to messages
-			const i18n = this.plugin.getI18nManager();
 			let toolResultContent = `${i18n?.t('ui.toolExecutedSuccessfully') || 'Tool executed successfully'}: ${toolName}\n\n`;
 			
 			if (result.result) {

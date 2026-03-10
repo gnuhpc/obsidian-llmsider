@@ -447,7 +447,7 @@ export class MessageManager {
 					}
 				}
 
-				// Also remove any following sibling elements created by guided mode:
+				// Also remove any following sibling elements created by the guided-assist flow:
 				// - Tool card elements (llmsider-tool-card-message)
 				// - Guided options sections (llmsider-guided-card-container, llmsider-guided-options-section)
 				// - Tool indicators (llmsider-plan-execute-tool-indicator)

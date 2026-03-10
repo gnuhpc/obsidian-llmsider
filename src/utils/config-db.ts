@@ -10,6 +10,7 @@ type SqlRow = Record<string, string | number | boolean | null>;
 
 export interface ConfigData {
     agentMode: boolean;
+    guidedModeEnabled?: boolean;
     prompts?: PromptTemplate[];
     mcpServersConfig?: MCPServersConfig; // JSON file based, not database stored
 }
@@ -338,9 +339,38 @@ export class ConfigDatabase {
                 created INTEGER NOT NULL,
                 updated INTEGER NOT NULL,
                 provider TEXT NOT NULL,
-                mode TEXT NOT NULL
+                mode TEXT NOT NULL,
+                conversation_mode TEXT,
+                guided_mode_enabled INTEGER NOT NULL DEFAULT 0,
+                active_skill_id TEXT,
+                skills_enabled INTEGER NOT NULL DEFAULT 1
             )
         `);
+
+        try {
+            const tableInfo = this.db.exec("PRAGMA table_info(chat_sessions)");
+            if (tableInfo.length > 0) {
+                const columns = tableInfo[0].values.map(v => v[1]);
+                if (!columns.includes('conversation_mode')) {
+                    this.db.run("ALTER TABLE chat_sessions ADD COLUMN conversation_mode TEXT");
+                    Logger.info("Added conversation_mode column to chat_sessions table");
+                }
+                if (!columns.includes('guided_mode_enabled')) {
+                    this.db.run("ALTER TABLE chat_sessions ADD COLUMN guided_mode_enabled INTEGER NOT NULL DEFAULT 0");
+                    Logger.info("Added guided_mode_enabled column to chat_sessions table");
+                }
+                if (!columns.includes('active_skill_id')) {
+                    this.db.run("ALTER TABLE chat_sessions ADD COLUMN active_skill_id TEXT");
+                    Logger.info("Added active_skill_id column to chat_sessions table");
+                }
+                if (!columns.includes('skills_enabled')) {
+                    this.db.run("ALTER TABLE chat_sessions ADD COLUMN skills_enabled INTEGER NOT NULL DEFAULT 1");
+                    Logger.info("Added skills_enabled column to chat_sessions table");
+                }
+            }
+        } catch (e) {
+            Logger.error('Failed to migrate chat_sessions table:', e);
+        }
 
         // Create indexes for chat_sessions
         this.db.run(`CREATE INDEX IF NOT EXISTS idx_session_updated ON chat_sessions(updated DESC)`);
@@ -709,6 +739,10 @@ export class ConfigDatabase {
         ]);
 
         await this.saveToFile();
+    }
+
+    async addPrompt(prompt: PromptTemplate): Promise<void> {
+        await this.createPrompt(prompt);
     }
 
     async getAllPrompts(): Promise<PromptTemplate[]> {
@@ -1160,8 +1194,8 @@ export class ConfigDatabase {
         if (!this.db) throw new Error('Database not initialized');
 
         const stmt = this.db.prepare(`
-            INSERT INTO chat_sessions (id, name, messages, created, updated, provider, mode)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO chat_sessions (id, name, messages, created, updated, provider, mode, conversation_mode, guided_mode_enabled, active_skill_id, skills_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         stmt.run([
@@ -1171,7 +1205,11 @@ export class ConfigDatabase {
             session.created,
             session.updated,
             session.provider,
-            session.mode
+            session.mode,
+            session.conversationMode || null,
+            session.guidedModeEnabled ? 1 : 0,
+            session.activeSkillId || null,
+            session.skillsEnabled === false ? 0 : 1,
         ]);
 
         await this.saveToFile();
@@ -1188,6 +1226,8 @@ export class ConfigDatabase {
         const rows: ChatSession[] = [];
         while (stmt.step()) {
             const row = stmt.getAsObject() as SqlRow;
+            const rawConversationMode = row.conversation_mode as string | null;
+            const legacyGuidedMode = rawConversationMode === 'guided';
             rows.push({
                 id: row.id as string,
                 name: row.name as string,
@@ -1195,7 +1235,11 @@ export class ConfigDatabase {
                 created: row.created as number,
                 updated: row.updated as number,
                 provider: row.provider as string,
-                mode: row.mode as 'ask' | 'action'
+                mode: row.mode as 'ask' | 'action',
+                conversationMode: (legacyGuidedMode ? 'normal' : rawConversationMode as ChatSession['conversationMode']) || undefined,
+                guidedModeEnabled: legacyGuidedMode || Number(row.guided_mode_enabled) !== 0,
+                activeSkillId: (row.active_skill_id as string) || undefined,
+                skillsEnabled: Number(row.skills_enabled) !== 0,
             });
         }
         stmt.free();
@@ -1213,6 +1257,8 @@ export class ConfigDatabase {
         if (stmt.step()) {
             const row = stmt.getAsObject() as SqlRow;
             stmt.free();
+            const rawConversationMode = row.conversation_mode as string | null;
+            const legacyGuidedMode = rawConversationMode === 'guided';
 
             return {
                 id: row.id,
@@ -1221,7 +1267,11 @@ export class ConfigDatabase {
                 created: row.created,
                 updated: row.updated,
                 provider: row.provider,
-                mode: row.mode
+                mode: row.mode,
+                conversationMode: (legacyGuidedMode ? 'normal' : rawConversationMode as ChatSession['conversationMode']) || undefined,
+                guidedModeEnabled: legacyGuidedMode || Number(row.guided_mode_enabled) !== 0,
+                activeSkillId: (row.active_skill_id as string) || undefined,
+                skillsEnabled: Number(row.skills_enabled) !== 0,
             } as ChatSession;
         }
 
@@ -1235,7 +1285,7 @@ export class ConfigDatabase {
 
         const stmt = this.db.prepare(`
             UPDATE chat_sessions 
-            SET name = ?, messages = ?, updated = ?, provider = ?, mode = ?
+            SET name = ?, messages = ?, updated = ?, provider = ?, mode = ?, conversation_mode = ?, guided_mode_enabled = ?, active_skill_id = ?, skills_enabled = ?
             WHERE id = ?
         `);
 
@@ -1245,6 +1295,10 @@ export class ConfigDatabase {
             session.updated,
             session.provider,
             session.mode,
+            session.conversationMode || null,
+            session.guidedModeEnabled ? 1 : 0,
+            session.activeSkillId || null,
+            session.skillsEnabled === false ? 0 : 1,
             session.id
         ]);
 
@@ -1305,6 +1359,7 @@ export class ConfigDatabase {
         const granularity = await this.getConfig('autocomplete.granularity');
         const tone = await this.getConfig('autocomplete.tone');
         const domain = await this.getConfig('autocomplete.domain');
+        const customPrompt = await this.getConfig('autocomplete.customPrompt');
         const triggerDelay = await this.getConfig('autocomplete.triggerDelay');
         const maxSuggestions = await this.getConfig('autocomplete.maxSuggestions');
 
@@ -1314,6 +1369,7 @@ export class ConfigDatabase {
             granularity: granularity || 'phrase',
             tone: tone || 'professional',
             domain: domain || 'general',
+            customPrompt: customPrompt || '',
             triggerDelay: triggerDelay ? parseInt(triggerDelay) : 500,
             maxSuggestions: maxSuggestions ? parseInt(maxSuggestions) : 1
         };
@@ -1330,6 +1386,7 @@ export class ConfigDatabase {
         await this.setConfig('autocomplete.granularity', settings.granularity);
         await this.setConfig('autocomplete.tone', settings.tone);
         await this.setConfig('autocomplete.domain', settings.domain);
+        await this.setConfig('autocomplete.customPrompt', settings.customPrompt || '');
         await this.setConfig('autocomplete.triggerDelay', settings.triggerDelay.toString());
         await this.setConfig('autocomplete.maxSuggestions', settings.maxSuggestions.toString());
     }
@@ -2011,11 +2068,11 @@ export class ConfigDatabase {
         const settings = this.getBuiltInToolSettings(toolName);
 
         // CRITICAL DEBUG: Log the exact settings retrieval
-        if (!settings) {
-            Logger.debug(`[ConfigDB] Tool ${toolName} has NO settings record in database - defaulting to DISABLED`);
-        } else {
-            Logger.debug(`[ConfigDB] Tool ${toolName} settings found: enabled=${settings.enabled}, requireConfirmation=${settings.requireConfirmation}`);
-        }
+        // if (!settings) {
+        //     Logger.debug(`[ConfigDB] Tool ${toolName} has NO settings record in database - defaulting to DISABLED`);
+        // } else {
+        //     Logger.debug(`[ConfigDB] Tool ${toolName} settings found: enabled=${settings.enabled}, requireConfirmation=${settings.requireConfirmation}`);
+        // }
 
         // Default to FALSE (disabled) if not explicitly set - CONSERVATIVE APPROACH
         // This prevents accidentally enabling all tools
@@ -2400,22 +2457,89 @@ export class ConfigDatabase {
     // Conversation Mode Settings
     // ============================================================================
 
-    async getConversationMode(): Promise<'normal' | 'guided' | 'agent'> {
+    async getConversationMode(): Promise<'normal' | 'agent'> {
         const value = await this.getConfig('conversationMode');
-        return (value as 'normal' | 'guided' | 'agent') || 'normal';
+        if (value === 'guided') {
+            return 'normal';
+        }
+        return (value as 'normal' | 'agent') || 'normal';
     }
 
-    async setConversationMode(mode: 'normal' | 'guided' | 'agent'): Promise<void> {
+    async setConversationMode(mode: 'normal' | 'agent'): Promise<void> {
         await this.setConfig('conversationMode', mode);
     }
 
-    async getDefaultConversationMode(): Promise<'normal' | 'guided' | 'agent'> {
+    async getDefaultConversationMode(): Promise<'normal' | 'agent'> {
         const value = await this.getConfig('defaultConversationMode');
-        return (value as 'normal' | 'guided' | 'agent') || 'normal';
+        if (value === 'guided') {
+            return 'normal';
+        }
+        return (value as 'normal' | 'agent') || 'normal';
     }
 
-    async setDefaultConversationMode(mode: 'normal' | 'guided' | 'agent'): Promise<void> {
+    async setDefaultConversationMode(mode: 'normal' | 'agent'): Promise<void> {
         await this.setConfig('defaultConversationMode', mode);
+    }
+
+    async getGuidedModeEnabled(): Promise<boolean> {
+        const value = await this.getConfig('guidedModeEnabled');
+        if (value === null) {
+            const legacyConversationMode = await this.getConfig('conversationMode');
+            return legacyConversationMode === 'guided';
+        }
+        return value === 'true';
+    }
+
+    async setGuidedModeEnabled(enabled: boolean): Promise<void> {
+        await this.setConfig('guidedModeEnabled', enabled ? 'true' : 'false');
+    }
+
+    // ============================================================================
+    // Skills Settings
+    // ============================================================================
+
+    async getSkillsDirectory(): Promise<string> {
+        return (await this.getConfig('skillsDirectory')) || 'skills';
+    }
+
+    async setSkillsDirectory(directory: string): Promise<void> {
+        await this.setConfig('skillsDirectory', directory || 'skills');
+    }
+
+    async getDefaultActiveSkillId(): Promise<string> {
+        return (await this.getConfig('defaultActiveSkillId')) || '';
+    }
+
+    async setDefaultActiveSkillId(skillId: string): Promise<void> {
+        await this.setConfig('defaultActiveSkillId', skillId || '');
+    }
+
+    async getSkillsGloballyEnabled(): Promise<boolean> {
+        const value = await this.getConfig('skillsGloballyEnabled');
+        return value === null ? true : value === 'true';
+    }
+
+    async setSkillsGloballyEnabled(enabled: boolean): Promise<void> {
+        await this.setConfig('skillsGloballyEnabled', enabled ? 'true' : 'false');
+    }
+
+    async getEnabledSkillsState(): Promise<Record<string, boolean>> {
+        const rawValue = await this.getConfig('enabledSkillsState');
+        if (!rawValue) {
+            return {};
+        }
+
+        try {
+            const parsed = JSON.parse(rawValue) as Record<string, boolean>;
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (error) {
+            Logger.error('Failed to parse enabledSkillsState config:', error);
+            return {};
+        }
+    }
+
+    async setEnabledSkillsState(state: Record<string, boolean>): Promise<void> {
+        await this.setConfig('enabledSkillsState', JSON.stringify(state || {}));
     }
 
     // ============================================================================
