@@ -322,5 +322,25 @@ export class AdvancedSettingsRenderer {
 				});
 			});
 
+		// Super mode max auto turns
+		new Setting(otherContainer)
+			.setName(this.i18n.t('settingsPage.superMaxAutoTurns'))
+			.setDesc(this.i18n.t('settingsPage.superMaxAutoTurnsDesc'))
+			.addText(text => {
+				text.setPlaceholder('50')
+					.setValue(String(this.plugin.settings.superMaxAutoTurns))
+					.onChange(async (value) => {
+						const num = parseInt(value, 10);
+						if (!Number.isNaN(num) && num > 0) {
+							const safeTurns = Math.max(1, Math.min(200, num));
+							this.plugin.settings.superMaxAutoTurns = safeTurns;
+							await this.plugin.saveSettings();
+						}
+					});
+				text.inputEl.type = 'number';
+				text.inputEl.min = '1';
+				text.inputEl.max = '200';
+			});
+
 	}
 }

@@ -1,13 +1,10 @@
 /**
- * Guided Mode UI Renderer
- * 
- * Responsible for rendering Guided Mode specific UI components:
- * - Guided question cards
- * - Tool call confirmations
- * - Option selection UI
- * - Tool execution cards
- * 
- * Extracted from chat-view.ts to reduce complexity
+ * Tool Confirmation UI Renderer
+ *
+ * Focused renderer for:
+ * - tool confirmation cards
+ * - tool execution cards
+ * - follow-up message rendering after tool execution
  */
 
 import { ChatMessage } from '../../types';
@@ -19,43 +16,73 @@ import type { MessageManager } from '../message-manager';
 import type LLMSiderLitePlugin from '../../main';
 import type { MemoryCoordinator } from '../memory/memory-coordinator';
 
-/**
- * Interface for GuidedModeUIRenderer
- */
-export interface IGuidedModeUIRenderer {
+export interface IToolConfirmationUIRenderer {
 	updateGuidedMessageUI(message: ChatMessage): Promise<void>;
 	renderGuidedCard(message: ChatMessage, isReloaded?: boolean): void;
 	renderGuidedToolCallsAsIndependent(message: ChatMessage, isReloaded?: boolean): HTMLElement | null;
-	renderGuidedToolCalls(cardContainer: HTMLElement, message: ChatMessage, isReloaded?: boolean): void;
 	renderGuidedOptions(cardContainer: HTMLElement, message: ChatMessage, isReloaded?: boolean): void;
-	addGuidedMessageToUI(message: ChatMessage): Promise<void>;
-	executeGuidedTool(toolCall: unknown, guidedMessage: ChatMessage, buttonElement?: HTMLButtonElement): Promise<void>;
 	executeToolWithCard(cardContainer: HTMLElement, toolCall: unknown, guidedMessage: ChatMessage): Promise<void>;
 	removeOptionsFromContent(content: string): string;
 }
 
-/**
- * Callbacks required by GuidedModeUIRenderer
- */
-export interface IGuidedModeUIRendererCallbacks {
+export interface IToolConfirmationUIRendererCallbacks {
 	getCurrentSession: () => any;
 	updateSession: (updates: any) => Promise<void>;
 	handleSendMessage: (content: string, metadata?: Record<string, unknown>) => Promise<void>;
 	handleGuidedResponse: (userMessage: ChatMessage, messages: ChatMessage[]) => Promise<void>;
+	handleInternalNormalFollowUp: (userMessage: ChatMessage) => Promise<void>;
 	getStoppedMessageIds: () => Set<string>;
 }
 
-/**
- * GuidedModeUIRenderer - Renders Guided Mode UI components
- */
-export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
+export class ToolConfirmationUIRenderer implements IToolConfirmationUIRenderer {
 	constructor(
 		private plugin: LLMSiderLitePlugin,
 		private messageRenderer: MessageRenderer,
 		private messageManager: MessageManager,
 		private memoryCoordinator: MemoryCoordinator,
-		private callbacks: IGuidedModeUIRendererCallbacks
+		private callbacks: IToolConfirmationUIRendererCallbacks
 	) {}
+
+	private resolveToolCallName(toolCall: any): string | null {
+		const candidates = [
+			toolCall?.name,
+			toolCall?.function?.name,
+			toolCall?.tool,
+			toolCall?.toolName
+		];
+
+		for (const candidate of candidates) {
+			if (typeof candidate === 'string' && candidate.trim()) {
+				return candidate.trim();
+			}
+		}
+
+		return null;
+	}
+
+	private inferOriginalGoal(currentSession: any, guidedMessage: ChatMessage): string {
+		const metadataGoal = typeof guidedMessage?.metadata?.guidedInitialGoal === 'string'
+			? guidedMessage.metadata.guidedInitialGoal.trim()
+			: '';
+		if (metadataGoal) {
+			return metadataGoal;
+		}
+
+		const sessionGoal = typeof currentSession?.guidedInitialGoal === 'string'
+			? currentSession.guidedInitialGoal.trim()
+			: '';
+		if (sessionGoal) {
+			return sessionGoal;
+		}
+
+		const messages = Array.isArray(currentSession?.messages) ? currentSession.messages : [];
+		const firstUserMessage = messages.find((msg: ChatMessage) => {
+			if (msg.role !== 'user' || typeof msg.content !== 'string') return false;
+			if (!msg.content.trim()) return false;
+			return msg.metadata?.internalMessage !== true;
+		});
+		return typeof firstUserMessage?.content === 'string' ? firstUserMessage.content.trim() : '';
+	}
 
 	/**
 	 * Update Guided Mode message UI
@@ -472,10 +499,11 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 		// Extract purpose statement
 		const purposeMatch = actionDescription.match(/^([^。！？\.\!\?]+[。！？\.\!\?]?)/);
 		const purposeStatement = purposeMatch ? purposeMatch[1].trim() : '';
+		const isInteractiveNormalFlow = message.metadata?.interactiveGuidedCard === true;
 		
 		// Create purpose message element if we have a purpose statement
 		let lastInsertedElement: Element = insertAfter;
-		if (purposeStatement) {
+		if (purposeStatement && !isInteractiveNormalFlow) {
 			const purposeEl = document.createElement('div');
 			purposeEl.className = 'llmsider-message llmsider-assistant';
 			purposeEl.style.cssText = 'margin: 8px 0;';
@@ -499,7 +527,7 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 		toolCalls.forEach((toolCall, index) => {
 			Logger.debug('[ToolCards] 🔧 Processing tool call #' + (index + 1));
 			const tc = toolCall as any;
-			const toolName = tc.name || tc.function?.name || 'Unknown Tool';
+			const toolName = this.resolveToolCallName(tc) || 'Unknown Tool';
 			Logger.debug('[ToolCards] Tool name:', toolName);
 			
 			// Parse tool arguments for display
@@ -586,71 +614,6 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 		Logger.debug('[ToolCards] Tool cards created:', toolCalls.length);
 		
 		return lastInsertedElement as HTMLElement;
-	}
-
-	/**
-	 * Render or update guided tool calls - DEPRECATED, use renderGuidedToolCallsAsIndependent instead
-	 */
-	public renderGuidedToolCalls(cardContainer: HTMLElement, message: ChatMessage, isReloaded: boolean = false): void {
-		Logger.debug('renderGuidedToolCalls called (deprecated)');
-		
-		let toolsSection = cardContainer.querySelector('.llmsider-guided-tools-section') as HTMLElement;
-		
-		if (!toolsSection) {
-			toolsSection = cardContainer.createDiv({ cls: 'llmsider-guided-tools-section' });
-		} else {
-			toolsSection.empty();
-		}
-		
-		const toolCalls = message.metadata!.suggestedToolCalls as unknown[];
-		const actionDescription = typeof message.content === 'string' ? message.content : '';
-		
-		toolCalls.forEach((toolCall) => {
-			const tc = toolCall as any;
-			const toolName = tc.name || tc.function?.name || 'Unknown Tool';
-			
-			let toolParameters: Record<string, unknown> = {};
-			try {
-				if (tc.function?.arguments) {
-					toolParameters = typeof tc.function.arguments === 'string' 
-						? JSON.parse(tc.function.arguments) 
-						: tc.function.arguments;
-				} else if (tc.arguments) {
-					toolParameters = typeof tc.arguments === 'string' 
-						? JSON.parse(tc.arguments) 
-						: tc.arguments;
-				} else if (tc.input) {
-					toolParameters = tc.input;
-				}
-			} catch (error) {
-				Logger.error('Failed to parse tool parameters:', error);
-				toolParameters = { error: 'Failed to parse parameters' };
-			}
-			
-			const toolCardContainer = toolsSection.createDiv({ cls: 'llmsider-tool-card-wrapper' });
-			
-			if (isReloaded) {
-				new ToolResultCard(toolCardContainer, {
-					toolName: toolName,
-					status: 'success',
-					parameters: toolParameters,
-					timestamp: new Date(),
-					description: actionDescription
-				});
-			} else {
-				new ToolResultCard(toolCardContainer, {
-					toolName: toolName,
-					status: 'pending',
-					parameters: toolParameters,
-					timestamp: new Date(),
-					description: actionDescription
-				}, async () => {
-					await this.executeToolWithCard(toolCardContainer, toolCall, message);
-				}, () => {
-					toolCardContainer.remove();
-				});
-			}
-		});
 	}
 
 	/**
@@ -830,185 +793,6 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 	}
 
 	/**
-	 * Add guided message with options to UI
-	 */
-	public async addGuidedMessageToUI(message: ChatMessage): Promise<void> {
-		this.messageManager.addMessageToUI(message, this.callbacks.getCurrentSession());
-		
-		const currentSession = this.callbacks.getCurrentSession();
-		if (currentSession) {
-			currentSession.messages.push(message);
-			await this.callbacks.updateSession({
-				messages: currentSession.messages
-			});
-		}
-		
-		const messageEl = this.messageRenderer.findMessageElement(message.id);
-		if (!messageEl) return;
-		
-		// If message has tool calls requiring confirmation
-		if (message.metadata?.requiresToolConfirmation && message.metadata?.suggestedToolCalls) {
-			const toolsContainer = messageEl.createDiv({ cls: 'llmsider-guided-tools' });
-			const toolCalls = message.metadata.suggestedToolCalls;
-			const actionDescription = typeof message.content === 'string' ? message.content : '';
-			
-			toolCalls.forEach((toolCall: any) => {
-				const tc = toolCall;
-				const toolName = tc.name || tc.function?.name || 'Unknown Tool';
-				
-				let toolParameters: Record<string, unknown> = {};
-				if (tc.function?.arguments) {
-					toolParameters = typeof tc.function.arguments === 'string' 
-						? JSON.parse(tc.function.arguments) 
-						: tc.function.arguments;
-				} else if (tc.arguments) {
-					toolParameters = typeof tc.arguments === 'string' 
-						? JSON.parse(tc.arguments) 
-						: tc.arguments;
-				} else if (tc.input) {
-					toolParameters = tc.input;
-				}
-				
-				const cardContainer = toolsContainer.createDiv();
-				
-				new ToolResultCard(cardContainer, {
-					toolName: toolName,
-					status: 'pending',
-					parameters: toolParameters,
-					timestamp: new Date(),
-					description: actionDescription
-				}, async () => {
-					await this.executeToolWithCard(cardContainer, toolCall, message);
-				}, () => {
-					cardContainer.remove();
-				});
-			});
-		}
-		
-		// If message has options, render them as cards
-		if (message.metadata?.isGuidedQuestion && message.metadata?.guidedOptions) {
-			messageEl.addClass('llmsider-guided-question-message');
-			
-			const originalContent = messageEl.querySelector('.llmsider-message-content');
-			if (originalContent) {
-				(originalContent as HTMLElement).style.display = 'none';
-			}
-			
-			const cardContainer = messageEl.createDiv({ cls: 'llmsider-guided-card-container' });
-			const questionSection = cardContainer.createDiv({ cls: 'llmsider-guided-question-section' });
-			const questionContent = questionSection.createDiv({ cls: 'llmsider-guided-question-content' });
-			const contentText = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
-			const cleanedContent = this.removeOptionsFromContent(contentText);
-			this.messageRenderer.renderMarkdownContentPublic(questionContent, cleanedContent);
-			
-			if (cleanedContent.trim().length === 0) {
-				questionSection.style.display = 'none';
-			}
-			
-			const optionsSection = cardContainer.createDiv({ cls: 'llmsider-guided-options-section' });
-			const optionsContainer = optionsSection.createDiv({ cls: 'llmsider-guided-options' });
-			const i18n = this.plugin.getI18nManager();
-			const options = message.metadata.guidedOptions;
-			
-			options.forEach((option: string, index: number) => {
-				const optionCard = optionsContainer.createDiv({
-					cls: 'llmsider-guided-option-card'
-				});
-				
-				const numberBadge = optionCard.createEl('div', {
-					cls: 'llmsider-guided-option-number',
-					text: (index + 1).toString()
-				});
-				
-				const checkmark = optionCard.createDiv({
-					cls: 'llmsider-guided-option-checkmark'
-				});
-				setIcon(checkmark, 'check');
-				
-				const content = optionCard.createDiv({ cls: 'llmsider-guided-option-content' });
-				const parts = option.split(' - ');
-				const title = parts[0];
-				const desc = parts.length > 1 ? parts.slice(1).join(' - ') : '';
-				
-				content.createEl('div', {
-					cls: 'llmsider-guided-option-title',
-					text: title
-				});
-				
-				if (desc) {
-					content.createEl('div', {
-						cls: 'llmsider-guided-option-desc',
-						text: desc
-					});
-				}
-				
-				let isProcessing = false;
-				
-				optionCard.onclick = async () => {
-					if (isProcessing) {
-						Logger.debug('Option already being processed, ignoring click');
-						return;
-					}
-					
-					isProcessing = true;
-					optionCard.addClass('selected');
-					optionsContainer.querySelectorAll('.llmsider-guided-option-card').forEach(card => {
-						card.addClass('disabled');
-						(card as HTMLElement).onclick = null;
-					});
-					
-					if (option === i18n?.t('ui.endGuidedMode') || option === 'End guided mode') {
-						const endMessage: ChatMessage = {
-							id: Date.now().toString(),
-							role: 'assistant',
-							content: i18n?.t('ui.guidedModeEnded') || 'Guided mode ended.',
-							timestamp: Date.now()
-						};
-						
-						this.messageManager.addMessageToUI(endMessage, this.callbacks.getCurrentSession());
-						
-						const currentSession = this.callbacks.getCurrentSession();
-						if (currentSession) {
-							currentSession.messages.push(endMessage);
-							await this.callbacks.updateSession({
-								messages: currentSession.messages
-							});
-						}
-						return;
-					}
-					
-					if (option === i18n?.t('ui.continueWithSuggestions') || option === 'Continue with AI suggestions') {
-						const userMessage: ChatMessage = {
-							id: Date.now().toString(),
-							role: 'user',
-							content: 'Please continue with the next suggestions.',
-							timestamp: Date.now()
-						};
-						
-						const currentSession = this.callbacks.getCurrentSession();
-						if (currentSession) {
-							currentSession.messages.push(userMessage);
-							await this.callbacks.updateSession({
-								messages: currentSession.messages
-							});
-						}
-						
-						await this.callbacks.handleGuidedResponse(userMessage, currentSession?.messages || []);
-						return;
-					}
-					
-					await this.callbacks.handleSendMessage(title, {
-						isGuidedOption: true,
-						guidedStep: message.metadata?.guidedStepNumber
-					});
-				};
-			});
-		}
-		
-		this.messageManager.scrollToBottom();
-	}
-
-	/**
 	 * Remove option lines (with ➤CHOICE: prefix) from content
 	 */
 	public removeOptionsFromContent(content: string): string {
@@ -1077,15 +861,6 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 	}
 
 	/**
-	 * Execute a tool in guided mode after user confirmation
-	 */
-	public async executeGuidedTool(toolCall: unknown, guidedMessage: ChatMessage, buttonElement?: HTMLButtonElement): Promise<void> {
-		Logger.debug('executeGuidedTool is deprecated, use executeToolWithCard instead');
-		// This method is deprecated but kept for backwards compatibility
-		// It will be removed in a future version
-	}
-
-	/**
 	 * Execute a tool with card status updates
 	 */
 	public async executeToolWithCard(cardContainer: HTMLElement, toolCall: unknown, guidedMessage: ChatMessage): Promise<void> {
@@ -1093,7 +868,10 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 		
 		try {
 			const tc = toolCall as any;
-			const toolName = tc.name || tc.function?.name;
+			const toolName = this.resolveToolCallName(tc);
+			if (!toolName) {
+				throw new Error('Missing tool name in tool call');
+			}
 			
 			// Parse tool arguments
 			let toolArgs: unknown = {};
@@ -1242,26 +1020,38 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 			
 			this.messageManager.scrollToBottom();
 			
-			// Create "Waiting for AI response" indicator after the tool card
 			const i18n = this.plugin.getI18nManager();
-			const thinkingIndicator = cardContainer.parentElement?.createDiv() || document.createElement('div');
-			thinkingIndicator.className = 'llmsider-step-indicator active llmsider-plan-execute-tool-indicator';
-			thinkingIndicator.style.cssText = 'margin: 8px 0;';
-			
-			// Create icon (using bot icon like Normal Mode)
-			const icon = thinkingIndicator.createDiv({ cls: 'llmsider-step-icon' });
-			setIcon(icon, 'bot');
-			
-			// Create text
-			const textEl = thinkingIndicator.createDiv({ cls: 'llmsider-step-text' });
-			textEl.textContent = i18n?.t('common.waitingForAIResponse') || 'Waiting for AI response...';
-			textEl.setAttribute('data-followup-streaming-content', '');
-			
-			// Insert after the card container
-			cardContainer.insertAdjacentElement('afterend', thinkingIndicator);
-			
-			Logger.debug('[executeToolWithCard] Created waiting indicator after tool card');
-			this.messageManager.scrollToBottom();
+			const isInteractiveNormalFlow = guidedMessage.metadata?.interactiveGuidedCard === true;
+			const cleanupGuidedWaitingIndicators = () => {
+				const existingWaitingIndicators = cardContainer.parentElement?.querySelectorAll(
+					'.llmsider-plan-execute-tool-indicator[data-guided-followup-waiting="true"]'
+				);
+				existingWaitingIndicators?.forEach(el => el.remove());
+			};
+			cleanupGuidedWaitingIndicators();
+			let thinkingIndicator: HTMLElement | null = null;
+			if (!isInteractiveNormalFlow) {
+				// Guided mode keeps a local waiting indicator; normal interactive flow relies on the single global stream indicator.
+				thinkingIndicator = cardContainer.parentElement?.createDiv() || document.createElement('div');
+				thinkingIndicator.className = 'llmsider-step-indicator active llmsider-plan-execute-tool-indicator';
+				thinkingIndicator.setAttribute('data-guided-followup-waiting', 'true');
+				thinkingIndicator.style.cssText = 'margin: 8px 0;';
+				
+				// Create icon (using bot icon like Normal Mode)
+				const icon = thinkingIndicator.createDiv({ cls: 'llmsider-step-icon' });
+				setIcon(icon, 'bot');
+				
+				// Create text
+				const textEl = thinkingIndicator.createDiv({ cls: 'llmsider-step-text' });
+				textEl.textContent = i18n?.t('common.waitingForAIResponse') || 'Waiting for AI response...';
+				textEl.setAttribute('data-followup-streaming-content', '');
+				
+				// Insert after the card container
+				cardContainer.insertAdjacentElement('afterend', thinkingIndicator);
+				
+				Logger.debug('[executeToolWithCard] Created waiting indicator after tool card');
+				this.messageManager.scrollToBottom();
+			}
 			
 			// Add tool result to messages
 			let toolResultContent = `${i18n?.t('ui.toolExecutedSuccessfully') || 'Tool executed successfully'}: ${toolName}\n\n`;
@@ -1298,6 +1088,38 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 				}
 			};
 			
+			if (guidedMessage.metadata?.interactiveGuidedCard === true) {
+				const currentSession = this.callbacks.getCurrentSession();
+				const originalGoal = this.inferOriginalGoal(currentSession, guidedMessage);
+				const rawResult = typeof result?.result === 'string'
+					? result.result
+					: JSON.stringify(result?.result ?? result, null, 2);
+				const compactResult = rawResult.length > 1800 ? `${rawResult.slice(0, 1800)}\n...[truncated]` : rawResult;
+				const followUpUserMessage: ChatMessage = {
+					id: `${Date.now()}-tool-followup`,
+					role: 'user',
+					content: originalGoal
+						? `原始任务目标：${originalGoal}\n\n工具执行结果：\n- ${toolName}: ${compactResult}\n\n请严格围绕上述原始任务继续执行，优先完成任务而不是改写目标；若任务已完成，请直接给出最终完成结果。`
+						: `工具执行结果：\n- ${toolName}: ${compactResult}\n\n请基于上述结果继续完成原始任务；若任务已完成，请直接给出最终完成结果。`,
+					timestamp: Date.now(),
+					metadata: {
+						internalMessage: true,
+						isSystemMessage: true,
+						isFollowUpMessage: true,
+						guidedInitialGoal: originalGoal || undefined
+					}
+				};
+				try {
+					await this.callbacks.handleInternalNormalFollowUp(followUpUserMessage);
+				} finally {
+					cleanupGuidedWaitingIndicators();
+					if (thinkingIndicator?.isConnected) {
+						thinkingIndicator.remove();
+					}
+				}
+				return;
+			}
+
 			const currentSession = this.callbacks.getCurrentSession();
 			if (currentSession) {
 				currentSession.messages.push(toolResultMessage);
@@ -1306,7 +1128,7 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 				});
 			}
 			
-			// Let AI decide next steps
+			// Guided flow: let guided agent decide next steps
 			const allMessages = currentSession?.messages || [];
 			await this.callbacks.handleGuidedResponse(toolResultMessage, allMessages);
 			
@@ -1315,7 +1137,7 @@ export class GuidedModeUIRenderer implements IGuidedModeUIRenderer {
 			
 			const errorMsg = error instanceof Error ? error.message : String(error);
 			const tc = toolCall as any;
-			const toolName = tc.name || tc.function?.name;
+			const toolName = this.resolveToolCallName(tc) || 'Unknown Tool';
 			
 			// Parse parameters for error card
 			let toolArgs: unknown = {};

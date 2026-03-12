@@ -95,6 +95,13 @@ export class ChatViewEventManager implements IChatViewEventManager {
 		};
 		this.registerEvent('llmsider-regenerate-response', regenerateResponseHandler);
 
+		// 继续未完成任务事件
+		const continueTaskHandler = async (event: unknown) => {
+			const { messageId } = (event as any).detail;
+			await this.callbacks.onContinueTask(messageId);
+		};
+		this.registerEvent('llmsider-continue-task', continueTaskHandler);
+
 		// Diff重新处理事件
 		const diffReprocessHandler = (event: unknown) => {
 			const { messageId } = (event as any).detail;

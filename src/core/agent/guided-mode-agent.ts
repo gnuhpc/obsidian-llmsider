@@ -82,6 +82,7 @@ import { MastraAgent, MastraAgentConfig } from './mastra-agent';
 import { MemoryManager } from './memory-manager';
 import { TokenManager } from '../../utils/token-manager';
 import { UnifiedTool } from '../../tools/unified-tool-manager';
+import { TaskCompletionGuard } from './task-completion-guard';
 
 /**
  * Configuration for the guided-assist agent
@@ -420,7 +421,12 @@ Mandatory rules:
 				this.systemPrompt,
 				externalSystemContent,
 				guidedGoalInstruction,
-				systemLanguageInstruction
+				systemLanguageInstruction,
+				TaskCompletionGuard.buildExecutionGuardInstructions(
+					options.messages,
+					Object.values(this.availableTools),
+					'guided',
+				),
 			].filter(Boolean).join('\n\n');
 			
 			// Build message list: conversation history + current user message
@@ -581,10 +587,37 @@ Mandatory rules:
 					}
 				}
 				
-				// If no tool calls, we are done with the loop
+				// If no tool calls, consult the shared completion guard before stopping
 				if (detectedToolCalls.length === 0) {
-					Logger.debug('[GuidedModeAgent] No tool calls in this turn, finishing execution');
-					break;
+					const completionResolution = TaskCompletionGuard.resolveNextStep({
+						messages: options.messages,
+						tools: Object.values(this.availableTools),
+						responseText: turnResponse,
+						mode: 'guided',
+						pendingToolCalls: 0,
+					});
+					Logger.debug('[GuidedModeAgent] Completion assessment:', completionResolution.assessment);
+
+					if (!completionResolution.shouldContinue) {
+						Logger.debug('[GuidedModeAgent] No tool calls in this turn, finishing execution');
+						break;
+					}
+
+					if (!completionResolution.recoveryInstruction) {
+						Logger.warn('[GuidedModeAgent] Completion guard requested continuation without a recovery instruction');
+						break;
+					}
+
+					Logger.debug('[GuidedModeAgent] Completion guard requested another guided turn');
+					conversationMessages.push({
+						role: 'assistant',
+						content: turnResponse || '',
+					} as any);
+					conversationMessages.push({
+						role: 'user',
+						content: completionResolution.recoveryInstruction,
+					} as any);
+					continue;
 				}
 				
 				// Handle tool calls
@@ -956,7 +989,8 @@ Make sure the execution summary is natural and describes what was accomplished.`
 		
 		return `<role>
 You are an AI assistant in **Guided Assist** - an interactive, step-by-step assistant integrated into Obsidian.
-Your goal is to guide the user through complex tasks by breaking them down into steps, providing clear options, and executing tools only when appropriate.
+Your goal is to help the user achieve the original intent with the minimum necessary friction.
+Break work into steps only when that helps completion. Ask follow-up questions only when they are truly necessary. If the intent is already clear enough, act or answer directly.
 </role>
 <language_instruction>
 **CRITICAL**: You MUST respond in the SAME language as the user's **LATEST** message.
@@ -966,27 +1000,61 @@ Your goal is to guide the user through complex tasks by breaking them down into 
 - **Rule 4**: IGNORE the language of tool results. If tool results are in English but the user asked in Chinese, you MUST translate/summarize them in Chinese.
 - **Rule 5**: Do NOT mix languages. Do not use English for options if the user asked in Chinese, and vice versa.
 </language_instruction>
+<primary_objective>
+- Stay tightly focused on completing the user's intent.
+- Measure every turn against one question: "Does this move the user closer to completion?"
+- If the goal is already achieved, stop asking follow-up questions and give the completed result or a concise completion update.
+- Do not keep the conversation open artificially once the task is done.
+</primary_objective>
 <response_logic>
 You must choose one of two response types for every turn:
 
 ### Type 1: Provide Options (Decision Point)
-Use this when you need user input or there are multiple ways to proceed.
+Use this only when you need user input that is genuinely required, or when there are multiple meaningful ways to proceed.
 1.  **Brief Context**: One sentence acknowledging the situation.
 2.  **Guiding Question**: Ask what the user wants to do.
 3.  **Options**: Provide 2-4 clickable options using \`➤CHOICE:\`.
 
 ### Type 2: Execute Tool (Action Point)
-Use this when the user's intent is clear and a tool can fulfill it.
+Use this when the user's intent is clear enough and a tool can move the task forward.
 1.  **Explanation**: One sentence explaining what you are about to do.
 2.  **Tool Call**: Execute the tool (ONLY if the required information is NOT already available in the 'Context Information' section).
-3.  **Follow-up**: (Handled in next turn) Analyze result and provide Type 1 Options.
+3.  **Follow-up**: After the tool result, either finish the task if the intent is satisfied, or ask for the single next missing decision.
 </response_logic>
 
 <goal_discipline>
 - The first user prompt in the guided flow defines the primary objective.
 - Later questions, options, and tool usage must stay centered on that objective unless the user explicitly changes it.
 - Do not let option clicks or short follow-up replies silently redefine the task.
+- Do not expand the scope on your own.
+- Prefer completing the current objective over exploring side branches.
 </goal_discipline>
+
+<clarification_policy>
+- Ask a follow-up question only if a required parameter is missing and cannot be safely inferred from:
+  1. the user's latest request,
+  2. prior guided turns,
+  3. the existing context,
+  4. obvious sensible defaults.
+- Ask for one missing thing at a time.
+- Do not ask broad "what do you want?" style questions if the user already stated a concrete task.
+- If a reasonable default exists, use it and proceed.
+</clarification_policy>
+
+<completion_policy>
+- Continuously judge whether the user's original intent has already been achieved.
+- If yes, provide the result and stop.
+- Do not ask another question merely to keep the guided flow going.
+- After a successful tool result, prefer synthesizing and finishing over opening a new decision loop unless the next user choice is actually required.
+</completion_policy>
+
+<tool_policy>
+- First analyze the user's intent and the currently available tools.
+- If no tool is needed, answer directly in guided style.
+- If tools are available and useful, use them only when they clearly advance the user's goal.
+- If no relevant tool is available, continue guiding without pretending that a tool is required.
+- Never require a tool call just because tools exist.
+</tool_policy>
 
 <critical_workflow name="Search & Research">
 **Trigger**: User asks for latest info, news, or specific topics.
@@ -1037,6 +1105,10 @@ Use this when the user's intent is clear and a tool can fulfill it.
    - **Explanation First**: Always explain *why* you are calling a tool before calling it.
    - **No Empty Responses**: Never send an empty message.
    - **No Fake Calls**: Never say "I will call X" without actually generating the tool call.
+3. **Question Discipline**:
+   - Ask the fewest questions needed to complete the task.
+   - Avoid repeated clarification if the answer is already available from context or earlier turns.
+   - Do not ask a new question after the user's intent has been satisfied.
 
 ### Anti-Patterns (Common Mistakes)
 *   ❌ **Do NOT** call a tool to read a file if its content is already in the 'Context Information' section.
@@ -1044,6 +1116,8 @@ Use this when the user's intent is clear and a tool can fulfill it.
 *   ❌ **Do NOT** fetch web content automatically without asking the user first in the Search workflow.
 *   ❌ **Do NOT** ask "Is this okay?" without providing \`➤CHOICE\` options.
 *   ❌ **Do NOT** loop endlessly; if you have enough info, act.
+*   ❌ **Do NOT** keep asking exploratory questions after the user intent is already fulfilled.
+*   ❌ **Do NOT** drift into side tasks that are not necessary for completing the current goal.
 </rules>
 
 <example>

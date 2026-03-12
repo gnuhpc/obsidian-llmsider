@@ -224,6 +224,7 @@ export class MemoryManager {
 		// Configure Orama storage adapter (MUST be at top level, not inside options)
 		// ONLY if semantic recall is enabled or vector DB is explicitly requested
 		let storageConfigured = false;
+		let activeAdapter: any = null;
 		
 		// Skip Vector DB initialization if semantic recall is disabled to avoid unnecessary delays
 		const needsVectorDB = config.enableSemanticRecall;
@@ -255,6 +256,8 @@ export class MemoryManager {
 						
 						// Create Orama storage adapter with persistence
 						const storageAdapter = new OramaStorageAdapter(oramaManager, memoryStoragePath);
+						activeAdapter = storageAdapter;
+						
 						memoryOptions.storage = {
 							getStore: async (storeName: string) => (storeName === 'memory' ? storageAdapter : undefined),
 							init: async () => {
@@ -593,13 +596,29 @@ export class MemoryManager {
 		});
 		
 		// WORKAROUND: If Memory constructor didn't properly assign storage, do it manually
-		if (memoryOptions.storage && !(memory as any).storage) {
-			Logger.warn('[MemoryManager] ⚠️  Memory constructor did not assign storage, fixing manually...');
-			(memory as any).storage = memoryOptions.storage;
-			Logger.debug('[MemoryManager] ✅ Storage manually assigned:', {
-				hasStorage: !!(memory as any).storage,
-				storageType: (memory as any).storage?.constructor?.name || 'undefined'
-			});
+		if (activeAdapter || memoryOptions.storage) {
+			Logger.debug('[MemoryManager] ⚠️  Ensuring storage assignment for Memory instance...');
+			const targetStorage = activeAdapter || memoryOptions.storage;
+			try {
+				const ownDescriptor = Object.getOwnPropertyDescriptor(memory as object, 'storage');
+				const protoDescriptor = Object.getOwnPropertyDescriptor(
+					Object.getPrototypeOf(memory) as object,
+					'storage'
+				);
+				const writable = ownDescriptor?.writable === true || typeof ownDescriptor?.set === 'function'
+					|| typeof protoDescriptor?.set === 'function';
+				if (writable) {
+					(memory as any).storage = targetStorage;
+					Logger.debug('[MemoryManager] ✅ Storage assigned:', {
+						hasStorage: !!(memory as any).storage,
+						storageType: (memory as any).storage?.constructor?.name || 'undefined'
+					});
+				} else {
+					Logger.debug('[MemoryManager] ℹ️ Storage property is read-only; skip manual assignment');
+				}
+			} catch (assignErr) {
+				Logger.warn('[MemoryManager] ⚠️ Manual storage assignment skipped:', assignErr);
+			}
 		}
 		
 		// Additional check: Ensure storage has resourceWorkingMemory property
@@ -796,7 +815,19 @@ export class MemoryManager {
 		// CRITICAL: Ensure thread exists in storage before returning memory
 		// This prevents "No thread found" errors when calling memory.query()
 		try {
-			const existingThread = await memory.getThreadById({ threadId: options.threadId });
+			// Mastra's Memory instance doesn't have getThreadById. 
+			// We need to check existence via the storage adapter.
+			const storage = (memory as any).storage;
+			let existingThread = null;
+			if (storage && storage.getThreadById) {
+				existingThread = await storage.getThreadById({ threadId: options.threadId });
+			} else if (storage && storage.getStore) {
+				const store = await storage.getStore('memory');
+				if (store && store.getThreadById) {
+					existingThread = await store.getThreadById({ threadId: options.threadId });
+				}
+			}
+
 			if (!existingThread) {
 				// Logger.debug('[MemoryManager] Thread does not exist, creating it now...');
 				await memory.createThread({

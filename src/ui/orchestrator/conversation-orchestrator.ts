@@ -4,7 +4,6 @@ import ObsidianLLMSider from '../../main';
 import { Logger } from '../../utils/logger';
 import { NormalModeHandler } from '../handlers/normal-mode-handler';
 import { AgentModeHandler } from '../handlers/agent-mode-handler';
-import { GuidedModeHandler } from '../handlers/guided-mode-handler';
 import { UnifiedTool } from '../../tools/unified-tool-manager';
 
 /**
@@ -15,18 +14,15 @@ export class ConversationOrchestrator implements IConversationOrchestrator {
 	private plugin: ObsidianLLMSider;
 	private normalModeHandler: NormalModeHandler;
 	private agentModeHandler: AgentModeHandler;
-	private guidedModeHandler: GuidedModeHandler;
 	
 	constructor(
 		plugin: ObsidianLLMSider,
 		normalModeHandler: NormalModeHandler,
-		agentModeHandler: AgentModeHandler,
-		guidedModeHandler: GuidedModeHandler
+		agentModeHandler: AgentModeHandler
 	) {
 		this.plugin = plugin;
 		this.normalModeHandler = normalModeHandler;
 		this.agentModeHandler = agentModeHandler;
-		this.guidedModeHandler = guidedModeHandler;
 	}
 	
 	/**
@@ -72,53 +68,7 @@ export class ConversationOrchestrator implements IConversationOrchestrator {
 		// Determine conversation mode
 		const conversationMode = currentSession.conversationMode || this.plugin.settings.conversationMode || 'normal';
 		const guidedModeEnabled = currentSession.guidedModeEnabled ?? this.plugin.settings.guidedModeEnabled ?? false;
-
-		Logger.debug(`[ConversationOrchestrator] Routing conversation, mode: ${conversationMode}, guided: ${guidedModeEnabled}`);
-		
-		// Route to the guided-assist flow when normal mode enables it.
-		if (conversationMode === 'normal' && guidedModeEnabled) {
-			Logger.debug('[ConversationOrchestrator] Routing to guided-assist handler');
-			
-			const messages = await prepareMessages(
-				userMessage,
-				stepIndicatorsEl,
-				memoryContext,
-				memoryMessages,
-				memoryEnabled
-			);
-			
-			// Remove the temporary assistant message since the guided-assist flow handles its own UI
-			if (workingMessageEl) {
-				workingMessageEl.remove();
-			}
-			
-			// Remove step indicators
-			if (stepIndicatorsEl) {
-				stepIndicatorsEl.remove();
-			}
-
-			if (currentSession && assistantMessage) {
-				const messageIndex = currentSession.messages.findIndex(m => m.id === assistantMessage.id);
-				if (messageIndex > -1) {
-					currentSession.messages.splice(messageIndex, 1);
-				}
-			}
-			
-			await this.guidedModeHandler.execute({
-				userMessage,
-				currentSession,
-				messages,
-				assistantMessage,
-				workingMessageEl,
-				stepIndicatorsEl,
-				memoryContext,
-				memoryMessages,
-				memoryEnabled,
-				prepareMessages
-			});
-			
-			return true; // Handled
-		}
+		Logger.debug(`[ConversationOrchestrator] Routing conversation, mode: ${conversationMode}, superpower: ${guidedModeEnabled}`);
 		
 		// Get available tools for Agent mode
 		let availableTools: UnifiedTool[] = [];
@@ -206,6 +156,5 @@ export class ConversationOrchestrator implements IConversationOrchestrator {
 	cleanup(): void {
 		this.normalModeHandler.cleanup();
 		this.agentModeHandler.cleanup();
-		this.guidedModeHandler.cleanup();
 	}
 }

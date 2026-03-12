@@ -5,7 +5,7 @@ import { setIcon } from 'obsidian';
 import { Logger } from '../../utils/logger';
 import { MemoryManager } from '../../core/agent/memory-manager';
 import { ToolResultCard } from '../tool-result-card';
-import { GuidedModeUIRenderer } from './guided-mode-ui-renderer';
+import { ToolConfirmationUIRenderer } from './tool-confirmation-ui-renderer';
 
 /**
  * Interface for shared state across tool callbacks
@@ -29,7 +29,7 @@ export interface IToolCallbackState {
 export interface IToolCallbackDeps {
 	memoryCoordinator: MemoryCoordinator;
 	messageRenderer: MessageRenderer;
-	guidedModeUIRenderer: GuidedModeUIRenderer;
+	guidedModeUIRenderer: ToolConfirmationUIRenderer;
 	sharedMemoryManager: MemoryManager | null;
 	plugin: any;
 	getCurrentSession: () => any;

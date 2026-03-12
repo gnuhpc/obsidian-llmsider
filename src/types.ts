@@ -239,6 +239,22 @@ export interface ChatMessage {
     source?: string;
     isWorking?: boolean; // For working indicator messages
     isStreaming?: boolean; // For streaming content updates
+    isMultiTurnConversation?: boolean; // Whether assistant response required multiple autonomous turns
+    executionSummary?: {
+      autoTurns?: number;
+      toolRounds?: number;
+      recoveryRounds?: number;
+      completed?: boolean;
+      exitReason?: 'completed' | 'guard_stop' | 'max_turns';
+      completionScore?: number;
+    }; // Execution loop summary for UI display
+    multiTurnTranscript?: Array<{
+      turn: number;
+      kind: 'llm' | 'tool' | 'system';
+      title: string;
+      content: string;
+      success?: boolean;
+    }>; // Detailed transcript of intermediate multi-turn execution
     hasUnifiedDiff?: boolean; // For Action mode messages with diff visualization
     originalContent?: string; // Original content before modification
     modifiedContent?: string; // Modified content after changes
@@ -309,6 +325,7 @@ export interface ChatMessage {
     // Guided mode tool support
     suggestedToolCalls?: unknown[]; // Tools suggested by AI in the guided-assist flow
     requiresToolConfirmation?: boolean; // Whether user needs to confirm tool execution
+    interactiveGuidedCard?: boolean; // Render guided card in interactive mode (not reload/read-only)
     toolExecutionApproved?: boolean; // Whether user approved the tool execution
     isPreToolExplanation?: boolean; // Whether this is explanation text before tool execution
     toolsToExecute?: string[]; // Names of tools that will be executed after this explanation
@@ -613,6 +630,7 @@ export interface LLMSiderSettings {
   conversationMode: ConversationMode; // Current conversation mode
   defaultConversationMode: ConversationMode; // Default conversation mode when starting new chat
   guidedModeEnabled: boolean; // Global guided assistant toggle for new/current chats
+  superMaxAutoTurns: number; // Maximum autonomous turns when Super mode is enabled
   showSidebar: boolean;
   sidebarPosition: 'left' | 'right';
 
@@ -871,6 +889,7 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
   conversationMode: 'normal', // Default to normal Q&A mode
   defaultConversationMode: 'normal', // Default conversation mode when starting new chat
   guidedModeEnabled: false,
+  superMaxAutoTurns: 50,
   showSidebar: true,
   sidebarPosition: 'right',
   i18n: {

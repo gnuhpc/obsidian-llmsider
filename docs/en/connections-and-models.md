@@ -167,7 +167,12 @@ Click on any provider card to start configuration:
     (No API Key required, supports various open source models)
     ```
 
-17. **Local**
+17. **WebLLM (Local)**
+    ```
+    (No API Key or internet required for inference, uses WebGPU)
+    ```
+
+18. **Local**
     ```
     Base URL: http://localhost:1234/v1
     (Supports LM Studio, LocalAI, etc.)
@@ -189,6 +194,17 @@ Fill in the connection form:
 | **Enabled** | Toggle to enable/disable connection | ✅ |
 
 *Not required for Ollama or custom local setups
+
+#### Advanced Authentication for Free Providers
+
+When using "Free" providers (DeepSeek, Qwen), LLMSider uses your browser's existing authentication session.
+
+- **Free Qwen**: Requires the `Cookie` header from a logged-in session at qianwen.aliyun.com.
+- **Free DeepSeek**: Requires the `userToken` from `localStorage` at chat.deepseek.com.
+- **Free Gemini**: Requires `__Secure-1PSID` and `__Secure-1PSIDTS` cookies from gemini.google.com.
+- **Hugging Chat**: Requires the full `Cookie` string from huggingface.co/chat.
+
+Detailed instructions for obtaining these are provided directly within the LLMSider connection setup dialog.
 
 #### Advanced Options
 - **Custom Headers**: Add custom HTTP headers

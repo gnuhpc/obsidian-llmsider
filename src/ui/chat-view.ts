@@ -44,12 +44,11 @@ import { ToolPermissionHandler } from "../settings/handlers/tool-permission-hand
 import { ErrorActionPanel } from "./error-action-panel";
 import { NormalModeHandler } from "./handlers/normal-mode-handler";
 import { AgentModeHandler } from "./handlers/agent-mode-handler";
-import { GuidedModeHandler } from "./handlers/guided-mode-handler";
 import { ConversationOrchestrator } from "./orchestrator/conversation-orchestrator";
 import { MemoryCoordinator } from "./memory/memory-coordinator";
 import { ToolCoordinator } from "./tools/tool-coordinator";
 import { MessagePreparationService } from "./messages/message-preparation-service";
-import { GuidedModeUIRenderer } from "./guided/guided-mode-ui-renderer";
+import { ToolConfirmationUIRenderer } from "./guided/tool-confirmation-ui-renderer";
 import { GuidedModeOrchestrator } from "./guided/guided-mode-orchestrator";
 import {
 	GuidedModeStreamCallbacks,
@@ -93,14 +92,13 @@ export class ChatView extends ItemView {
 	private eventManager!: ChatViewEventManager;
 	private normalModeHandler!: NormalModeHandler;
 	private agentModeHandler!: AgentModeHandler;
-	private guidedModeHandler!: GuidedModeHandler;
 	private conversationOrchestrator!: ConversationOrchestrator;
 	private sessionHandler!: SessionHandler;
 	private providerCoordinator!: ProviderCoordinator;
 	private memoryCoordinator!: MemoryCoordinator;
 	private toolCoordinator!: ToolCoordinator;
 	private messagePreparationService!: MessagePreparationService;
-	private guidedModeUIRenderer!: GuidedModeUIRenderer;
+	private guidedModeUIRenderer!: ToolConfirmationUIRenderer;
 	private guidedModeOrchestrator!: GuidedModeOrchestrator;
 
 	// Mastra Agent components for normal and guided-assist flows
@@ -279,18 +277,11 @@ export class ChatView extends ItemView {
 			this.mastraPlanExecuteProcessor
 		);
 
-		// Initialize GuidedModeHandler
-		this.guidedModeHandler = new GuidedModeHandler(
-			this.plugin,
-			this.handleGuidedMode.bind(this)
-		);
-
 		// Initialize ConversationOrchestrator
 		this.conversationOrchestrator = new ConversationOrchestrator(
 			this.plugin,
 			this.normalModeHandler,
-			this.agentModeHandler,
-			this.guidedModeHandler
+			this.agentModeHandler
 		);
 
 		// Initialize SessionHandler
@@ -367,8 +358,8 @@ export class ChatView extends ItemView {
 			}
 		);
 
-		// Initialize GuidedModeUIRenderer
-		this.guidedModeUIRenderer = new GuidedModeUIRenderer(
+		// Initialize tool confirmation UI renderer
+		this.guidedModeUIRenderer = new ToolConfirmationUIRenderer(
 			this.plugin,
 			this.messageRenderer,
 			this.messageManager,
@@ -379,6 +370,14 @@ export class ChatView extends ItemView {
 					this.plugin.updateChatSession(this.currentSession!.id, updates),
 				handleSendMessage: this.handleSendMessage.bind(this),
 				handleGuidedResponse: this.handleGuidedResponse.bind(this),
+				handleInternalNormalFollowUp: async (userMessage: ChatMessage) => {
+					if (!this.currentSession) return;
+					this.currentSession.messages.push(userMessage);
+					await this.plugin.updateChatSession(this.currentSession.id, {
+						messages: this.currentSession.messages,
+					});
+					await this.getAIResponse(userMessage);
+				},
 				getStoppedMessageIds: () => this.stoppedMessageIds,
 			}
 		);
@@ -448,6 +447,8 @@ export class ChatView extends ItemView {
 				),
 			onRegenerateResponse: async (messageId: string) =>
 				await this.sessionHandler.handleRegenerateResponse(messageId),
+			onContinueTask: async (messageId: string) =>
+				await this.handleContinueTask(messageId),
 			onDiffReprocess: (messageId: string) =>
 				this.handleDiffReprocess(messageId),
 			onRenderGuidedCard: (messageId: string) =>
@@ -493,6 +494,58 @@ export class ChatView extends ItemView {
 			this.messageManager.refreshMessageActions(this.currentSession);
 			this.messageManager.refreshDiffRendering(this.currentSession);
 		}, 300);
+	}
+
+	private async handleContinueTask(messageId: string): Promise<void> {
+		if (!this.currentSession) {
+			return;
+		}
+
+		const targetIndex = this.currentSession.messages.findIndex(msg => msg.id === messageId);
+		if (targetIndex === -1) {
+			return;
+		}
+
+		const targetMessage = this.currentSession.messages[targetIndex];
+		if (targetMessage.role !== 'assistant') {
+			return;
+		}
+
+		const transcriptGoal = targetMessage.metadata?.multiTurnTranscript?.find(entry => entry.title === '用户任务')?.content?.trim();
+		const sessionGoal = this.currentSession.guidedInitialGoal?.trim();
+		const messageGoal = typeof targetMessage.metadata?.guidedInitialGoal === 'string'
+			? targetMessage.metadata.guidedInitialGoal.trim()
+			: '';
+		const firstUserGoal = this.currentSession.messages.find(msg =>
+			msg.role === 'user' &&
+			typeof msg.content === 'string' &&
+			msg.content.trim().length > 0 &&
+			msg.metadata?.internalMessage !== true
+		);
+		const originalGoal = messageGoal || sessionGoal || transcriptGoal || (typeof firstUserGoal?.content === 'string' ? firstUserGoal.content.trim() : '');
+		const summaryText = typeof targetMessage.content === 'string' ? targetMessage.content.trim() : '';
+		const compactSummary = summaryText.length > 1800 ? `${summaryText.slice(0, 1800)}\n...[truncated]` : summaryText;
+
+		const followUpUserMessage: ChatMessage = {
+			id: `${Date.now()}-continue-task`,
+			role: 'user',
+			content: originalGoal
+				? `原始任务目标：${originalGoal}\n\n上次执行状态：任务未完成。\n\n上次执行摘要：\n${compactSummary || '(无)'}\n\n请在上次基础上继续执行，优先直接调用可用工具完成任务；若已完成，请明确给出最终完成结果。`
+				: `上次执行状态：任务未完成。\n\n上次执行摘要：\n${compactSummary || '(无)'}\n\n请继续执行未完成任务，优先直接调用可用工具完成任务；若已完成，请明确给出最终完成结果。`,
+			timestamp: Date.now(),
+			metadata: {
+				internalMessage: true,
+				isSystemMessage: true,
+				isFollowUpMessage: true,
+				guidedInitialGoal: originalGoal || undefined
+			}
+		};
+
+		this.currentSession.messages.push(followUpUserMessage);
+		await this.plugin.updateChatSession(this.currentSession.id, {
+			messages: this.currentSession.messages
+		});
+		await this.getAIResponse(followUpUserMessage);
 	}
 
 	async onClose() {
@@ -716,13 +769,13 @@ export class ChatView extends ItemView {
 					const allTools =
 						(await this.plugin.getToolManager()?.getAllTools()) || [];
 
-					if (conversationMode === "normal") {
-						availableTools = allTools.filter(
-							(tool) => tool.name !== "run_local_command"
-						);
-						Logger.debug(
-							"Available tools for normal mode:",
-							availableTools.length
+						if (conversationMode === "normal") {
+							availableTools = allTools.filter(
+								(tool) => tool.name !== "run_local_command"
+							);
+							Logger.debug(
+								"Available tools for normal mode:",
+								availableTools.length
 						);
 					} else {
 						availableTools = allTools;
@@ -1459,8 +1512,10 @@ export class ChatView extends ItemView {
 				(msg) => msg.id === messageId
 			);
 			if (message?.metadata?.isGuidedQuestion) {
-				// When reloading from session, mark as reloaded so options/tools are disabled
-				this.guidedModeUIRenderer.renderGuidedCard(message, true);
+				// Default path is reload/read-only rendering.
+				// Some flows (e.g. normal mode tool confirmation) require interactive guided cards.
+				const interactive = message.metadata?.interactiveGuidedCard === true;
+				this.guidedModeUIRenderer.renderGuidedCard(message, !interactive);
 			}
 		}
 	}

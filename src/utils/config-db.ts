@@ -2494,6 +2494,20 @@ export class ConfigDatabase {
         await this.setConfig('guidedModeEnabled', enabled ? 'true' : 'false');
     }
 
+    async getSuperMaxAutoTurns(): Promise<number> {
+        const value = await this.getConfig('superMaxAutoTurns');
+        const parsed = value ? parseInt(value, 10) : NaN;
+        if (Number.isNaN(parsed) || parsed < 1) {
+            return 50;
+        }
+        return Math.min(parsed, 200);
+    }
+
+    async setSuperMaxAutoTurns(turns: number): Promise<void> {
+        const safeTurns = Math.max(1, Math.min(200, Math.floor(turns)));
+        await this.setConfig('superMaxAutoTurns', safeTurns.toString());
+    }
+
     // ============================================================================
     // Skills Settings
     // ============================================================================

@@ -15,10 +15,15 @@ export const enUI = {
   noDefaultSkill: 'No Default Skill',
   noDefaultSkillDesc: 'New chats will start without a skill.',
   normalMode: 'Normal Mode',
-  guidedMode: 'Guided Assist',
+  guidedMode: 'Superpower',
   agentMode: 'Agent Mode',
   normalModeDesc: 'Basic Q&A',
-  guidedModeDesc: 'Toggle step-by-step guidance in normal mode',
+  guidedModeDesc: 'Toggle autonomous multi-turn execution in normal mode (default off)',
+  superpowerEnableNoticeTitle: 'Enable Superpower',
+  superpowerEnableNoticeBody: 'Superpower mode will automatically run multi-turn AI interactions based on your task. Even if errors occur mid-process, AI will try to self-correct until a final result is produced. This mode consumes more tokens.',
+  superpowerEnableNoticeDontRemind: "Don't remind me next time",
+  superpowerEnableNoticeConfirm: 'Enable Anyway',
+  superpowerEnableNoticeCancel: 'Cancel',
   agentModeDesc: 'Autonomous tool use',
   chatHistory: 'Chat History',
   newChat: 'New Chat',
@@ -258,6 +263,20 @@ export const enUI = {
   executingToolProgress: 'Executing tool {current}/{total}: {name}',
   completedToolsProgress: 'Completed {total} tool(s)',
   toolExecutionFailedProgress: 'Tool execution failed {current}/{total}: {name}',
+  multiTurnToolCallsRequested: 'Tool calls requested.',
+  multiTurnNoResponseContent: 'No response content.',
+  multiTurnToolExecutionFailed: 'Tool execution failed',
+  multiTurnUnknownToolName: 'unknown_tool',
+  multiTurnToolExecutionResultsPrompt: `Tool execution results:
+{toolResults}
+
+Check whether the original user request is now fully completed.
+- If completed, provide the completed result directly.
+- If not completed and more available tools are needed, call them now without asking the user for unnecessary confirmation.
+- If completion is blocked, explain the specific blocker clearly.
+- For create/save/write requests, do not stop until the write actually succeeded or you clearly state that no write-capable tool is available.
+- For write/create/save requests, do not ask optional preference questions (style/length/audience) when reasonable defaults are enough to proceed.
+- For write/create/save requests, the final answer must include an explicit write-success signal (for example: created/saved).`,
   viewDetails: 'View Details',
   hideDetails: 'Hide Details',
   noReturnContent: 'No return content',

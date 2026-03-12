@@ -13,7 +13,8 @@ MCP (Model Context Protocol) enables LLMSider to connect with external tools and
 MCP is an open standard for connecting AI models to external tools, data sources, and services. It provides:
 
 - **Standardized Interface**: Common protocol for tool communication
-- **Security**: Permission-based access control
+- **Unified Tool Management**: MCP tools are seamlessly managed alongside built-in tools via the Unified Tool Manager
+- **Security**: Permission-based access control per server and per tool
 - **Extensibility**: Connect to any MCP-compatible tool
 - **Reliability**: Health monitoring and automatic reconnection
 

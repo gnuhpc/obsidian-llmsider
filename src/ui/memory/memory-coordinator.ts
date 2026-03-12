@@ -137,7 +137,8 @@ export class MemoryCoordinator {
 					Logger.debug('[Memory] 🔍 Calling memory.recall() with:', { threadId, resourceId });
 					
 					try {
-						const result = await memory.recall({
+						// Note: In Mastra 0.15.x, the method is query(), not recall()
+						const result = await (memory as any).query({
 							threadId,
 							resourceId,
 							perPage: false,

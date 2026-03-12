@@ -1,4 +1,5 @@
 import { execFile, execFileSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
 import { z } from 'zod';
@@ -85,6 +86,98 @@ function resolveSkillRootPath(runtimeContext?: unknown): string | undefined {
   return path.resolve(rawPath);
 }
 
+function getVaultBasePath(): string | undefined {
+  try {
+    const app = getApp() as any;
+    const basePath = app?.vault?.adapter?.basePath;
+    return typeof basePath === 'string' && basePath.trim().length > 0
+      ? path.resolve(basePath)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isPathInsideBase(basePath: string, targetPath: string): boolean {
+  const normalizedBase = path.resolve(basePath);
+  const normalizedTarget = path.resolve(targetPath);
+  const relative = path.relative(normalizedBase, normalizedTarget);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function resolveCommandCwd(
+  cwd: string | undefined,
+  runtimeContext: unknown,
+  vaultBasePath: string,
+): { cwd?: string; error?: string } {
+  // Hard rule: always execute inside vault. Default is vault root only.
+  // Skill root placeholders can still be used in command text, but execution base remains vault root.
+  const selected = cwd && cwd.trim().length > 0
+    ? cwd.trim()
+    : '.';
+
+  const resolved = path.isAbsolute(selected)
+    ? path.resolve(selected)
+    : path.resolve(vaultBasePath, selected);
+
+  if (!isPathInsideBase(vaultBasePath, resolved)) {
+    return {
+      error: `Working directory is outside vault boundary: ${selected}`,
+    };
+  }
+
+  try {
+    const real = fs.realpathSync.native(resolved);
+    if (!isPathInsideBase(vaultBasePath, real)) {
+      return {
+        error: `Working directory symlink escapes vault boundary: ${selected}`,
+      };
+    }
+  } catch {
+    // If path doesn't exist yet, rely on normalized-path boundary check above.
+  }
+
+  return { cwd: resolved };
+}
+
+function validateCommandPathBoundary(command: string, vaultBasePath: string): { valid: true } | { valid: false; reason: string } {
+  const tokenRegex = /(?:"[^"]*"|'[^']*'|`[^`]*`|\S+)/g;
+  const tokens = command.match(tokenRegex) || [];
+  const allowedAbsoluteExecutables = new Set(['/bin', '/usr/bin', '/opt/homebrew/bin', '/usr/local/bin']);
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const raw = tokens[index];
+    const dequoted = raw.replace(/^['"`]|['"`]$/g, '');
+    const stripped = dequoted
+      .replace(/^(?:\d*>>?|\d*<<?|[<>]+)/, '')
+      .trim();
+
+    if (!stripped) continue;
+    if (/^[a-zA-Z]+:\/\//.test(stripped)) continue; // URL
+    if (stripped.startsWith('~') || stripped.includes('$HOME')) {
+      return { valid: false, reason: `Home-path reference is not allowed: ${stripped}` };
+    }
+    if (stripped === '..' || stripped.includes('../') || stripped.includes('..\\')) {
+      return { valid: false, reason: `Parent traversal is not allowed: ${stripped}` };
+    }
+
+    if (path.isAbsolute(stripped)) {
+      // Allow absolute executable path for the command itself.
+      if (index === 0) {
+        const parentDir = path.dirname(stripped);
+        if (allowedAbsoluteExecutables.has(parentDir) || Array.from(allowedAbsoluteExecutables).some(prefix => stripped.startsWith(`${prefix}/`))) {
+          continue;
+        }
+      }
+      if (!isPathInsideBase(vaultBasePath, stripped)) {
+        return { valid: false, reason: `Absolute path outside vault is not allowed: ${stripped}` };
+      }
+    }
+  }
+
+  return { valid: true };
+}
+
 function replaceSkillPlaceholders(command: string, runtimeContext?: unknown): string {
   const skillRootPath = resolveSkillRootPath(runtimeContext);
   if (!skillRootPath) {
@@ -146,11 +239,47 @@ export const runLocalCommandTool: MastraTool = {
     signal: z.string().optional(),
   }),
   execute: async ({ context, runtimeContext }) => {
+    const vaultBasePath = getVaultBasePath();
+    if (!vaultBasePath) {
+      return {
+        success: false,
+        command: context.command,
+        stdout: '',
+        stderr: 'Vault base path is unavailable; refusing to run local command.',
+        exitCode: 1,
+      };
+    }
+
     const shellCandidates = getShellCandidates(context.shell);
     const runtimePath = getRuntimePath(context.shell);
     const timeoutMs = context.timeoutMs || DEFAULT_COMMAND_TIMEOUT_MS;
     const resolvedCommand = replaceSkillPlaceholders(context.command, runtimeContext);
-    const resolvedCwd = resolveWorkingDirectory(resolvedCommand, context.cwd, runtimeContext);
+    const boundary = validateCommandPathBoundary(resolvedCommand, vaultBasePath);
+    if (!boundary.valid) {
+      return {
+        success: false,
+        command: resolvedCommand,
+        stdout: '',
+        stderr: `Command rejected by vault boundary policy: ${boundary.reason}`,
+        exitCode: 1,
+      };
+    }
+
+    const cwdResult = resolveCommandCwd(
+      resolveWorkingDirectory(resolvedCommand, context.cwd, runtimeContext),
+      runtimeContext,
+      vaultBasePath,
+    );
+    if (cwdResult.error || !cwdResult.cwd) {
+      return {
+        success: false,
+        command: resolvedCommand,
+        stdout: '',
+        stderr: `Command rejected by vault boundary policy: ${cwdResult.error || 'invalid working directory'}`,
+        exitCode: 1,
+      };
+    }
+    const resolvedCwd = cwdResult.cwd;
     new Notice(
       i18n.t('ui.executingCommand', { command: resolvedCommand }) || `Executing command: ${resolvedCommand}`,
       3000,

@@ -222,31 +222,17 @@
     display: none !important;
 }
 
-/* Message Actions (Direct children only - footer-based actions override these) */
+/* Message Actions (legacy direct-child floating actions)
+   Disabled: we now only use footer-based action groups. */
 .llmsider-message > .llmsider-message-actions {
-    position: absolute;
-    bottom: -10px;
-    right: -10px;
-    display: flex;
-    gap: 4px;
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.2s ease;
-    z-index: 100;
-    pointer-events: auto;
-    align-items: center;
-    background: var(--background-primary);
-    padding: 4px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    transform: translateY(5px);
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 .llmsider-message.llmsider-assistant:hover > .llmsider-message-actions {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
+    display: none !important;
 }
 
 /* User message edit functionality */
@@ -256,9 +242,7 @@
 }
 
 .llmsider-message.llmsider-user:hover > .llmsider-message-actions {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
+    display: none !important;
 }
 
 /* User message action buttons should match system message size */
@@ -546,40 +530,17 @@
     flex-shrink: 0;
 }
 
-/* Plugin Reload Compatibility - only for legacy non-footer actions */
-.llmsider-message.llmsider-assistant[data-message-id] > .llmsider-message-actions {
-    display: flex !important;
-    position: absolute !important;
-    bottom: -10px !important;
-    right: -10px !important;
-    z-index: 150 !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-    transform: translateY(5px) !important;
-}
-
+/* Plugin Reload Compatibility (legacy floating actions) - disabled.
+   We only support footer-based actions now. */
+.llmsider-message.llmsider-assistant[data-message-id] > .llmsider-message-actions,
 .llmsider-message.llmsider-assistant[data-message-id]:has(.llmsider-inline-diff-container) > .llmsider-message-actions,
-.llmsider-message.llmsider-assistant[data-message-id]:has(.llmsider-jsdiff-container) > .llmsider-message-actions {
-    z-index: 250 !important;
-    background: var(--background-primary) !important;
-    backdrop-filter: blur(16px) !important;
-    border-radius: 6px !important;
-    padding: 4px 6px !important;
+.llmsider-message.llmsider-assistant[data-message-id]:has(.llmsider-jsdiff-container) > .llmsider-message-actions,
+.llmsider-message.llmsider-assistant[data-message-id]:hover > .llmsider-message-actions {
+    display: none !important;
     opacity: 0 !important;
     visibility: hidden !important;
-    transform: translateY(5px) !important;
-    margin-right: 4px !important;
-    margin-bottom: 4px !important;
-    bottom: -10px !important;
-    right: -10px !important;
-    border: 1px solid var(--background-modifier-border) !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-}
-
-.llmsider-message.llmsider-assistant[data-message-id]:hover > .llmsider-message-actions {
-    opacity: 1 !important;
-    visibility: visible !important;
-    transform: translateY(0) !important;
+    pointer-events: none !important;
+    transform: none !important;
 }
 
 .llmsider-message.llmsider-assistant[data-message-id] .llmsider-message-content .llmsider-inline-diff-container,
@@ -1492,6 +1453,129 @@
     color: var(--text-muted);
     font-family: var(--font-monospace);
     opacity: 0.8;
+}
+
+.llmsider-message-status {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+}
+
+.llmsider-turn-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+    color: var(--text-accent);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+}
+
+.llmsider-turn-badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--interactive-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+}
+
+.llmsider-turn-badge-text {
+    white-space: nowrap;
+}
+
+.llmsider-multiturn-panel {
+    margin-top: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 10px;
+    background: var(--background-secondary);
+    overflow: hidden;
+}
+
+.llmsider-multiturn-standalone {
+    margin: 8px 0 12px 0;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.llmsider-multiturn-panel.is-standalone {
+    margin-top: 0;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--background-modifier-border) 35%, transparent);
+}
+
+.llmsider-multiturn-panel-title {
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--background-modifier-hover) 45%, transparent);
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.llmsider-multiturn-details {
+    margin: 0;
+}
+
+.llmsider-multiturn-summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-accent);
+    user-select: none;
+}
+
+.llmsider-multiturn-summary::-webkit-details-marker {
+    display: none;
+}
+
+.llmsider-multiturn-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    max-height: 320px;
+    overflow: auto;
+}
+
+.llmsider-multiturn-row {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 8px;
+    background: var(--background-primary);
+}
+
+.llmsider-multiturn-row.is-llm {
+    border-left: 3px solid color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+}
+
+.llmsider-multiturn-row.is-system {
+    border-left: 3px solid color-mix(in srgb, var(--text-muted) 70%, transparent);
+}
+
+.llmsider-multiturn-row.is-success {
+    border-left: 3px solid color-mix(in srgb, var(--color-green) 70%, transparent);
+}
+
+.llmsider-multiturn-row.is-failed {
+    border-left: 3px solid color-mix(in srgb, var(--color-red) 70%, transparent);
+}
+
+.llmsider-multiturn-row-title {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.llmsider-multiturn-row-content {
+    font-size: 12px;
+    color: var(--text-normal);
+    white-space: pre-wrap;
+    line-height: 1.45;
 }
 
 /* Override Message Actions to be persistent in footer */

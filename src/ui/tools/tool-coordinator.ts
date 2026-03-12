@@ -5,8 +5,6 @@ import { I18nManager } from '../../i18n/i18n-manager';
 import { Logger } from '../../utils/logger';
 import type { ResolvedSkill } from '../../types';
 
-const RUN_LOCAL_COMMAND_TOOL = 'run_local_command';
-
 /**
  * Callbacks for ToolCoordinator
  */
@@ -105,11 +103,9 @@ export class ToolCoordinator {
 				if (skillManager && effectiveSkill) {
 					tools = skillManager.filterToolsForSkill(tools, effectiveSkill);
 				} else if (skillManager && skillManager.isSkillUsageEnabled(currentSession) && skillManager.getInvocableSkills(currentSession).length > 0) {
-					tools = skillManager
-						.filterToolsForSession(tools, currentSession)
-						.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+					tools = skillManager.filterToolsForSession(tools, currentSession, '', routedSkill);
 				} else {
-					tools = tools.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+					tools = tools.filter(tool => tool.name !== 'run_local_command');
 				}
 			} else if (skillManager) {
 				tools = skillManager.filterToolsForSession(tools, currentSession);
@@ -125,7 +121,8 @@ export class ToolCoordinator {
 			toolsInfo += "- Skill names and category names are not callable tool names.\n";
 			toolsInfo += "- Never invent aliases or shorthand tool names.\n";
 
-			// Group tools by source
+			// Group tools by source. Skills are routed separately and are not rendered as a
+			// callable tool bucket here.
 			const builtInTools = tools.filter(t => t.source === 'built-in' && !t.server);
 			const fileEditingTools = tools.filter(t => t.source === 'built-in' && t.server === 'file-editing');
 			const mcpTools = tools.filter(t => t.source === 'mcp');

@@ -1078,6 +1078,7 @@ interface QuickChatState {
 	mode: 'insert' | 'replace';
 	selectionFrom: number;
 	selectionTo: number;
+	widgetPos: number;
 	widgetElement: HTMLElement | null;
 }
 
@@ -1099,6 +1100,7 @@ const showQuickChatEffect = StateEffect.define<{
 	mode: 'insert' | 'replace';
 	from: number;
 	to: number;
+	widgetPos: number;
 }>();
 const hideQuickChatEffect = StateEffect.define<void>();
 export const showPersistentSelectionHighlightEffect = StateEffect.define<{ from: number; to: number }>();
@@ -1125,6 +1127,7 @@ export const quickChatState = StateField.define<QuickChatState>({
 		mode: 'insert',
 		selectionFrom: 0,
 		selectionTo: 0,
+		widgetPos: 0,
 		widgetElement: null
 	}),
 	update: (state, tr) => {
@@ -1138,7 +1141,8 @@ export const quickChatState = StateField.define<QuickChatState>({
 					originalText: effect.value.selectedText,
 					mode: effect.value.mode,
 					selectionFrom: effect.value.from,
-					selectionTo: effect.value.to
+					selectionTo: effect.value.to,
+					widgetPos: effect.value.widgetPos
 				};
 			}
 			if (effect.is(hideQuickChatEffect)) {
@@ -1151,6 +1155,7 @@ export const quickChatState = StateField.define<QuickChatState>({
 					mode: 'insert',
 					selectionFrom: 0,
 					selectionTo: 0,
+					widgetPos: 0,
 					widgetElement: null
 				};
 			}
@@ -1179,8 +1184,8 @@ export const quickChatState = StateField.define<QuickChatState>({
 			);
 		}
 		
-		// Add block widget at the selection end (after the selected text)
-		const pos = state.selectionTo;
+		// Add block widget on the next line after the line containing the selection end.
+		const pos = state.widgetPos || state.selectionTo;
 		const handler = InlineQuickChatHandler.getInstance();
 		const plugin = InlineQuickChatHandler.getPlugin();
 		if (!handler || !plugin) return builder.finish();
@@ -1881,6 +1886,8 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 	show(view: EditorView) {
 		const state = view.state;
 		const selection = state.selection.main;
+		const selectionFrom = selection.from;
+		const selectionTo = selection.to;
 		const selectedText = state.doc.sliceString(selection.from, selection.to);
 		
 		// Determine mode: insert if no selection, replace if has selection
@@ -1889,32 +1896,80 @@ IMPORTANT: Return ONLY the generated text without any surrounding quotes, explan
 		// Calculate line and character position
 		const line = state.doc.lineAt(selection.from);
 		const linePos = { line: line.number - 1, ch: selection.from - line.from };
+		const widgetLine = state.doc.lineAt(selection.to);
+		const widgetPos = widgetLine.to;
 
-		// Dispatch effect to show widget with gentle scrolling
+		// Show the widget without forcing the editor to scroll away from the
+		// user's current selection.
 		view.dispatch({
-			effects: [
-				showQuickChatEffect.of({
-					pos: linePos,
-					selectedText: selectedText,
-					mode: mode,
-					from: selection.from,
-					to: selection.to
-				}),
-				// Gently scroll to show the widget position if needed
-				EditorView.scrollIntoView(selection.to, {
-					y: "nearest",  // Only scroll if not visible
-					yMargin: 100   // Keep some margin from viewport edges
-				})
-			]
+			effects: showQuickChatEffect.of({
+				pos: linePos,
+				selectedText: selectedText,
+				mode: mode,
+				from: selectionFrom,
+				to: selectionTo,
+				widgetPos
+			})
 		});
 
 		this.currentView = view;
+
+		// After the widget is rendered, gently adjust the editor scroll so the
+		// selection and input box are both visible when possible.
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				this.ensureSelectionAndWidgetVisible(view, selectionFrom, selectionTo);
+			});
+		});
 		
 		// Add click outside listener to close the widget
 		// Wait a bit to ensure the widget is rendered
 		setTimeout(() => {
 			this.setupClickOutsideListener(view);
 		}, 100);
+	}
+
+	private ensureSelectionAndWidgetVisible(view: EditorView, from: number, to: number): void {
+		const scrollContainer = view.scrollDOM;
+		const widgetEl = view.dom.querySelector('.llmsider-quick-chat-widget-block') as HTMLElement | null;
+		const startCoords = view.coordsAtPos(from);
+		const endCoords = view.coordsAtPos(to);
+
+		if (!scrollContainer || !widgetEl || !startCoords || !endCoords) {
+			return;
+		}
+
+		const viewportRect = scrollContainer.getBoundingClientRect();
+		const widgetRect = widgetEl.getBoundingClientRect();
+		const selectionTop = Math.min(startCoords.top, endCoords.top);
+		const selectionBottom = Math.max(startCoords.bottom, endCoords.bottom);
+		const combinedTop = Math.min(selectionTop, widgetRect.top);
+		const combinedBottom = Math.max(selectionBottom, widgetRect.bottom);
+		const padding = 16;
+		const visibleTop = viewportRect.top + padding;
+		const visibleBottom = viewportRect.bottom - padding;
+		const combinedHeight = combinedBottom - combinedTop;
+		const visibleHeight = Math.max(visibleBottom - visibleTop, 1);
+
+		let delta = 0;
+
+		if (combinedHeight <= visibleHeight) {
+			if (combinedTop < visibleTop) {
+				delta = combinedTop - visibleTop;
+			} else if (combinedBottom > visibleBottom) {
+				delta = combinedBottom - visibleBottom;
+			}
+		} else {
+			const combinedCenter = (combinedTop + combinedBottom) / 2;
+			const viewportCenter = (visibleTop + visibleBottom) / 2;
+			delta = combinedCenter - viewportCenter;
+		}
+
+		if (Math.abs(delta) < 1) {
+			return;
+		}
+
+		scrollContainer.scrollTop += delta;
 	}
 
 	/**

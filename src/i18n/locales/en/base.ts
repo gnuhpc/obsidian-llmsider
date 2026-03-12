@@ -25,7 +25,8 @@ export const enBase = {
     copyMessage: 'Copy Message',
     editAndResend: 'Edit and Resend',
     editMessage: 'Edit Message',
-    regenerate: 'Regenerate'
+    regenerate: 'Regenerate',
+    continueTask: 'Continue Task'
   },
 
   // Settings

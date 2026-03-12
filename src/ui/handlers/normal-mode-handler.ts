@@ -12,8 +12,6 @@ import { AgentFactory } from '../../core/agent/agent-factory';
 import { NormalModeAgent } from '../../core/agent/normal-mode-agent';
 import { MemoryManager } from '../../core/agent/memory-manager';
 
-const RUN_LOCAL_COMMAND_TOOL = 'run_local_command';
-
 /**
  * Handler for Normal conversation mode
  * Uses Mastra NormalModeAgent for AI interactions
@@ -51,6 +49,24 @@ export class NormalModeHandler implements INormalModeHandler {
 		this.messageRenderer = messageRenderer;
 		this.contextManager = contextManager;
 		this.messageContainer = messageContainer;
+	}
+
+	private shouldAllowRunLocalCommandWithoutSkill(userMessage: ChatMessage): boolean {
+		const text = typeof userMessage.content === 'string' ? userMessage.content : '';
+		if (!text.trim()) {
+			return false;
+		}
+
+		const hasReferencedContext =
+			/Referenced file:|Referenced folder:|引用文件|引用目录|参考文件|参考目录/i.test(text) ||
+			(this.contextManager.getCurrentNoteContext()?.length ?? 0) > 0;
+		if (!hasReferencedContext) {
+			return false;
+		}
+
+		const hasWriteIntent = /合并|汇总|整合|整理|写入|保存|创建|生成|输出到|merge|combine|create|save|write/i.test(text);
+		const noteTargetIntent = /笔记|文章|文档|markdown|md|note|file/i.test(text);
+		return hasWriteIntent && noteTargetIntent;
 	}
 	
 	/**
@@ -149,6 +165,89 @@ export class NormalModeHandler implements INormalModeHandler {
 			let thinkingContent = '';
 			let answerContent = '';
 			let workingMessageEl: HTMLElement | null = null;
+			let standaloneMultiTurnEl: HTMLElement | null = null;
+			type MultiTurnEntry = {
+				kind: 'llm' | 'tool' | 'system';
+				turn: number;
+				title: string;
+				content: string;
+				success?: boolean;
+			};
+			const multiTurnTranscript: MultiTurnEntry[] = [];
+			let currentTurn = 0;
+			let currentTurnLlmEntry: MultiTurnEntry | null = null;
+			const pushInitialUserTask = (task: string) => {
+				if (!task.trim()) return;
+				if (multiTurnTranscript.some(entry => entry.title === '用户任务')) return;
+				multiTurnTranscript.push({
+					kind: 'system',
+					turn: 0,
+					title: '用户任务',
+					content: task.trim(),
+				});
+			};
+
+			const ensureWorkingMessageElement = () => {
+				if (workingMessageEl || !assistantMessage) return;
+				if (stepIndicatorsEl) {
+					removeStepIndicators(stepIndicatorsEl);
+				}
+				this.messageManager.addMessageToUI(assistantMessage, currentSession);
+				this.messageManager.scrollToBottom();
+				workingMessageEl = this.messageRenderer.findMessageElement(assistantMessage.id);
+				Logger.debug('[NormalModeHandler] Created message element for streaming');
+			};
+
+			const escapeHtml = (value: string) =>
+				value
+					.replace(/&/g, '&amp;')
+					.replace(/</g, '&lt;')
+					.replace(/>/g, '&gt;');
+
+			const renderMultiTurnProgressPanel = () => {
+				const rows = multiTurnTranscript.map(entry => {
+					const typeClass = entry.kind === 'tool'
+						? (entry.success === false ? 'is-failed' : 'is-success')
+						: entry.kind === 'system'
+							? 'is-system'
+							: 'is-llm';
+					return `
+						<div class="llmsider-multiturn-row ${typeClass}">
+							<div class="llmsider-multiturn-row-title">第 ${entry.turn} 轮 · ${escapeHtml(entry.title)}</div>
+							<div class="llmsider-multiturn-row-content">${escapeHtml(entry.content || '(无内容)')}</div>
+						</div>
+					`;
+				}).join('');
+
+				if (!standaloneMultiTurnEl) {
+					standaloneMultiTurnEl = document.createElement('div');
+					standaloneMultiTurnEl.className = 'llmsider-multiturn-standalone';
+					this.messageContainer.appendChild(standaloneMultiTurnEl);
+				}
+
+				standaloneMultiTurnEl.innerHTML = `
+					<div class="llmsider-multiturn-panel is-standalone">
+						<div class="llmsider-multiturn-panel-title">执行中：多轮对话</div>
+						<div class="llmsider-multiturn-panel-body">
+							${rows}
+						</div>
+					</div>
+				`;
+			};
+
+			const removeStandaloneMultiTurnPanel = () => {
+				if (standaloneMultiTurnEl) {
+					standaloneMultiTurnEl.remove();
+					standaloneMultiTurnEl = null;
+				}
+			};
+			const formatToolSource = (source: string | undefined): string => {
+				if (!source) return 'UNKNOWN';
+				if (source.startsWith('skill:')) return `SKILL(${source.slice(6) || 'unknown'})`;
+				if (source.startsWith('built-in:')) return `内置工具(${source.slice(9) || 'unknown'})`;
+				if (source.startsWith('mcp:')) return `MCP(${source.slice(4) || 'unknown'})`;
+				return source.toUpperCase();
+			};
 			
 			// Create assistant message
 			const assistantMessage: ChatMessage = {
@@ -186,11 +285,23 @@ export class NormalModeHandler implements INormalModeHandler {
 			};
 
 			const rawUserInput = typeof userMessage.content === 'string' ? userMessage.content : '';
+			const followUpGoal = typeof userMessage.metadata?.guidedInitialGoal === 'string'
+				? userMessage.metadata.guidedInitialGoal.trim()
+				: '';
+			const routingInput = (userMessage.metadata?.isFollowUpMessage && followUpGoal) ? followUpGoal : rawUserInput;
+			const allowRunLocalWithoutSkill = this.shouldAllowRunLocalCommandWithoutSkill(userMessage);
+			if (userMessage.metadata?.isFollowUpMessage && followUpGoal) {
+				Logger.debug('[NormalModeHandler] Follow-up message detected, routing with original goal anchor');
+			}
+			if (allowRunLocalWithoutSkill) {
+				Logger.debug('[NormalModeHandler] Allowing run_local_command in normal mode without routed skill (referenced-context write intent)');
+			}
+			pushInitialUserTask((userMessage.metadata?.isFollowUpMessage && followUpGoal) ? followUpGoal : rawUserInput);
 			let routedSkill: ResolvedSkill | null = null;
 			try {
 				const skillManager = this.plugin.getSkillManager();
 				if (skillManager && skillManager.isSkillUsageEnabled(currentSession) && skillManager.getInvocableSkills(currentSession).length > 0) {
-					routedSkill = await skillManager.routeSkillForInputWithModel(rawUserInput, provider, currentSession);
+					routedSkill = await skillManager.routeSkillForInputWithModel(routingInput, provider, currentSession);
 				}
 			} catch (e) {
 				Logger.warn('[NormalModeHandler] Failed to route skill before preparing messages:', e);
@@ -206,9 +317,10 @@ export class NormalModeHandler implements INormalModeHandler {
 				routedSkill
 			);
 
-			// Resolve normal mode tools: both built-in and MCP tools are available in
-			// normal mode, and active/routed skills can further narrow them via allowlist.
+			// Resolve normal mode tools: skills are routed separately as logic containers.
+			// The concrete callable tool set still consists of built-in and MCP tools.
 			let normalTools: import('../../tools/unified-tool-manager').UnifiedTool[] | undefined;
+			const activeExecutionSkill = this.plugin.getSkillManager()?.getEffectiveSkill(currentSession) || routedSkill;
 			try {
 				const skillManager = this.plugin.getSkillManager();
 				const toolManager = this.plugin.getToolManager();
@@ -216,7 +328,9 @@ export class NormalModeHandler implements INormalModeHandler {
 					const allTools = await toolManager.getAllTools();
 
 					if (!skillManager || !skillManager.isSkillUsageEnabled(currentSession)) {
-						normalTools = allTools.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+						normalTools = allowRunLocalWithoutSkill
+							? allTools
+							: allTools.filter(tool => tool.name !== 'run_local_command');
 						normalTools = normalTools.length > 0 ? normalTools : undefined;
 						if (normalTools) {
 							Logger.debug(`[NormalModeHandler] Normal mode exposes ${normalTools.length} tool(s):`, normalTools.map(t => t.name));
@@ -224,23 +338,21 @@ export class NormalModeHandler implements INormalModeHandler {
 					} else {
 						const invocableSkills = skillManager.getInvocableSkills(currentSession);
 						if (invocableSkills.length === 0) {
-							normalTools = allTools.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+							normalTools = allowRunLocalWithoutSkill
+								? allTools
+								: allTools.filter(tool => tool.name !== 'run_local_command');
 							normalTools = normalTools.length > 0 ? normalTools : undefined;
 							if (normalTools) {
 								Logger.debug(`[NormalModeHandler] No invocable skills active, falling back to ${normalTools.length} tool(s):`, normalTools.map(t => t.name));
 							}
 						} else {
-							normalTools = routedSkill
-								? skillManager.filterToolsForSkill(allTools, routedSkill)
-								: skillManager
-									.filterToolsForSession(allTools, currentSession, rawUserInput)
-									.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+							normalTools = skillManager.filterToolsForSession(allTools, currentSession, routingInput, routedSkill);
 
 							if (normalTools.length > 0) {
 								if (routedSkill) {
-									Logger.debug(`[NormalModeHandler] Routed skill "${routedSkill.name}" provides ${normalTools.length} built-in tool(s):`, normalTools.map(t => t.name));
+									Logger.debug(`[NormalModeHandler] Routed skill "${routedSkill.name}" resolved ${normalTools.length} callable tool(s):`, normalTools.map(t => t.name));
 								} else {
-									Logger.debug(`[NormalModeHandler] Multi-skill routing exposes ${normalTools.length} built-in tool(s):`, normalTools.map(t => t.name));
+									Logger.debug('[NormalModeHandler] No skill routed; resolved general callable tool set:', normalTools.map(t => t.name));
 								}
 							} else {
 								normalTools = undefined;
@@ -254,10 +366,12 @@ export class NormalModeHandler implements INormalModeHandler {
 
 			// Execute normal mode agent
 			Logger.debug('[NormalModeHandler] Executing agent with messages');
+			const enableSuperpower = (currentSession.guidedModeEnabled ?? this.plugin.settings.guidedModeEnabled) === true;
 			await this.normalModeAgent.execute({
 				messages,
 				normalTools,
-				activeSkill: routedSkill,
+				enableSuperpower,
+				activeSkill: activeExecutionSkill,
 				onCompactionStart: () => {
 					// Update indicator to show "context compacting"
 					if (workingMessageEl) {
@@ -276,27 +390,100 @@ export class NormalModeHandler implements INormalModeHandler {
 				},
 				onStream: (chunk: any) => {
 					if (streamController.signal.aborted) return;
+
+					if (enableSuperpower && typeof chunk === 'object' && chunk?.eventType) {
+						switch (chunk.eventType) {
+								case 'multi_turn_turn_start': {
+									currentTurn = Number(chunk.turn) || (currentTurn + 1);
+									currentTurnLlmEntry = {
+										kind: 'llm',
+										turn: currentTurn,
+										title: '模型计划',
+										content: '',
+									};
+									renderMultiTurnProgressPanel();
+									return;
+								}
+								case 'multi_turn_tool_calls': {
+									const names = Array.isArray(chunk.toolItems) && chunk.toolItems.length > 0
+										? chunk.toolItems
+											.map((item: any) => `${item.name} [${formatToolSource(item.source)}]`)
+											.join(', ')
+										: Array.isArray(chunk.toolNames)
+											? chunk.toolNames.join(', ')
+											: '未知工具';
+									if (currentTurnLlmEntry && !currentTurnLlmEntry.content.trim()) {
+										currentTurnLlmEntry.content = `计划调用工具：${names}`;
+										multiTurnTranscript.push(currentTurnLlmEntry);
+									}
+									multiTurnTranscript.push({
+										kind: 'tool',
+										turn: currentTurn || 1,
+										title: '工具调用',
+									content: names,
+								});
+								renderMultiTurnProgressPanel();
+								return;
+							}
+								case 'multi_turn_tool_result': {
+									const sourceLabel = formatToolSource(chunk.toolSource);
+									multiTurnTranscript.push({
+										kind: 'tool',
+										turn: currentTurn || 1,
+										title: `工具结果 · ${chunk.toolName || 'unknown'} [${sourceLabel}]`,
+										content: String(chunk.details || ''),
+										success: chunk.success !== false,
+									});
+								renderMultiTurnProgressPanel();
+								return;
+							}
+							case 'multi_turn_recovery': {
+								multiTurnTranscript.push({
+									kind: 'system',
+									turn: currentTurn || 1,
+									title: `恢复轮次 ${chunk.recoveryRound || ''}`.trim(),
+									content: String(chunk.reason || '继续执行'),
+								});
+								renderMultiTurnProgressPanel();
+								return;
+							}
+							case 'multi_turn_score_update': {
+								const successText = chunk.previousStepSuccess === true
+									? '上一步执行：成功'
+									: chunk.previousStepSuccess === false
+										? '上一步执行：失败'
+										: '上一步执行：待确认';
+								const scoreText = `当前分数：${chunk.score ?? '-'} / 100`;
+								const expectedText = `下一步成功预期：${chunk.expectedScoreIfSuccess ?? '-'} / 100`;
+								const nextStep = String(chunk.nextStep || '继续执行');
+								const reason = String(chunk.reason || '');
+								multiTurnTranscript.push({
+									kind: 'system',
+									turn: currentTurn || 1,
+									title: '评分更新',
+									content: `${successText}\n${scoreText}\n${expectedText}\n下一步：${nextStep}${reason ? `\n原因：${reason}` : ''}`,
+								});
+								renderMultiTurnProgressPanel();
+								return;
+							}
+							default:
+								break;
+						}
+					}
 					
 					// Handle streaming response - support both string (old format) and object (new format)
 					const delta = typeof chunk === 'string' ? chunk : chunk.delta;
 					const metadata = typeof chunk === 'object' ? chunk.metadata : undefined;
 					const hasImages = chunk.images && Array.isArray(chunk.images) && chunk.images.length > 0;
 					
-					// Skip if no content and no images
-					if (!delta && !hasImages) return;
-					
-					// Add message to UI on first chunk (text or images)
-					if (!workingMessageEl && assistantMessage) {
-						// Remove step indicators as soon as we start receiving content
-						if (stepIndicatorsEl) {
-							removeStepIndicators(stepIndicatorsEl);
+						// Skip if no content and no images
+						if (!delta && !hasImages) return;
+						
+						// Add message bubble on first chunk only for direct single-turn rendering.
+						// Multi-turn executions use standalone visualization and defer bubble creation to completion.
+						if (multiTurnTranscript.length === 0) {
+							ensureWorkingMessageElement();
 						}
-
-						this.messageManager.addMessageToUI(assistantMessage, currentSession);
-						this.messageManager.scrollToBottom();
-						workingMessageEl = this.messageRenderer.findMessageElement(assistantMessage.id);
-						Logger.debug('[NormalModeHandler] Created message element for streaming');
-					}
 					
 					// Handle images if present
 					if (hasImages) {
@@ -324,11 +511,17 @@ export class NormalModeHandler implements INormalModeHandler {
 					// Accumulate content based on type
 					if (metadata?.type === 'thinking') {
 						thinkingContent += delta;
-					} else {
-						answerContent += delta;
-					}
+						} else {
+							answerContent += delta;
+							if (currentTurnLlmEntry) {
+								if (!multiTurnTranscript.includes(currentTurnLlmEntry)) {
+									multiTurnTranscript.push(currentTurnLlmEntry);
+								}
+								currentTurnLlmEntry.content += delta;
+							}
+						}
 					
-					// Build complete display content (only when content changes)
+					// Build complete display content (used when not in multi-turn panel mode)
 					let displayContent = '';
 					
 					// Add thinking section with callout (if exists) - expanded by default
@@ -349,6 +542,12 @@ export class NormalModeHandler implements INormalModeHandler {
 					
 					// Render to UI
 					if (workingMessageEl) {
+						if (multiTurnTranscript.length > 0) {
+							renderMultiTurnProgressPanel();
+							throttledScroll();
+							return;
+						}
+
 						const contentEl = workingMessageEl.querySelector('.llmsider-message-content');
 						if (contentEl) {
 							const cleanedContent = stripMemoryMarkers(displayContent);
@@ -368,6 +567,40 @@ export class NormalModeHandler implements INormalModeHandler {
 				},
 				onComplete: async (fullResponse: string, responseData?: any) => {
 					Logger.debug('[NormalModeHandler] Agent completed, response length:', fullResponse.length);
+
+					const executionSummary = responseData?.executionSummary;
+					const awaitingToolConfirmation =
+						enableSuperpower === false &&
+						responseData?.awaitingToolConfirmation === true &&
+						Array.isArray(responseData?.pendingToolCalls) &&
+						responseData.pendingToolCalls.length > 0;
+					if (assistantMessage) {
+						assistantMessage.metadata = assistantMessage.metadata || {};
+						if (executionSummary) {
+							assistantMessage.metadata.executionSummary = executionSummary;
+						}
+						if (enableSuperpower) {
+							assistantMessage.metadata.multiTurnTranscript = multiTurnTranscript.map(entry => ({
+								turn: entry.turn,
+								kind: entry.kind,
+								title: entry.title,
+								content: entry.content,
+								success: entry.success,
+							}));
+							assistantMessage.metadata.isMultiTurnConversation =
+								((executionSummary?.autoTurns || 1) > 1) || multiTurnTranscript.length > 1;
+						} else {
+							assistantMessage.metadata.multiTurnTranscript = [];
+							assistantMessage.metadata.isMultiTurnConversation = false;
+						}
+						if (awaitingToolConfirmation) {
+							assistantMessage.metadata.isGuidedQuestion = true;
+							assistantMessage.metadata.requiresToolConfirmation = true;
+							assistantMessage.metadata.suggestedToolCalls = responseData.pendingToolCalls;
+							assistantMessage.metadata.interactiveGuidedCard = true;
+							assistantMessage.metadata.isStreaming = false;
+						}
+					}
 					
 					// Flush any pending streaming updates
 					if (workingMessageEl) {
@@ -384,35 +617,76 @@ export class NormalModeHandler implements INormalModeHandler {
 					
 					// Remove step indicators after completion
 					removeStepIndicators(stepIndicatorsEl);
+					removeStandaloneMultiTurnPanel();
 					
 					// Update assistant message with formatted content (including thinking callout)
-					if (assistantMessage) {
-						// Build final display content with thinking section
-						let finalContent = '';
-						if (thinkingContent) {
-							finalContent += '> [!tip]- 思考过程\n';
-							finalContent += '> ' + thinkingContent.split('\n').join('\n> ') + '\n\n';
+						if (assistantMessage) {
+							const isMultiTurnConversation = !!assistantMessage.metadata?.isMultiTurnConversation;
+							if (awaitingToolConfirmation) {
+								const toolNames = (responseData?.pendingToolCalls || [])
+									.map((call: any) => call?.function?.name || call?.toolName)
+									.filter((name: unknown): name is string => typeof name === 'string' && name.length > 0);
+								const toolList = toolNames.length > 0 ? `（${toolNames.join(', ')}）` : '';
+								assistantMessage.content = `检测到工具调用请求${toolList}，请确认后执行。`;
+							} else if (isMultiTurnConversation) {
+							const cleanedFinal = stripMemoryMarkers(fullResponse || answerContent || '');
+							const executionSummaryMeta = assistantMessage.metadata?.executionSummary;
+							const score = Number(executionSummaryMeta?.completionScore ?? 0);
+							const contentSuggestsDone = /(任务已完成|任务完成|已成功|成功创建|已保存|task completed|successfully created|saved)/i
+								.test(cleanedFinal || '');
+							const completed = executionSummaryMeta?.completed !== false
+								|| score >= 95
+								|| contentSuggestsDone;
+							const summaryTitle = completed ? '任务完成总结' : '任务执行结果（未完成）';
+							assistantMessage.content = `### ${summaryTitle}\n\n${cleanedFinal || '任务已执行完成。'}`;
+						} else {
+							// Build final display content with thinking section
+							let finalContent = '';
+							if (thinkingContent) {
+								finalContent += '> [!tip]- 思考过程\n';
+								finalContent += '> ' + thinkingContent.split('\n').join('\n> ') + '\n\n';
+							}
+							if (answerContent) {
+								finalContent += answerContent;
+							}
+							assistantMessage.content = finalContent || fullResponse;
 						}
-						if (answerContent) {
-							finalContent += answerContent;
-						}
-						assistantMessage.content = finalContent || fullResponse;
 					}
 					
-					// Process Action mode responses for diff rendering
-					await this.messageManager.processActionModeResponse(
-						assistantMessage,
-						fullResponse,
-						'action',
-						this.contextManager
-					);
+					// Process Action mode responses for diff rendering.
+					// Skip for multi-turn messages to avoid overriding the final transcript panel rendering.
+					if (!assistantMessage.metadata?.multiTurnTranscript?.length && !awaitingToolConfirmation) {
+						await this.messageManager.processActionModeResponse(
+							assistantMessage,
+							fullResponse,
+							'action',
+							this.contextManager
+						);
+					}
+
+					// Create message element only after final content is determined,
+					// avoiding an empty placeholder bubble before tool-confirmation cards.
+						if (!workingMessageEl) {
+							const hasRenderableTextContent = typeof assistantMessage.content === 'string'
+								? assistantMessage.content.trim().length > 0
+								: Array.isArray(assistantMessage.content) && assistantMessage.content.length > 0;
+							const shouldRenderMessage =
+								hasRenderableTextContent ||
+								awaitingToolConfirmation ||
+								Boolean(assistantMessage?.metadata?.generatedImages?.length);
+							if (shouldRenderMessage) {
+								ensureWorkingMessageElement();
+							}
+					}
 					
 					// Update working message element to final state
 					if (workingMessageEl) {
 						// Check if we have images or need to re-render for tool calls
 						const needsRerender = 
 							(assistantMessage?.metadata?.generatedImages && assistantMessage.metadata.generatedImages.length > 0) ||
-							this.messageRenderer.containsToolCallXML(answerContent || fullResponse);
+							this.messageRenderer.containsToolCallXML(answerContent || fullResponse) ||
+							((assistantMessage?.metadata?.multiTurnTranscript?.length || 0) > 0) ||
+							awaitingToolConfirmation;
 							
 						if (needsRerender) {
 							const contentEl = workingMessageEl.querySelector('.llmsider-message-content') as HTMLElement;
@@ -432,6 +706,12 @@ export class NormalModeHandler implements INormalModeHandler {
 					await this.plugin.updateChatSession(currentSession.id, {
 						messages: currentSession.messages
 					});
+
+					if (awaitingToolConfirmation) {
+						window.dispatchEvent(new CustomEvent('llmsider-render-guided-card', {
+							detail: { messageId: assistantMessage.id, message: assistantMessage }
+						}));
+					}
 					
 					// Auto-generate session title
 					await autoGenerateSessionTitle(userMessage, assistantMessage);
@@ -453,6 +733,7 @@ export class NormalModeHandler implements INormalModeHandler {
 					this.messageRenderer.resetXmlBuffer();
 				},
 				onError: (error: Error) => {
+					removeStandaloneMultiTurnPanel();
 					Logger.error('[NormalModeHandler] Agent error:', error);
 					throw error; // Re-throw to be caught by outer catch block
 				},

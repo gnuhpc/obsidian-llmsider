@@ -9,6 +9,8 @@ The Speed Reading feature uses AI to comprehensively analyze the current note an
 - **Content Summary**: A concise 200-300 word summary
 - **Core Points**: 3-5 key insights with important concepts highlighted in bold
 - **Knowledge Structure**: Interactive mind map showing the hierarchical structure
+- **Export & Management**: Export reports to Markdown notes or copy mind maps as SVG/PNG
+- **Custom Analysis**: Add your own specialized prompts to the speed reading report
 - **Extended Reading**: Topic suggestions based on the content
 - **You Might Be Interested**: Inferred extension topics based on the note content
 
@@ -68,10 +70,24 @@ If vector database is enabled:
 
 - Uses **jsMind** to generate interactive mind maps
 - Supports node expand/collapse
+- Interactive controls: **Zoom In/Out**, **Fit View**, and **Fullscreen** mode
 - Clearly shows the note's hierarchical structure
 - At least 3 levels of node depth
 
-### 5. Core Point Highlighting
+### 5. Export and Output Options
+
+- **Export to Note**: Save the entire analysis (including the mind map) as a new Markdown note in your vault
+- **Copy as Markdown**: Copy the text content (Summary, Points, Links) to clipboard
+- **Mind Map Export**: Copy or save the mind map as **SVG** or **PNG** for use in other documents
+- **Markdown Mind Map**: Export the mind map structure as a Markdown list
+
+### 6. Custom Analysis Sections
+
+- Users can define their own "Speed Reading" prompts in **Prompt Management**
+- Custom sections will appear at the bottom of every speed reading report
+- Allows for specialized analysis like "Action Items", "Technical Debt", or "Personal Reflections"
+
+### 7. Core Point Highlighting
 
 - Keywords in each core point are automatically **bolded**
 - Quickly locate important concepts

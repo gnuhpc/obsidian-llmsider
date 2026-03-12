@@ -1,5 +1,6 @@
 import { DataAdapter, Notice, Vault, normalizePath } from 'obsidian';
 import { UnifiedTool } from '../tools/unified-tool-manager';
+import { getBuiltInTool } from '../tools/built-in-tools';
 import {
   ChatSession,
   LocalSkillManifest,
@@ -28,6 +29,14 @@ const SKILL_ROUTING_SYNONYMS: Record<string, string[]> = {
   cli: ['cli', 'command', 'terminal', '命令', '终端'],
   extract: ['extract', 'parse', 'clean', '提取', '解析', '清洗'],
   edit: ['edit', 'update', 'modify', 'create', 'write', '编辑', '修改', '创建', '写入'],
+};
+
+const SKILL_INTENT_CLUSTERS: Record<string, string[]> = {
+  note_authoring: ['note', 'notes', 'markdown', 'md', 'save', 'create', 'write', 'edit', '笔记', '保存', '创建', '写入', '编辑', '文章'],
+  obsidian_vault: ['obsidian', 'vault', 'wikilinks', 'frontmatter', 'callout', '库', '仓库', '双链', '属性'],
+  web_extraction: ['web', 'url', 'page', 'website', 'extract', 'clean', '网页', '链接', '页面', '提取', '清洗'],
+  canvas_graph: ['canvas', 'mind map', 'flowchart', '画布', '脑图', '流程图'],
+  database_view: ['base', 'bases', 'table', 'filter', 'formula', '数据库', '表格', '筛选', '公式'],
 };
 
 export class SkillManager {
@@ -260,10 +269,25 @@ export class SkillManager {
       return this.routeSkillForInput(userInput, session);
     }
 
+    // Fast-path: for short messages or common greetings, skip model-based routing
+    // to improve responsiveness
+    if (trimmedInput.length < 10 || /^(hi|hello|你好|您好|哈喽|hey|你好啊|早上好|中午好|晚上好)$/i.test(trimmedInput)) {
+      Logger.debug(`[SkillManager] Using heuristic routing for short input: ${trimmedInput}`);
+      return this.routeSkillForInput(userInput, session);
+    }
+
     const invocableSkills = this.getInvocableSkills(session);
     if (invocableSkills.length === 0) {
       return null;
     }
+
+    const explicitlyMentionedSkill = invocableSkills.find(skill => this.isExplicitSkillMention(skill, trimmedInput));
+    if (explicitlyMentionedSkill) {
+      Logger.debug(`[SkillManager] Using explicitly mentioned skill "${explicitlyMentionedSkill.id}" for input: ${trimmedInput}`);
+      return explicitlyMentionedSkill;
+    }
+
+    let modelReturnedExplicitNoMatch = false;
 
     try {
       const response = await provider.sendMessage(
@@ -278,6 +302,9 @@ export class SkillManager {
       );
 
       const selectedSkillId = this.extractSkillIdFromRoutingResponse(response.content);
+      if (!selectedSkillId) {
+        modelReturnedExplicitNoMatch = true;
+      }
       if (selectedSkillId) {
         const selectedSkill = invocableSkills.find(skill => skill.id === selectedSkillId);
         if (selectedSkill) {
@@ -291,21 +318,19 @@ export class SkillManager {
       }
     } catch (error) {
       Logger.warn('[SkillManager] Model-based skill routing failed, falling back to heuristic routing:', error);
+      return this.routeSkillForInput(userInput, session);
+    }
+
+    if (modelReturnedExplicitNoMatch) {
+      Logger.debug(`[SkillManager] Model router returned no clear skill match for input: ${trimmedInput}`);
+      return null;
     }
 
     return this.routeSkillForInput(userInput, session);
   }
 
   filterToolsForSkill(tools: UnifiedTool[], skill: ResolvedSkill | null): UnifiedTool[] {
-    if (!skill) {
-      return this.removeRunLocalCommandTool(tools);
-    }
-
-    if (skill.toolAllowlist.length === 0) {
-      return this.removeRunLocalCommandTool(tools);
-    }
-
-    return this.filterToolsByAllowlist(tools, skill.toolAllowlist);
+    return this.prioritizeTools(this.filterRestrictedTools(tools, skill), skill);
   }
 
   private scoreSkillForInput(skill: ResolvedSkill, lowerInput: string): number {
@@ -356,25 +381,94 @@ export class SkillManager {
       scoreTerms.add(skill.name.toLowerCase());
     }
 
-    return scoreTerms.size;
+    let score = scoreTerms.size;
+
+    Object.values(SKILL_INTENT_CLUSTERS).forEach(clusterTerms => {
+      const inputMatchesCluster = clusterTerms.some(term => lowerInput.includes(term));
+      if (!inputMatchesCluster) {
+        return;
+      }
+
+      const clusterHits = clusterTerms.filter(term => searchableText.includes(term)).length;
+      if (clusterHits > 0) {
+        score += clusterHits;
+      }
+    });
+
+    return score;
   }
 
   private buildSkillRoutingPrompt(skills: ResolvedSkill[]): string {
     const skillCatalog = skills.map(skill => {
-      const tools = skill.toolAllowlist.length > 0 ? skill.toolAllowlist.join(', ') : 'none';
-      return `- id: ${skill.id}\n  name: ${skill.name}\n  description: ${skill.description || '(none)'}\n  hint: ${skill.argumentHint || '(none)'}\n  tools: ${tools}`;
+      const capabilityHints = skill.toolAllowlist.length > 0 ? skill.toolAllowlist.join(', ') : 'none';
+      const routingTags = this.inferRoutingTags(skill).join(', ') || 'none';
+      return `- id: ${skill.id}\n  name: ${skill.name}\n  description: ${skill.description || '(none)'}\n  hint: ${skill.argumentHint || '(none)'}\n  capability_hints: ${capabilityHints}\n  routing_tags: ${routingTags}`;
     }).join('\n');
 
-    return `You are a skill router. Choose the single best matching skill for the user's request from the catalog below.
+    return `You are the router phase for skills. Choose the single best matching skill for the user's request from the registry below.
 
 Rules:
 - Return JSON only.
 - Use exactly this shape: {"skillId":"<id-or-empty>","reason":"<short reason>"}.
 - If no single skill is clearly best, return {"skillId":"","reason":"no clear match"}.
-- Prefer skills whose name, id, description, hint, or tools best match the user intent.
+- Route based on the registry description, name, and hint.
+- Treat capability_hints as lightweight routing metadata only, not as callable tool names.
+- Treat routing_tags as extra multilingual intent hints.
+- Do not invent execution steps here. Only decide whether a skill should be loaded.
+- Strong routing guidance:
+  - Prefer the skill whose domain and action semantics best match the request.
+  - For note-writing requests, prefer note-authoring / vault-management skills over unrelated extraction skills.
+  - For web-fetching or cleaning requests, prefer web-extraction skills over note-authoring skills.
 
-Skill Catalog:
+Skill Registry:
 ${skillCatalog}`;
+  }
+
+  private inferRoutingTags(skill: ResolvedSkill): string[] {
+    const searchableText = [
+      skill.id,
+      skill.name,
+      skill.description || '',
+      skill.argumentHint || '',
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    const tags = new Set<string>();
+
+    if (searchableText.includes('obsidian') || searchableText.includes('vault')) {
+      tags.add('obsidian');
+      tags.add('笔记');
+      tags.add('vault-management');
+    }
+
+    if (
+      searchableText.includes('markdown')
+      || searchableText.includes('wikilinks')
+      || searchableText.includes('frontmatter')
+    ) {
+      tags.add('markdown');
+      tags.add('写作');
+      tags.add('note-authoring');
+    }
+
+    if (
+      searchableText.includes('manage notes')
+      || searchableText.includes('create')
+      || searchableText.includes('read')
+      || searchableText.includes('search')
+    ) {
+      tags.add('笔记管理');
+      tags.add('note-management');
+    }
+
+    if (searchableText.includes('web') || searchableText.includes('url') || searchableText.includes('page')) {
+      tags.add('网页');
+      tags.add('链接');
+      tags.add('web-extraction');
+    }
+
+    return Array.from(tags);
   }
 
   private extractSkillIdFromRoutingResponse(content: string): string {
@@ -404,6 +498,21 @@ ${skillCatalog}`;
       .filter(token => token.length >= 2);
   }
 
+  private isExplicitSkillMention(skill: ResolvedSkill, input: string): boolean {
+    const lowerInput = input.toLowerCase();
+    const exactCandidates = [
+      skill.id,
+      skill.name,
+    ]
+      .map(value => value.trim().toLowerCase())
+      .filter(Boolean);
+
+    return exactCandidates.some(candidate =>
+      lowerInput.includes(candidate)
+      || lowerInput.includes(`$${candidate}`),
+    );
+  }
+
   /**
    * In switch-only UX, if user did not explicitly choose a skill and there is
    * exactly one enabled + model-invocable skill, auto-select it.
@@ -420,45 +529,164 @@ ${skillCatalog}`;
     return null;
   }
 
-  filterToolsForSession(tools: UnifiedTool[], session?: ChatSession | null, userInput = ''): UnifiedTool[] {
-    if (!this.isSkillUsageEnabled(session)) {
-      return this.removeRunLocalCommandTool(tools);
+  filterToolsForSession(
+    tools: UnifiedTool[],
+    session?: ChatSession | null,
+    userInput = '',
+    routedSkill?: ResolvedSkill | null,
+  ): UnifiedTool[] {
+    const effectiveSkill = this.getEffectiveSkill(session);
+
+    if (effectiveSkill) {
+      return this.prioritizeTools(this.filterRestrictedTools(tools, effectiveSkill), effectiveSkill, userInput);
     }
 
-    const routedSkill = this.routeSkillForInput(userInput, session);
-    if (routedSkill && routedSkill.toolAllowlist.length > 0) {
-      return this.filterToolsByAllowlist(tools, routedSkill.toolAllowlist);
+    if (routedSkill !== undefined) {
+      return this.prioritizeTools(this.filterRestrictedTools(tools, routedSkill), routedSkill, userInput);
     }
 
-    const invocableSkills = this.getInvocableSkills(session);
-    const combinedAllowlist = Array.from(new Set(invocableSkills.flatMap(skill => skill.toolAllowlist)));
-    if (combinedAllowlist.length === 0) {
-      return this.removeRunLocalCommandTool(tools);
+    const safeTools = this.filterRestrictedTools(tools, null);
+
+    if (this.isSkillUsageEnabled(session) && userInput.trim()) {
+      const heuristicallyRoutedSkill = this.routeSkillForInput(userInput, session);
+      if (heuristicallyRoutedSkill) {
+        Logger.debug(
+          `[SkillManager] Skill "${heuristicallyRoutedSkill.id}" matched for session; keeping full tool set and applying source-first tool ordering`,
+        );
+        return this.prioritizeTools(safeTools, heuristicallyRoutedSkill, userInput);
+      }
     }
 
-    return this.filterToolsByAllowlist(
-      tools,
-      combinedAllowlist.filter(toolName => toolName !== RUN_LOCAL_COMMAND_TOOL),
-    );
+    return this.prioritizeTools(safeTools, null, userInput);
   }
 
-  private filterToolsByAllowlist(tools: UnifiedTool[], allowlist: string[]): UnifiedTool[] {
-    const allowedTools = new Set(allowlist);
-    return tools.filter(tool => {
-      if (allowedTools.has(tool.name)) {
-        return true;
+  private prioritizeTools(tools: UnifiedTool[], skill: ResolvedSkill | null, userInput = ''): UnifiedTool[] {
+    const intentText = [
+      userInput,
+      skill?.name || '',
+      skill?.description || '',
+      skill?.argumentHint || '',
+      skill?.instructionsContent || '',
+    ]
+      .join(' ')
+      .toLowerCase();
+    const intentTerms = new Set(this.extractSearchTerms(intentText));
+
+    const hasIntent = (terms: string[]): boolean => terms.some(term => intentText.includes(term));
+    const timeIntent = hasIntent(['time', 'date', 'today', 'now', '当前时间', '日期', '今天', '时间']);
+    const noteWriteIntent = hasIntent(['note', 'notes', 'write', 'create', 'save', 'file', 'markdown', '笔记', '创建', '保存', '写入', '文件']);
+    const searchIntent = hasIntent(['search', 'find', 'lookup', 'read', 'list', '搜索', '查找', '读取', '列出']);
+
+    const getPriority = (tool: UnifiedTool): number => {
+      if (tool.source === 'built-in') {
+        return 0;
+      }
+      if (tool.source === 'mcp') {
+        return 1;
+      }
+      return 2;
+    };
+
+    const getRelevance = (tool: UnifiedTool): number => {
+      const searchable = [
+        tool.name,
+        tool.description,
+        tool.category || '',
+        tool.server || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      let score = 0;
+
+      intentTerms.forEach(term => {
+        if (searchable.includes(term)) {
+          score += 2;
+        }
+      });
+
+      if (noteWriteIntent && /(create|write|save|edit|append|note|file|create_file|create_note|save_note|笔记|写|保存|创建)/.test(searchable)) {
+        score += 8;
       }
 
-      if (tool.server) {
-        return allowedTools.has(`${tool.server}:${tool.name}`);
+      if (this.skillExposesRunLocalCommand(skill) && tool.name === RUN_LOCAL_COMMAND_TOOL) {
+        score += 12;
       }
 
-      return false;
+      if (searchIntent && /(search|find|lookup|read|list|query|搜索|查找|读取|列出)/.test(searchable)) {
+        score += 5;
+      }
+
+      if (timeIntent && /(time|date|clock|today|当前时间|日期|时间|今天)/.test(searchable)) {
+        score += 8;
+      }
+
+      if (!timeIntent && tool.name === 'get_current_time') {
+        score -= 12;
+      }
+
+      return score;
+    };
+
+    return [...tools].sort((left, right) => {
+      const priorityDiff = getPriority(left) - getPriority(right);
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+
+      const relevanceDiff = getRelevance(right) - getRelevance(left);
+      if (relevanceDiff !== 0) {
+        return relevanceDiff;
+      }
+
+      return left.name.localeCompare(right.name);
     });
   }
 
-  private removeRunLocalCommandTool(tools: UnifiedTool[]): UnifiedTool[] {
+  skillExposesRunLocalCommand(skill: ResolvedSkill | null | undefined): boolean {
+    // Skill is a logic container; run_local_command is the generic execution endpoint.
+    // Once a skill is routed/active, always expose run_local_command to the model.
+    return !!skill;
+  }
+
+  private filterRestrictedTools(tools: UnifiedTool[], skill: ResolvedSkill | null | undefined): UnifiedTool[] {
+    if (skill) {
+      return this.ensureSkillExecutionTools(tools, [RUN_LOCAL_COMMAND_TOOL, 'for_each']);
+    }
+
     return tools.filter(tool => tool.name !== RUN_LOCAL_COMMAND_TOOL);
+  }
+
+  private ensureSkillExecutionTools(tools: UnifiedTool[], requiredToolNames: string[]): UnifiedTool[] {
+    const hydratedTools = [...tools];
+    const existingNames = new Set(hydratedTools.map(tool => tool.name));
+
+    requiredToolNames.forEach(toolName => {
+      if (existingNames.has(toolName)) {
+        return;
+      }
+
+      const builtInTool = getBuiltInTool(toolName);
+      if (!builtInTool) {
+        return;
+      }
+
+      hydratedTools.push({
+        name: builtInTool.name || toolName,
+        description: builtInTool.description,
+        inputSchema: {
+          type: 'object',
+          properties: builtInTool.inputSchema.properties,
+          required: builtInTool.inputSchema.required || [],
+        },
+        outputSchema: builtInTool.outputSchema,
+        source: 'built-in',
+        category: builtInTool.category,
+      });
+      existingNames.add(toolName);
+    });
+
+    return hydratedTools;
   }
 
   private async loadState(): Promise<void> {
@@ -512,10 +740,10 @@ ${skillCatalog}`;
     if (invocable.length === 0) return '';
     const lines = invocable.map(skill => {
       const hint = skill.argumentHint ? ` [${skill.argumentHint}]` : '';
-      const tools = skill.toolAllowlist.length > 0 ? ` | Tools: ${skill.toolAllowlist.join(', ')}` : '';
+      const tools = skill.toolAllowlist.length > 0 ? ` | Capability hints: ${skill.toolAllowlist.join(', ')}` : '';
       return `- **${skill.name}**${hint}: ${skill.description || '(no description)'}${tools}`;
     });
-    return `## Available Skills\n\nThe following skills are available. Match the user's intent against these descriptions, select the most relevant skill, and use only the tools allowed for that skill. If no single skill is a clear match, you may combine the relevant tools from the listed skills to complete the request.\n\n${lines.join('\n')}`;
+    return `## Available Skills\n\nThe following skills are available as registry descriptions for the router phase. Match the user's intent against these summaries and load the most relevant skill when appropriate. Skills are a capability source parallel to built-in tools and MCP tools. Capability hints are advisory routing metadata only.\n\n${lines.join('\n')}`;
   }
 
   /**

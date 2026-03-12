@@ -255,6 +255,8 @@ export const enSettings = {
 		planExecutionModeSequential: 'Sequential - Step by Step',
 		planExecutionModeDAG: 'DAG - Static Parallel',
 		planExecutionModeChanged: 'Plan execution mode changed to: {mode}',
+		superMaxAutoTurns: 'Super Max Auto Turns',
+		superMaxAutoTurnsDesc: 'Maximum autonomous turns in Super mode (default: 50, range: 1-200).',
 
 		// Experimental Features
 		experimentalFeatures: 'Experimental Features',

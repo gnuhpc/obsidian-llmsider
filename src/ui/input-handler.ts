@@ -147,24 +147,18 @@ export class InputHandler {
 	 */
 	private setupEventListeners(): void {
 		this.boundInputMouseDownHandler = () => {
-			Logger.debug('[SelectionPersist] input mousedown(capture)', this.getSelectionDebugInfo('mousedown-before-persist'));
 			this.persistCurrentReadingSelection();
 			document.body.classList.add(InputHandler.KEEP_SELECTION_CLASS);
-			Logger.debug('[SelectionPersist] input mousedown(capture) done', this.getSelectionDebugInfo('mousedown-after-persist'));
 		};
 		this.inputElement.addEventListener('mousedown', this.boundInputMouseDownHandler, true);
 
 		this.boundInputFocusHandler = () => {
-			Logger.debug('[SelectionPersist] input focus', this.getSelectionDebugInfo('focus-before-persist'));
 			this.persistCurrentReadingSelection();
 			document.body.classList.add(InputHandler.KEEP_SELECTION_CLASS);
-			Logger.debug('[SelectionPersist] input focus done', this.getSelectionDebugInfo('focus-after-persist'));
 		};
 		this.boundInputBlurHandler = () => {
-			Logger.debug('[SelectionPersist] input blur', this.getSelectionDebugInfo('blur-before-clear'));
 			document.body.classList.remove(InputHandler.KEEP_SELECTION_CLASS);
 			this.clearPersistentReadingSelection();
-			Logger.debug('[SelectionPersist] input blur done', this.getSelectionDebugInfo('blur-after-clear'));
 		};
 		this.inputElement.addEventListener('focus', this.boundInputFocusHandler);
 		this.inputElement.addEventListener('blur', this.boundInputBlurHandler);
@@ -1728,13 +1722,11 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	private persistCurrentReadingSelection(): void {
 		const selection = window.getSelection();
 		if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-			Logger.debug('[SelectionPersist] skip persist: invalid selection', this.getSelectionDebugInfo('persist-invalid-selection'));
 			return;
 		}
 
 		const selectedText = selection.toString().trim();
 		if (!selectedText) {
-			Logger.debug('[SelectionPersist] skip persist: empty selected text', this.getSelectionDebugInfo('persist-empty-text'));
 			return;
 		}
 
@@ -1743,36 +1735,28 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			? range.commonAncestorContainer
 			: range.commonAncestorContainer.parentElement;
 		if (!container) {
-			Logger.debug('[SelectionPersist] skip persist: no container', this.getSelectionDebugInfo('persist-no-container'));
 			return;
 		}
 
 		if (container.closest('.cm-editor')) {
-			Logger.debug('[SelectionPersist] persist source-mode selection requested', this.getSelectionDebugInfo('persist-in-cm'));
 			this.persistCurrentSourceSelection(container);
 			return;
 		}
 
 		if (!container.closest('.markdown-preview-view, .markdown-rendered')) {
-			Logger.debug('[SelectionPersist] skip persist: not in markdown preview', this.getSelectionDebugInfo('persist-not-preview'));
 			return;
 		}
 
 		if (container.closest('.llmsider-chat-container')) {
-			Logger.debug('[SelectionPersist] skip persist: selection in chat container', this.getSelectionDebugInfo('persist-in-chat'));
 			return;
 		}
-
-		this.clearPersistentReadingSelection();
 
 		try {
 			const highlight = document.createElement('span');
 			highlight.className = 'llmsider-persist-selection';
 			range.surroundContents(highlight);
 			this.persistentSelectionHighlightEl = highlight;
-			Logger.debug('[SelectionPersist] persist success via surroundContents', this.getSelectionDebugInfo('persist-success-surround'));
 		} catch (_error) {
-			Logger.debug('[SelectionPersist] surroundContents failed, fallback extract/insert', this.getSelectionDebugInfo('persist-fallback-start'));
 			try {
 				const highlight = document.createElement('span');
 				highlight.className = 'llmsider-persist-selection';
@@ -1780,10 +1764,8 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				highlight.appendChild(contents);
 				range.insertNode(highlight);
 				this.persistentSelectionHighlightEl = highlight;
-				Logger.debug('[SelectionPersist] persist success via extract/insert', this.getSelectionDebugInfo('persist-success-fallback'));
 			} catch (_fallbackError) {
 				this.persistentSelectionHighlightEl = null;
-				Logger.debug('[SelectionPersist] persist failed in fallback', this.getSelectionDebugInfo('persist-failed-fallback'));
 			}
 		}
 	}
@@ -1810,17 +1792,6 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 					state: { selection: { main: { from: number; to: number } } };
 				};
 			}
-
-			if (editorView) {
-				Logger.debug('[SelectionPersist] source persist resolved editor view from selection container');
-			} else {
-				Logger.debug('[SelectionPersist] source persist DOM resolve failed', {
-					hasCmEditorEl: !!cmEditorEl,
-					hasCmView: !!cmEditorEl?.cmView,
-					hasCmViewView: !!cmEditorEl?.cmView?.view,
-					tagName: selectionContainer.tagName
-				});
-			}
 		}
 
 		if (!editorView && selectionContainer) {
@@ -1834,7 +1805,6 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 							dispatch: (transaction: unknown) => void;
 							state: { selection: { main: { from: number; to: number } } };
 						};
-						Logger.debug('[SelectionPersist] source persist resolved editor view from markdown leaf containing selection');
 						break;
 					}
 				}
@@ -1851,26 +1821,15 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 						state: { selection: { main: { from: number; to: number } } };
 					};
 				}
-				if (editorView) {
-					Logger.debug('[SelectionPersist] source persist resolved editor view from active markdown view');
-				}
 			}
 		}
 
 		if (!editorView) {
-			Logger.debug('[SelectionPersist] skip source persist: no editor view', {
-				hasSelectionContainer: !!selectionContainer,
-				hasActiveMarkdownView: !!this.app.workspace.getActiveViewOfType(MarkdownView)
-			});
 			return;
 		}
 
 		const selection = editorView.state.selection.main;
 		if (selection.from >= selection.to) {
-			Logger.debug('[SelectionPersist] skip source persist: collapsed selection', {
-				from: selection.from,
-				to: selection.to
-			});
 			return;
 		}
 
@@ -1881,11 +1840,6 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			})
 		});
 		this.persistentSourceHighlightView = editorView as { dispatch: (transaction: unknown) => void };
-
-		Logger.debug('[SelectionPersist] source persist success', {
-			from: selection.from,
-			to: selection.to
-		});
 	}
 
 	private clearPersistentReadingSelection(): void {
@@ -1894,11 +1848,9 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 				effects: hidePersistentSelectionHighlightEffect.of()
 			});
 			this.persistentSourceHighlightView = null;
-			Logger.debug('[SelectionPersist] source highlight cleared');
 		}
 
 		if (!this.persistentSelectionHighlightEl) {
-			Logger.debug('[SelectionPersist] clear skip: no persistent highlight');
 			return;
 		}
 
@@ -1912,36 +1864,6 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		}
 
 		this.persistentSelectionHighlightEl = null;
-		Logger.debug('[SelectionPersist] clear done', this.getSelectionDebugInfo('clear-done'));
-	}
-
-	private getSelectionDebugInfo(stage: string): {
-		stage: string;
-		hasSelection: boolean;
-		rangeCount: number;
-		isCollapsed: boolean;
-		selectedLength: number;
-		hasPersistentHighlight: boolean;
-		hasPersistentSourceHighlight: boolean;
-		keepSelectionClass: boolean;
-		activeTag: string | null;
-		activeClasses: string | null;
-	} {
-		const selection = window.getSelection();
-		const selectedText = selection?.toString() || '';
-		const activeEl = document.activeElement as HTMLElement | null;
-		return {
-			stage,
-			hasSelection: !!selection && selection.rangeCount > 0 && !selection.isCollapsed,
-			rangeCount: selection?.rangeCount ?? 0,
-			isCollapsed: selection?.isCollapsed ?? true,
-			selectedLength: selectedText.trim().length,
-			hasPersistentHighlight: !!this.persistentSelectionHighlightEl,
-			hasPersistentSourceHighlight: !!this.persistentSourceHighlightView,
-			keepSelectionClass: document.body.classList.contains(InputHandler.KEEP_SELECTION_CLASS),
-			activeTag: activeEl?.tagName || null,
-			activeClasses: activeEl?.className || null
-		};
 	}
 
 	// Store captured selection to preserve across menu interactions

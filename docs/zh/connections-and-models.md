@@ -137,7 +137,12 @@ LLMSider 使用灵活的 **连接 + 模型** 架构,允许您:
     (无需 API 密钥,支持多种开源模型)
     ```
 
-17. **Local (本地模型)**
+17. **WebLLM (本地)**
+    ```
+    (无需 API 密钥或网络,使用 WebGPU 在浏览器内运行)
+    ```
+
+18. **Local (本地模型)**
     ```
     基础 URL: http://localhost:1234/v1
     (支持 LM Studio, LocalAI 等)
@@ -165,6 +170,17 @@ LLMSider 使用灵活的 **连接 + 模型** 架构,允许您:
 | **已启用** | 切换以启用/禁用连接 | ✅ |
 
 *Ollama 或自定义本地设置不需要
+
+#### 免费提供商的高级身份验证
+
+使用“免费”提供商（如 DeepSeek、Qwen）时，LLMSider 使用您浏览器现有的身份验证会话：
+
+- **免费通义千问 (Free Qwen)**: 需要从 qianwen.aliyun.com 登录后的 `Cookie` 请求头。
+- **免费深度求索 (Free DeepSeek)**: 需要从 chat.deepseek.com 的 `localStorage` 中获取 `userToken`。
+- **免费 Gemini (Free Gemini)**: 需要 gemini.google.com 的 `__Secure-1PSID` 和 `__Secure-1PSIDTS` cookies。
+- **Hugging Chat**: 需要 huggingface.co/chat 的完整 `Cookie` 字符串。
+
+获取这些凭据的具体步骤已集成在 LLMSider 的连接设置对话框中。
 
 ---
 

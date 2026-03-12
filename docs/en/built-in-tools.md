@@ -2,7 +2,7 @@
 
 ## Overview
 
-LLMSider includes **100+ built-in tools** across multiple categories, providing AI with powerful capabilities to interact with your vault, search the web, access financial data, and more.
+LLMSider includes **600+ built-in tools** across multiple categories, providing AI with powerful capabilities to interact with your vault, search the web, access financial data, and more.
 
 ---
 
@@ -42,7 +42,7 @@ LLMSider includes **100+ built-in tools** across multiple categories, providing 
 | **Forex** | 10+ | Currency exchange | ❌ Disabled |
 | **Stock Analysis** | 5+ | Yahoo Finance, etc. | ❌ Disabled |
 
-**Total: 100+ tools across 10+ categories**
+**Total: 20+ categories with 600+ tools**
 
 ### Default Configuration
 

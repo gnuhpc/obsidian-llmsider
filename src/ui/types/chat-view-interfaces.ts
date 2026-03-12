@@ -223,6 +223,7 @@ export interface IChatViewEventCallbacks {
 	onClearChat: () => Promise<void>;
 	onEditMessage: (messageId: string) => void;
 	onRegenerateResponse: (messageId: string) => Promise<void>;
+	onContinueTask: (messageId: string) => Promise<void>;
 	onDiffReprocess: (messageId: string) => void;
 	onRenderGuidedCard: (messageId: string) => void;
 	onAgentModeChanged: (agentMode: boolean) => void;

@@ -13,6 +13,7 @@ export interface MessageActionsTranslation {
   editAndResend: string;
   editMessage: string;
   regenerate: string;
+  continueTask: string;
 }
 
 export interface BaseTranslationKeys {

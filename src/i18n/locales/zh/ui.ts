@@ -15,10 +15,15 @@ export const zhUI = {
   noDefaultSkill: '无默认 Skill',
   noDefaultSkillDesc: '新建聊天将不自动附带 Skill。',
   normalMode: '普通模式',
-  guidedMode: '引导助手',
+  guidedMode: '超能力',
   agentMode: '智能代理模式',
   normalModeDesc: '基础问答',
-  guidedModeDesc: '在普通模式中切换分步引导',
+  guidedModeDesc: '在普通模式中切换多轮自治执行（默认关闭）',
+  superpowerEnableNoticeTitle: '开启超能力',
+  superpowerEnableNoticeBody: '超能力会根据你的任务自动产生多轮 AI 对话。即使中间出错，AI 也会尝试自行纠正直到最终生成结果。该模式会消耗更多 token。',
+  superpowerEnableNoticeDontRemind: '下次开启不再提醒',
+  superpowerEnableNoticeConfirm: '继续开启',
+  superpowerEnableNoticeCancel: '取消',
   agentModeDesc: '自主使用工具',
   chatHistory: '聊天历史',
   newChat: '新建聊天',
@@ -258,6 +263,20 @@ export const zhUI = {
   executingToolProgress: '正在执行工具 {current}/{total}: {name}',
   completedToolsProgress: '已完成 {total} 个工具',
   toolExecutionFailedProgress: '工具执行失败 {current}/{total}: {name}',
+  multiTurnToolCallsRequested: '工具调用已发起。',
+  multiTurnNoResponseContent: '没有可用的响应内容。',
+  multiTurnToolExecutionFailed: '工具执行失败',
+  multiTurnUnknownToolName: 'unknown_tool',
+  multiTurnToolExecutionResultsPrompt: `工具执行结果：
+{toolResults}
+
+请检查原始用户请求现在是否已完整完成。
+- 若已完成：直接给出完成结果。
+- 若未完成且仍需可用工具：立即继续调用，不要向用户发起不必要确认。
+- 若因能力受限无法完成：明确说明具体阻塞点。
+- 对于创建/保存/写入类请求：在写入成功前不要停止；若确实缺少写入能力工具，请明确说明。
+- 对于写入类请求：当可用默认值足以推进时，不要追问风格/篇幅/受众等可选偏好。
+- 对于写入类请求：最终答复必须包含明确的写入成功信号（例如“已创建/已保存”）。`,
   viewDetails: '查看详细记录',
   hideDetails: '隐藏详细记录',
   noReturnContent: '无返回内容',

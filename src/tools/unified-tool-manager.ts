@@ -286,6 +286,7 @@ export class UnifiedToolManager {
    */
   async executeTool(name: string, args: unknown, runtimeContext?: unknown): Promise<ToolExecutionResult> {
     const startTime = Date.now();
+    const allowDisabledBuiltInTools = this.getAllowedDisabledBuiltInTools(runtimeContext);
 
     // Debug: Log tool execution attempt with detailed args
     Logger.debug(`🎯 [executeTool] Attempting to execute tool: ${name}`);
@@ -300,7 +301,7 @@ export class UnifiedToolManager {
       // Check if it's a built-in tool (now includes file editing tools)
       if (isBuiltInTool(name)) {
         // Check if the built-in tool is enabled
-        if (!this.isBuiltInToolEnabled(name)) {
+        if (!this.isBuiltInToolEnabled(name) && !allowDisabledBuiltInTools.has(name)) {
           Logger.debug(`Built-in tool ${name} execution blocked by permissions`);
           return {
             success: false,
@@ -309,6 +310,10 @@ export class UnifiedToolManager {
             source: 'built-in',
             executionTime: Date.now() - startTime
           };
+        }
+
+        if (!this.isBuiltInToolEnabled(name) && allowDisabledBuiltInTools.has(name)) {
+          Logger.debug(`Built-in tool ${name} execution allowed by skill runtime context`);
         }
 
         Logger.debug(`Executing built-in tool: ${name}`);
@@ -415,6 +420,23 @@ export class UnifiedToolManager {
         executionTime: Date.now() - startTime
       };
     }
+  }
+
+  private getAllowedDisabledBuiltInTools(runtimeContext: unknown): Set<string> {
+    if (!runtimeContext || typeof runtimeContext !== 'object') {
+      return new Set();
+    }
+
+    const toolNames = (runtimeContext as { allowDisabledBuiltInTools?: unknown }).allowDisabledBuiltInTools;
+    if (!Array.isArray(toolNames)) {
+      return new Set();
+    }
+
+    return new Set(
+      toolNames
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+        .map(name => name.trim())
+    );
   }
 
   /**

@@ -25,7 +25,8 @@ export const zhBase = {
     copyMessage: '复制消息',
     editAndResend: '编辑并重发',
     editMessage: '编辑消息',
-    regenerate: '重新生成'
+    regenerate: '重新生成',
+    continueTask: '继续'
   },
 
   // 基础设置项

@@ -252,6 +252,8 @@ export const zhSettings = {
 		planExecutionModeSequential: '顺序执行 - 逐步进行',
 		planExecutionModeDAG: 'DAG执行 - 静态并行',
 		planExecutionModeChanged: '计划执行模式已更改为:{mode}',
+		superMaxAutoTurns: 'Super 最大自动轮数',
+		superMaxAutoTurnsDesc: 'Super 模式下可自主执行的最大轮数（默认：50，范围：1-200）。',
 
 		// 实验性功能
 		experimentalFeatures: '实验性功能',

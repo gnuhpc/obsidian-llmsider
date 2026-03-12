@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf, Notice, MarkdownView, TFile, requestUrl } from 'obsidian';
+import { Plugin, WorkspaceLeaf, Notice, MarkdownView, TFile, requestUrl, normalizePath } from 'obsidian';
 import { Logger } from './utils/logger';
 // Force rebuild timestamp update
 import { EditorView } from '@codemirror/view';
@@ -40,6 +40,7 @@ import { WebLLMManager } from './core/webllm/webllm-manager';
 import { getDefaultWebLLMModel } from './core/webllm/webllm-models';
 import { SkillManager } from './skills/skill-manager';
 import { SkillSelectionModal } from './ui/skill-selection-modal';
+import { BUNDLED_SKILL_FILES, decodeBundledSkillContent } from './skills/bundled-skills';
 
 type UpdateCheckResult = {
 	hasUpdate: boolean;
@@ -117,6 +118,7 @@ export default class LLMSiderPlugin extends Plugin {
 
 			// Load settings first
 			await this.loadSettings();
+			await this.installBundledSkillsAndSetDefaultDirectory();
 
 			// Initialize logger with debug setting
 			const loggerModule = await import('./utils/logger');
@@ -747,6 +749,7 @@ export default class LLMSiderPlugin extends Plugin {
 			this.settings.defaultConversationMode = await this.configDb.getDefaultConversationMode();
 			this.settings.conversationMode = await this.configDb.getConversationMode();
 			this.settings.guidedModeEnabled = await this.configDb.getGuidedModeEnabled();
+			this.settings.superMaxAutoTurns = await this.configDb.getSuperMaxAutoTurns();
 			// Sync legacy agentMode
 			this.settings.agentMode = (this.settings.conversationMode === 'agent');
 			Logger.debug(`Loaded conversation mode from SQLite: ${this.settings.conversationMode}`);
@@ -873,6 +876,9 @@ export default class LLMSiderPlugin extends Plugin {
 		// Ensure settings have all required properties
 		if (!this.settings.chatSessions) this.settings.chatSessions = [];
 		if (!this.settings.customPrompts) this.settings.customPrompts = [];
+		if (typeof this.settings.superMaxAutoTurns !== 'number' || Number.isNaN(this.settings.superMaxAutoTurns)) {
+			this.settings.superMaxAutoTurns = DEFAULT_SETTINGS.superMaxAutoTurns;
+		}
 		if (!this.settings.skillsSettings) this.settings.skillsSettings = DEFAULT_SETTINGS.skillsSettings;
 		if (typeof this.settings.skillsMarketApiToken !== 'string') this.settings.skillsMarketApiToken = DEFAULT_SETTINGS.skillsMarketApiToken;
 		// builtInToolsPermissions removed - now managed in database only
@@ -1042,6 +1048,7 @@ export default class LLMSiderPlugin extends Plugin {
 				await this.configDb.setConversationMode(this.settings.conversationMode);
 				await this.configDb.setDefaultConversationMode(this.settings.defaultConversationMode);
 				await this.configDb.setGuidedModeEnabled(this.settings.guidedModeEnabled);
+				await this.configDb.setSuperMaxAutoTurns(this.settings.superMaxAutoTurns);
 
 				// Save advanced settings
 				await this.configDb.setEnableDebugLogging(this.settings.enableDebugLogging);
@@ -1529,6 +1536,66 @@ export default class LLMSiderPlugin extends Plugin {
 			Logger.error('Failed to initialize Skill Manager:', error);
 			throw error;
 		}
+	}
+
+	private getPluginSkillsDirectory(): string {
+		const pluginDirectory = this.manifest?.dir
+			? normalizePath(this.manifest.dir)
+			: normalizePath(`${this.app.vault.configDir}/plugins/${this.manifest.id}`);
+		return normalizePath(`${pluginDirectory}/skills`);
+	}
+
+	private async ensureDirectoryExists(directoryPath: string): Promise<void> {
+		const normalizedPath = normalizePath(directoryPath);
+		if (await this.app.vault.adapter.exists(normalizedPath)) {
+			return;
+		}
+
+		const segments = normalizedPath.split('/').filter(Boolean);
+		let currentPath = normalizedPath.startsWith('/') ? '/' : '';
+
+		for (const segment of segments) {
+			if (currentPath === '/') {
+				currentPath = `/${segment}`;
+			} else {
+				currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+			}
+
+			if (!await this.app.vault.adapter.exists(currentPath)) {
+				await this.app.vault.adapter.mkdir(currentPath);
+			}
+		}
+	}
+
+	private async installBundledSkillsAndSetDefaultDirectory(): Promise<void> {
+		const pluginSkillsDirectory = this.getPluginSkillsDirectory();
+		await this.ensureDirectoryExists(pluginSkillsDirectory);
+
+		let updatedFiles = 0;
+		for (const bundledFile of BUNDLED_SKILL_FILES) {
+			const targetPath = normalizePath(`${pluginSkillsDirectory}/${bundledFile.relativePath}`);
+			const separatorIndex = targetPath.lastIndexOf('/');
+			if (separatorIndex > 0) {
+				await this.ensureDirectoryExists(targetPath.slice(0, separatorIndex));
+			}
+
+			const content = decodeBundledSkillContent(bundledFile.base64Content);
+			const exists = await this.app.vault.adapter.exists(targetPath);
+			const currentContent = exists ? await this.app.vault.adapter.read(targetPath) : '';
+			if (!exists || currentContent !== content) {
+				await this.app.vault.adapter.write(targetPath, content);
+				updatedFiles++;
+			}
+		}
+
+		const currentDirectory = normalizePath(this.settings.skillsSettings?.directory || '');
+		if (!currentDirectory || currentDirectory === 'skills') {
+			this.settings.skillsSettings.directory = pluginSkillsDirectory;
+			await this.configDb.setSkillsDirectory(pluginSkillsDirectory);
+			Logger.debug(`[Skills] Default skills directory migrated to plugin directory: ${pluginSkillsDirectory}`);
+		}
+
+		Logger.debug(`[Skills] Bundled skills ready in ${pluginSkillsDirectory}; files updated: ${updatedFiles}`);
 	}
 
 	private async initializeVectorDB() {

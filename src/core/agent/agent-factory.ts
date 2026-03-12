@@ -206,16 +206,15 @@ export class AgentFactory {
 	): Promise<GuidedModeAgent> {
 		Logger.debug('[AgentFactory] Creating guided-assist agent');
 		
-		// Validate tools are provided
-		if (!config.tools || Object.keys(config.tools).length === 0) {
-			throw new Error('Guided mode requires tools to be provided');
-		}
+		// Guided assist can run without any tools enabled. In that case it should
+		// still work as a structured, step-by-step conversation flow.
+		const tools = config.tools || {};
 		
 		const agent = new GuidedModeAgent({
 			plugin: config.plugin,
 			i18n: config.i18n,
 			name: 'Guided Chat Assistant',
-			tools: config.tools,
+			tools,
 			memoryManager,
 			threadId,
 			resourceId,
@@ -225,14 +224,14 @@ export class AgentFactory {
 		});
 		
 		// Initialize agent
-		await agent.initialize({
-			plugin: config.plugin,
-			i18n: config.i18n,
-			name: 'Guided Chat Assistant',
-			tools: config.tools,
-			instructions: '', // Will use default system prompt
-			memoryManager,
-			threadId,
+			await agent.initialize({
+				plugin: config.plugin,
+				i18n: config.i18n,
+				name: 'Guided Chat Assistant',
+				tools,
+				instructions: '', // Will use default system prompt
+				memoryManager,
+				threadId,
 			resourceId
 		});
 		

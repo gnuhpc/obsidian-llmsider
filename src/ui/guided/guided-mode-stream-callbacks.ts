@@ -15,7 +15,7 @@ import { Logger } from '../../utils/logger';
 import type { MessageRenderer } from '../message-renderer';
 import type { MessageManager } from '../message-manager';
 import type { MemoryCoordinator } from '../memory/memory-coordinator';
-import type { GuidedModeUIRenderer } from './guided-mode-ui-renderer';
+import type { ToolConfirmationUIRenderer } from './tool-confirmation-ui-renderer';
 
 /**
  * State shared across streaming callbacks
@@ -39,7 +39,7 @@ export interface IStreamCallbacksDeps {
 	messageRenderer: MessageRenderer;
 	messageManager: MessageManager;
 	memoryCoordinator: MemoryCoordinator;
-	guidedModeUIRenderer: GuidedModeUIRenderer;
+	guidedModeUIRenderer: ToolConfirmationUIRenderer;
 	getCurrentSession: () => any;
 	updateStepIndicator: (el: HTMLElement, step: string, status: string) => void;
 	removeStepIndicators: (el: HTMLElement) => void;

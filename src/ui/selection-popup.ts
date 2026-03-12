@@ -9,7 +9,7 @@ function extractVideoId(url: string | undefined): string | null {
 	if (!url || typeof url !== 'string' || url.trim() === '') {
 		return null;
 	}
-	
+
 	const patterns = [
 		/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})(?:[?&#]|$)/,
 		/^([a-zA-Z0-9_-]{11})$/ // Direct video ID
@@ -28,9 +28,9 @@ function extractVideoId(url: string | undefined): string | null {
 /**
  * Parse XML subtitle format to extract text segments
  */
-function parseSubtitleXml(xmlContent: string): Array<{text: string; start?: number; duration?: number}> {
-	const segments: Array<{text: string; start?: number; duration?: number}> = [];
-	
+function parseSubtitleXml(xmlContent: string): Array<{ text: string; start?: number; duration?: number }> {
+	const segments: Array<{ text: string; start?: number; duration?: number }> = [];
+
 	const textPattern = /<text[^>]*start="([^"]*)"[^>]*dur="([^"]*)"[^>]*>(.*?)<\/text>/g;
 	let match;
 
@@ -72,7 +72,7 @@ export class SelectionPopup {
 	private suppressSelectionClickUntil = 0;
 	private mouseDownX = 0;
 	private mouseDownY = 0;
-	
+
 	// Bound event handlers for proper cleanup
 	private boundHandleMouseDown: (e: MouseEvent) => void;
 	private boundHandleMouseUp: (e: MouseEvent) => void;
@@ -83,14 +83,14 @@ export class SelectionPopup {
 	constructor(app: App, plugin: LLMSiderPlugin) {
 		this.app = app;
 		this.plugin = plugin;
-		
+
 		// Bind event handlers
 		this.boundHandleMouseDown = (e: MouseEvent) => this.handleMouseDown(e);
 		this.boundHandleMouseUp = (e: MouseEvent) => this.handleMouseUp(e);
 		this.boundHandleClickCapture = (e: MouseEvent) => this.handleClickCapture(e);
 		this.boundHandleSelectionChange = () => this.handleSelectionChange();
 		this.boundHandleBeforeUnload = () => this.destroy();
-		
+
 		this.setupEventListeners();
 	}
 
@@ -100,20 +100,20 @@ export class SelectionPopup {
 	private setupEventListeners(): void {
 		// Remove any existing listeners first
 		this.removeEventListeners();
-		
+
 		document.addEventListener('mousedown', this.boundHandleMouseDown);
 		// Listen to mouseup for selection changes
 		document.addEventListener('mouseup', this.boundHandleMouseUp);
 		// Intercept the synthetic click that can follow drag-selection in reading view.
 		document.addEventListener('click', this.boundHandleClickCapture, true);
-		
+
 		// Listen to selectionchange as backup
 		document.addEventListener('selectionchange', this.boundHandleSelectionChange);
-		
+
 		// Clean up on page unload
 		window.addEventListener('beforeunload', this.boundHandleBeforeUnload);
 	}
-	
+
 	/**
 	 * Remove event listeners
 	 */
@@ -197,12 +197,12 @@ export class SelectionPopup {
 	 */
 	private handleSelectionChange(): void {
 		const selection = window.getSelection();
-		Logger.debug('[SelectionPopup] handleSelectionChange trigger', {
-			rangeCount: selection?.rangeCount ?? 0,
-			isCollapsed: selection?.isCollapsed ?? true,
-			selectedLength: selection?.toString().trim().length ?? 0,
-			keepSelectionClass: document.body.classList.contains('llmsider-chat-input-focused')
-		});
+		// Logger.debug('[SelectionPopup] handleSelectionChange trigger', {
+		// 	rangeCount: selection?.rangeCount ?? 0,
+		// 	isCollapsed: selection?.isCollapsed ?? true,
+		// 	selectedLength: selection?.toString().trim().length ?? 0,
+		// 	keepSelectionClass: document.body.classList.contains('llmsider-chat-input-focused')
+		// });
 		if (this.selectionChangeDebounce !== null) {
 			window.clearTimeout(this.selectionChangeDebounce);
 		}
@@ -298,17 +298,17 @@ export class SelectionPopup {
 		let selection = window.getSelection();
 		let selectedText = '';
 		let isFromWebViewer = false;
-		
+
 		// First try main window selection
 		if (selection && !selection.isCollapsed && selection.toString().trim()) {
 			selectedText = selection.toString().trim();
 		} else {
 			// If no selection in main window, check webview/iframe
 			const activeLeaf = this.app.workspace.activeLeaf;
-			
+
 			if (activeLeaf?.view?.contentEl) {
 				const contentEl = activeLeaf.view.contentEl;
-				
+
 				// Check webview element first
 				const webview = contentEl.querySelector('webview') as any;
 				if (webview) {
@@ -318,11 +318,11 @@ export class SelectionPopup {
 							const selectionPromise = webview.executeJavaScript(
 								'window.getSelection().toString()'
 							);
-							
+
 							// Wait for the selection with a timeout
 							const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 100));
 							const webviewText = await Promise.race([selectionPromise, timeoutPromise]) as string;
-							
+
 							if (webviewText && webviewText.trim()) {
 								selectedText = webviewText.trim();
 								isFromWebViewer = true;
@@ -334,16 +334,16 @@ export class SelectionPopup {
 						// Silently handle webview selection error
 					}
 				}
-				
+
 				// If still no selection, try iframes
 				if (!selectedText) {
 					const iframes = contentEl.querySelectorAll('iframe');
-					
+
 					for (const iframe of Array.from(iframes)) {
 						try {
 							const iframeWindow = iframe.contentWindow;
 							const iframeSelection = iframeWindow?.getSelection();
-							
+
 							if (iframeSelection && !iframeSelection.isCollapsed) {
 								const iframeText = iframeSelection.toString().trim();
 								if (iframeText) {
@@ -359,14 +359,14 @@ export class SelectionPopup {
 				}
 			}
 		}
-		
+
 		if (!selectedText) {
 			// No selection found anywhere
 			this.hidePopup();
 			return;
 		}
 
-		
+
 		// Only show for meaningful selections (more than 3 characters)
 		if (selectedText.length < 3) {
 			this.hidePopup();
@@ -376,7 +376,7 @@ export class SelectionPopup {
 		// Check if we're in a valid context (MarkdownView or Web Viewer)
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const activeLeaf = this.app.workspace.activeLeaf;
-		
+
 		// Check if we're in a web viewer (check for webview or iframe elements)
 		let isInWebViewer = false;
 		if (activeLeaf?.view?.contentEl) {
@@ -398,39 +398,44 @@ export class SelectionPopup {
 				}
 			}
 		}
-		
-		
+
+
 		// Only show popup in editor view or web viewer
 		if (!activeView && !isInWebViewer) {
 			// Not in editor view or web viewer, don't show popup
 			this.hidePopup();
 			return;
 		}
-		
 
-		// Get selection anchor rect. Prefer mouse position so the popup appears
-		// next to the selection cursor instead of the whole selection block.
-		let rect: DOMRect;
-		
-		if (isFromWebViewer) {
-			// For web viewer selections, use mouse position since we can't access the actual selection rect
-			rect = new DOMRect(mouseX, mouseY, 0, 0);
-		} else {
-			// For normal selections, prefer the mouseup position and fall back to the range bounds.
-			try {
-				if (mouseX > 0 || mouseY > 0) {
-					rect = new DOMRect(mouseX, mouseY, 0, 0);
-				} else {
-					const range = selection!.getRangeAt(0);
-					rect = range.getBoundingClientRect();
-				}
-			} catch (error) {
-				rect = new DOMRect(mouseX, mouseY, 0, 0);
-			}
-		}
+
+		// Anchor the popup to the selection bounds so it appears near the
+		// selected text instead of the mouse cursor.
+		const rect = isFromWebViewer
+			? new DOMRect(mouseX, mouseY, 0, 0)
+			: this.getSelectionAnchorRect(selection, mouseX, mouseY);
 
 		// Show popup near the selection
 		this.showPopup(rect, selectedText, isFromWebViewer);
+	}
+
+	private getSelectionAnchorRect(
+		selection: Selection | null,
+		fallbackX: number,
+		fallbackY: number
+	): DOMRect {
+		try {
+			if (selection && selection.rangeCount > 0) {
+				const range = selection.getRangeAt(0);
+				const rect = range.getBoundingClientRect();
+				if (rect.width > 0 || rect.height > 0) {
+					return rect;
+				}
+			}
+		} catch (error) {
+			Logger.debug('[SelectionPopup] Failed to read selection bounds:', error);
+		}
+
+		return new DOMRect(fallbackX, fallbackY, 0, 0);
 	}
 
 	private isAutoReferenceEnabled(): boolean {
@@ -483,7 +488,7 @@ export class SelectionPopup {
 		// Create popup element
 		this.popupEl = document.createElement('div');
 		this.popupEl.className = 'llmsider-selection-popup';
-		
+
 		// Create button container
 		const buttonContainer = document.createElement('div');
 		buttonContainer.className = 'llmsider-selection-popup-buttons';
@@ -506,14 +511,14 @@ export class SelectionPopup {
 			addContextBtn.addEventListener('click', async (e: MouseEvent) => {
 				e.preventDefault();
 				e.stopPropagation();
-				
+
 				// Check if execution is in progress
 				const chatView = this.plugin.getChatView();
 				if (chatView?.isExecuting()) {
 					new Notice(this.plugin.i18n.t('ui.cannotAddContextDuringExecution') || 'Cannot add context during execution');
 					return;
 				}
-				
+
 				await this.handleAddToContext(selectedText);
 			});
 
@@ -575,7 +580,7 @@ export class SelectionPopup {
 			return;
 		}
 
-		const spacing = 10;
+		const spacing = 0;
 		const viewportPadding = 8;
 		const scrollX = window.scrollX;
 		const scrollY = window.scrollY;
@@ -681,9 +686,9 @@ export class SelectionPopup {
 			if (clearBeforeAdd) {
 				contextManager.clearContext();
 			}
-			
+
 			let finalText = selectedText;
-			
+
 			// Check if we're in a web viewer with YouTube video
 			const activeLeaf = this.app.workspace.activeLeaf;
 			if (activeLeaf?.view?.contentEl) {
@@ -693,13 +698,13 @@ export class SelectionPopup {
 						// Get current URL from webview
 						const currentUrl = webview.getURL ? webview.getURL() : '';
 						Logger.debug('[SelectionPopup] Webview URL:', currentUrl);
-						
+
 						const videoId = extractVideoId(currentUrl);
-						
+
 						if (videoId) {
 							Logger.debug('[SelectionPopup] Detected YouTube video ID:', videoId);
 							new Notice(this.plugin.i18n.t('ui.detectedYouTubeVideo'));
-							
+
 							// Get YouTube video metadata and transcript
 							const videoData = await this.getYouTubeTranscript(videoId);
 							if (videoData) {
@@ -716,24 +721,24 @@ export class SelectionPopup {
 					}
 				}
 			}
-			
-				// Add text to context directly without URL prefix
-				const activeFile = this.app.workspace.getActiveFile();
-				const sourceFile = activeFile instanceof TFile ? activeFile : null;
-				const result = await contextManager.addTextToContext(finalText, undefined, sourceFile);
-			
+
+			// Add text to context directly without URL prefix
+			const activeFile = this.app.workspace.getActiveFile();
+			const sourceFile = activeFile instanceof TFile ? activeFile : null;
+			const result = await contextManager.addTextToContext(finalText, undefined, sourceFile);
+
 			if (result.success) {
 				// Update context display in chat view
 				if ((chatView as unknown).updateContextDisplay) {
 					(chatView as unknown).updateContextDisplay();
 				}
-				
+
 				// Optionally activate the chat view
 				// this.plugin.activateChatView();
 			} else {
 				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.failedToAddText', { error: result.message }) || 'Failed to add text: ' + result.message);
 			}
-			
+
 			if (hideAfter) {
 				// Hide popup after action
 				this.hidePopup(true);
@@ -753,38 +758,12 @@ export class SelectionPopup {
 
 			// Check if Quick Chat feature is enabled
 			if (!this.plugin.settings.inlineQuickChat.enabled) {
-			// If Quick Chat is not enabled, open the chat view with the selected text as context
-			const chatView = this.plugin.getChatView();
-			if (!chatView) {
-				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.pleaseOpenChatFirst') || 'Please open LLMSider chat first');
-				return;
-			}				// Add selected text to context
-				const contextManager = (chatView as unknown).contextManager;
-							if (contextManager) {
-								const activeFile = this.app.workspace.getActiveFile();
-								const sourceFile = activeFile instanceof TFile ? activeFile : null;
-								await contextManager.addTextToContext(selectedText, undefined, sourceFile);
-								if ((chatView as unknown).updateContextDisplay) {
-						(chatView as unknown).updateContextDisplay();
-					}
-				}
-
-			// Activate the chat view
-			this.plugin.activateChatView();
-				return;
-			}
-
-		// Get the inline quick chat handler
-		const quickChatHandler = this.plugin.inlineQuickChatHandler;
-		if (!quickChatHandler) {
-			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.quickChatNotInitialized') || 'Quick Chat is not initialized');
-			return;
-		}			// Get the active markdown view
-		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!activeView) {
-			// If no active editor, fall back to opening chat view
-			const chatView = this.plugin.getChatView();
-			if (chatView) {
+				// If Quick Chat is not enabled, open the chat view with the selected text as context
+				const chatView = this.plugin.getChatView();
+				if (!chatView) {
+					new Notice(this.plugin.getI18nManager()?.t('notifications.ui.pleaseOpenChatFirst') || 'Please open LLMSider chat first');
+					return;
+				}				// Add selected text to context
 				const contextManager = (chatView as unknown).contextManager;
 				if (contextManager) {
 					const activeFile = this.app.workspace.getActiveFile();
@@ -794,43 +773,69 @@ export class SelectionPopup {
 						(chatView as unknown).updateContextDisplay();
 					}
 				}
+
+				// Activate the chat view
 				this.plugin.activateChatView();
-			} else {
-				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.pleaseOpenChatFirst') || 'Please open LLMSider chat first');
-			}
-			return;
-		}
-
-		// Check if we are in Reading View (Preview Mode)
-		const isReadingView = activeView.getMode() === 'preview';
-
-		if (isReadingView) {
-			// Use Reading View Quick Chat Handler
-			const readingViewHandler = this.plugin.readingViewQuickChatHandler;
-			if (!readingViewHandler) {
-				new Notice(this.plugin.i18n.t('ui.readingViewHandlerNotInit'));
 				return;
 			}
 
-			// Get selection rect
-			const selection = window.getSelection();
-			if (selection && selection.rangeCount > 0) {
-				const range = selection.getRangeAt(0);
-				const rect = range.getBoundingClientRect();
-				readingViewHandler.show(rect, selectedText);
+			// Get the inline quick chat handler
+			const quickChatHandler = this.plugin.inlineQuickChatHandler;
+			if (!quickChatHandler) {
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.quickChatNotInitialized') || 'Quick Chat is not initialized');
+				return;
+			}			// Get the active markdown view
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (!activeView) {
+				// If no active editor, fall back to opening chat view
+				const chatView = this.plugin.getChatView();
+				if (chatView) {
+					const contextManager = (chatView as unknown).contextManager;
+					if (contextManager) {
+						const activeFile = this.app.workspace.getActiveFile();
+						const sourceFile = activeFile instanceof TFile ? activeFile : null;
+						await contextManager.addTextToContext(selectedText, undefined, sourceFile);
+						if ((chatView as unknown).updateContextDisplay) {
+							(chatView as unknown).updateContextDisplay();
+						}
+					}
+					this.plugin.activateChatView();
+				} else {
+					new Notice(this.plugin.getI18nManager()?.t('notifications.ui.pleaseOpenChatFirst') || 'Please open LLMSider chat first');
+				}
+				return;
 			}
-			return;
-		}
 
-		// Editing View (Source Mode)
-		const editorView = this.plugin.getEditorViewFromMarkdownView(activeView as any);
-		if (!editorView) {
-			new Notice(this.plugin.getI18nManager()?.t('notifications.ui.editorNotReady') || 'Editor not ready');
-			return;
-		}
+			// Check if we are in Reading View (Preview Mode)
+			const isReadingView = activeView.getMode() === 'preview';
 
-		// Show the quick chat widget
-		quickChatHandler.show(editorView);
+			if (isReadingView) {
+				// Use Reading View Quick Chat Handler
+				const readingViewHandler = this.plugin.readingViewQuickChatHandler;
+				if (!readingViewHandler) {
+					new Notice(this.plugin.i18n.t('ui.readingViewHandlerNotInit'));
+					return;
+				}
+
+				// Get selection rect
+				const selection = window.getSelection();
+				if (selection && selection.rangeCount > 0) {
+					const range = selection.getRangeAt(0);
+					const rect = range.getBoundingClientRect();
+					readingViewHandler.show(rect, selectedText);
+				}
+				return;
+			}
+
+			// Editing View (Source Mode)
+			const editorView = this.plugin.getEditorViewFromMarkdownView(activeView as any);
+			if (!editorView) {
+				new Notice(this.plugin.getI18nManager()?.t('notifications.ui.editorNotReady') || 'Editor not ready');
+				return;
+			}
+
+			// Show the quick chat widget
+			quickChatHandler.show(editorView);
 		} catch (error) {
 			Logger.error('Error opening Quick Chat:', error);
 			const i18n = this.plugin.getI18nManager();
@@ -844,11 +849,11 @@ export class SelectionPopup {
 	private async getYouTubeTranscript(videoId: string): Promise<string | null> {
 		try {
 			Logger.debug(`[SelectionPopup] Starting YouTube video fetch for ID: ${videoId}`);
-			
+
 			// Fetch video page to extract API key
 			const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}`;
 			Logger.debug(`[SelectionPopup] Fetching video page: ${videoPageUrl}`);
-			
+
 			const pageResponse = await requestUrl({
 				url: videoPageUrl,
 				method: 'GET',
@@ -865,10 +870,10 @@ export class SelectionPopup {
 			}
 
 			Logger.debug(`[SelectionPopup] Video page fetched successfully, size: ${pageResponse.text.length} bytes`);
-			
+
 			const html = pageResponse.text;
 			const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":\s*"([a-zA-Z0-9_-]+)"/);
-			
+
 			if (!apiKeyMatch) {
 				Logger.error('[SelectionPopup] Could not extract YouTube API key from page');
 				throw new Error('Could not extract YouTube API key');
@@ -876,11 +881,11 @@ export class SelectionPopup {
 
 			const apiKey = apiKeyMatch[1];
 			Logger.debug(`[SelectionPopup] Extracted API key: ${apiKey.substring(0, 10)}...`);
-			
+
 			// Call InnerTube API
 			const innertubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
 			Logger.debug(`[SelectionPopup] Calling InnerTube API: ${innertubeUrl}`);
-			
+
 			const innertubeResponse = await requestUrl({
 				url: innertubeUrl,
 				method: 'POST',
@@ -906,9 +911,9 @@ export class SelectionPopup {
 			}
 
 			Logger.debug('[SelectionPopup] InnerTube API response received');
-			
+
 			const innertubeData = innertubeResponse.json;
-			
+
 			// Extract video metadata
 			const videoDetails = innertubeData.videoDetails;
 			Logger.debug('[SelectionPopup] Video metadata:', {
@@ -919,7 +924,7 @@ export class SelectionPopup {
 				channelId: videoDetails?.channelId,
 				shortDescription: videoDetails?.shortDescription?.substring(0, 100) + '...'
 			});
-			
+
 			// Extract microformat metadata (additional info)
 			const microformat = innertubeData.microformat?.playerMicroformatRenderer;
 			Logger.debug('[SelectionPopup] Microformat metadata:', {
@@ -928,29 +933,29 @@ export class SelectionPopup {
 				category: microformat?.category,
 				isUnlisted: microformat?.isUnlisted
 			});
-			
+
 			const captionsData = innertubeData.captions?.playerCaptionsTracklistRenderer;
-			
+
 			if (!captionsData || !captionsData.captionTracks || captionsData.captionTracks.length === 0) {
 				Logger.warn('[SelectionPopup] No captions available for this video');
-				
+
 				// Return metadata without transcript
 				return this.formatVideoMetadata(videoDetails, microformat, null);
 			}
 
 			const captionTracks = captionsData.captionTracks;
-			Logger.debug(`[SelectionPopup] Found ${captionTracks.length} caption tracks:`, 
+			Logger.debug(`[SelectionPopup] Found ${captionTracks.length} caption tracks:`,
 				captionTracks.map((t: any) => ({
 					lang: t.languageCode,
 					name: t.name?.simpleText || t.name?.runs?.[0]?.text,
 					kind: t.kind
 				}))
 			);
-			
+
 			// Select caption track: prioritize Chinese > English > first available
-			let selectedTrack = captionTracks.find((track: any) => 
+			let selectedTrack = captionTracks.find((track: any) =>
 				track.languageCode.startsWith('zh')
-			) || captionTracks.find((track: any) => 
+			) || captionTracks.find((track: any) =>
 				track.languageCode === 'en' || track.languageCode.startsWith('en')
 			) || captionTracks[0];
 
@@ -959,16 +964,16 @@ export class SelectionPopup {
 				return this.formatVideoMetadata(videoDetails, microformat, null);
 			}
 
-			const trackName = selectedTrack.name?.simpleText || 
-						 selectedTrack.name?.runs?.[0]?.text || 
-						 selectedTrack.languageCode;
+			const trackName = selectedTrack.name?.simpleText ||
+				selectedTrack.name?.runs?.[0]?.text ||
+				selectedTrack.languageCode;
 			const isAutoGenerated = selectedTrack.kind === 'asr';
-			
+
 			Logger.debug(`[SelectionPopup] Selected caption: ${trackName} [${selectedTrack.languageCode}] ${isAutoGenerated ? '(auto-generated)' : '(manual)'}`);
 
 			let captionUrl = selectedTrack.baseUrl.replace(/&fmt=srv3/g, '');
 			Logger.debug(`[SelectionPopup] Fetching caption from: ${captionUrl.substring(0, 100)}...`);
-			
+
 			// Download caption data
 			const captionResponse = await requestUrl({
 				url: captionUrl,
@@ -985,7 +990,7 @@ export class SelectionPopup {
 			}
 
 			Logger.debug(`[SelectionPopup] Caption XML fetched, size: ${captionResponse.text.length} bytes`);
-			
+
 			const captionXml = captionResponse.text;
 			const segments = parseSubtitleXml(captionXml);
 
@@ -996,10 +1001,10 @@ export class SelectionPopup {
 
 			// Format as plain text
 			const transcript = segments.map(s => s.text).join(' ');
-			
+
 			Logger.debug(`[SelectionPopup] Transcript processed: ${segments.length} segments, ${transcript.length} characters`);
 			Logger.debug(`[SelectionPopup] First 200 chars: ${transcript.substring(0, 200)}...`);
-			
+
 			// Return formatted metadata + transcript
 			return this.formatVideoMetadata(videoDetails, microformat, {
 				language: selectedTrack.languageCode,
@@ -1024,43 +1029,43 @@ export class SelectionPopup {
 		captionData: { language: string; languageName: string; isAutoGenerated: boolean; segmentCount: number; transcript: string } | null
 	): string {
 		const sections: string[] = [];
-		
+
 		// Video basic info
 		sections.push('## 视频信息');
 		sections.push('');
-		
+
 		if (videoDetails?.title) {
 			sections.push(`**标题**: ${videoDetails.title}`);
 		}
-		
+
 		if (videoDetails?.author) {
 			sections.push(`**作者**: ${videoDetails.author}`);
 		}
-		
+
 		if (videoDetails?.lengthSeconds) {
 			const duration = this.formatDuration(parseInt(videoDetails.lengthSeconds));
 			sections.push(`**时长**: ${duration}`);
 		}
-		
+
 		if (videoDetails?.viewCount) {
 			const views = parseInt(videoDetails.viewCount).toLocaleString();
 			sections.push(`**观看次数**: ${views}`);
 		}
-		
+
 		if (microformat?.publishDate) {
 			sections.push(`**发布日期**: ${microformat.publishDate}`);
 		}
-		
+
 		if (microformat?.category) {
 			sections.push(`**分类**: ${microformat.category}`);
 		}
-		
+
 		if (videoDetails?.shortDescription) {
 			sections.push('');
 			sections.push('**简介**:');
 			sections.push(videoDetails.shortDescription);
 		}
-		
+
 		// Caption info
 		if (captionData) {
 			sections.push('');
@@ -1078,7 +1083,7 @@ export class SelectionPopup {
 			sections.push('');
 			sections.push('**注**: 该视频没有可用的字幕');
 		}
-		
+
 		return sections.join('\n');
 	}
 
@@ -1089,7 +1094,7 @@ export class SelectionPopup {
 		const hours = Math.floor(seconds / 3600);
 		const minutes = Math.floor((seconds % 3600) / 60);
 		const secs = seconds % 60;
-		
+
 		if (hours > 0) {
 			return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 		} else {

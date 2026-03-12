@@ -2,10 +2,84 @@ import { ChatMode, ConversationMode, CHAT_VIEW_TYPE, LLMConnection, LLMModel, Bu
 import { Logger } from './../utils/logger';
 import LLMSiderPlugin from '../main';
 import { I18nManager } from '../i18n/i18n-manager';
-import { Notice, setIcon } from 'obsidian';
+import { Modal, Notice, setIcon } from 'obsidian';
 import { categoryMap, getCategoryIcon, getCategoryDisplayName } from '../settings';
 import { ToolPermissionHandler } from '../settings/handlers/tool-permission-handler';
 import { TOOL_CATEGORIES } from '../types/tool-categories';
+
+class SuperpowerEnableNoticeModal extends Modal {
+	private resolved = false;
+	private dontRemind = false;
+
+	constructor(
+		app: any,
+		private i18n: I18nManager,
+		private onResolve: (result: { confirmed: boolean; dontRemind: boolean }) => void,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const { contentEl, modalEl } = this;
+		modalEl.addClass('llmsider-superpower-notice-modal');
+		contentEl.empty();
+
+		contentEl.createEl('h3', {
+			text: this.i18n.t('ui.superpowerEnableNoticeTitle') || '开启超能力',
+		});
+
+		contentEl.createEl('p', {
+			text: this.i18n.t('ui.superpowerEnableNoticeBody')
+				|| '超能力会根据你的任务自动产生多轮 AI 对话。即使中间出错，AI 也会尝试自行纠正直到最终生成结果。该模式会消耗更多 token。',
+		});
+
+		const checkboxRow = contentEl.createDiv({ cls: 'llmsider-setting-item' });
+		const checkbox = checkboxRow.createEl('input', { type: 'checkbox' });
+		checkbox.style.marginRight = '8px';
+		checkbox.onchange = () => {
+			this.dontRemind = checkbox.checked;
+		};
+		checkboxRow.createEl('label', {
+			text: this.i18n.t('ui.superpowerEnableNoticeDontRemind') || '下次开启不再提醒',
+		});
+
+		const buttonRow = contentEl.createDiv({ cls: 'llmsider-modal-buttons' });
+		buttonRow.style.display = 'flex';
+		buttonRow.style.justifyContent = 'flex-end';
+		buttonRow.style.gap = '8px';
+		buttonRow.style.marginTop = '16px';
+
+		const cancelBtn = buttonRow.createEl('button', {
+			text: this.i18n.t('ui.superpowerEnableNoticeCancel') || '取消',
+		});
+		cancelBtn.onclick = () => {
+			this.resolve(false);
+			this.close();
+		};
+
+		const confirmBtn = buttonRow.createEl('button', {
+			text: this.i18n.t('ui.superpowerEnableNoticeConfirm') || '继续开启',
+		});
+		confirmBtn.addClass('mod-cta');
+		confirmBtn.onclick = () => {
+			this.resolve(true);
+			this.close();
+		};
+	}
+
+	onClose(): void {
+		if (!this.resolved) {
+			this.resolve(false);
+		}
+		this.contentEl.empty();
+	}
+
+	private resolve(confirmed: boolean): void {
+		if (this.resolved) return;
+		this.resolved = true;
+		this.onResolve({ confirmed, dontRemind: this.dontRemind });
+	}
+}
 
 export class UIBuilder {
 	private plugin: LLMSiderPlugin;
@@ -1680,13 +1754,13 @@ export class UIBuilder {
 		if (enabled) {
 			return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<circle cx="12" cy="12" r="9"></circle>
-				<path d="M12 8v4l3 3"></path>
+				<text x="12" y="12" text-anchor="middle" dominant-baseline="central" fill="currentColor" stroke="none" font-size="12" font-weight="700" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif">S</text>
 			</svg>`;
 		}
 
 		return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<circle cx="12" cy="12" r="9"></circle>
-			<path d="M12 8v4l3 3"></path>
+			<text x="12" y="12" text-anchor="middle" dominant-baseline="central" fill="currentColor" stroke="none" font-size="12" font-weight="700" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif">S</text>
 			<line x1="4" y1="4" x2="20" y2="20"></line>
 		</svg>`;
 	}
@@ -2615,6 +2689,22 @@ export class UIBuilder {
 
 			const currentSession = this.plugin.getChatView()?.getCurrentSession() || null;
 			const nextEnabled = !this.isGuidedEnabled();
+
+			if (nextEnabled) {
+				const dismissed = (await this.plugin.configDb.getConfig('superpowerEnableNoticeDismissed')) === 'true';
+				if (!dismissed) {
+					const decision = await new Promise<{ confirmed: boolean; dontRemind: boolean }>((resolve) => {
+						new SuperpowerEnableNoticeModal(this.plugin.app, this.i18n, resolve).open();
+					});
+
+					if (decision.dontRemind) {
+						await this.plugin.configDb.setConfig('superpowerEnableNoticeDismissed', 'true');
+					}
+					if (!decision.confirmed) {
+						return;
+					}
+				}
+			}
 
 			await this.plugin.configDb.setGuidedModeEnabled(nextEnabled);
 			this.plugin.settings.guidedModeEnabled = nextEnabled;

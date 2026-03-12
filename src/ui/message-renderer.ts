@@ -230,6 +230,11 @@ export class MessageRenderer {
 			this.renderMarkdownContent(contentEl, this.extractTextContent(message.content));
 		}
 
+		// Render multi-turn transcript panel under the final summary content
+		if (message.metadata?.multiTurnTranscript?.length) {
+			this.renderMultiTurnTranscript(contentEl, message);
+		}
+
 		// Add action buttons for assistant messages (unless already added for guided assist)
 		// Skip if message is still working/streaming
 		if (!message.metadata?.isWorking && !message.metadata?.isGuidedQuestion) {
@@ -247,6 +252,37 @@ export class MessageRenderer {
 		if (message.metadata?.generatedImages && Array.isArray(message.metadata.generatedImages)) {
 			this.renderGeneratedImages(contentEl, message.metadata.generatedImages);
 		}
+	}
+
+	private renderMultiTurnTranscript(contentEl: HTMLElement, message: ChatMessage): void {
+		const transcript = message.metadata?.multiTurnTranscript;
+		if (!transcript || transcript.length === 0) return;
+
+		const panel = contentEl.createDiv({ cls: 'llmsider-multiturn-panel is-final' });
+		const details = panel.createEl('details', { cls: 'llmsider-multiturn-details' });
+		const summary = details.createEl('summary', { cls: 'llmsider-multiturn-summary' });
+		summary.setText('查看多轮对话过程');
+
+		const body = details.createDiv({ cls: 'llmsider-multiturn-panel-body' });
+		transcript.forEach(entry => {
+			const row = body.createDiv({ cls: 'llmsider-multiturn-row' });
+			const stateClass =
+				entry.kind === 'tool'
+					? (entry.success === false ? 'is-failed' : 'is-success')
+					: entry.kind === 'system'
+						? 'is-system'
+						: 'is-llm';
+			row.addClass(stateClass);
+
+			row.createDiv({
+				cls: 'llmsider-multiturn-row-title',
+				text: `第 ${entry.turn} 轮 · ${entry.title}`,
+			});
+			row.createDiv({
+				cls: 'llmsider-multiturn-row-content',
+				text: entry.content || '(无内容)',
+			});
+		});
 	}
 
 	/**
@@ -343,10 +379,17 @@ export class MessageRenderer {
 			// Add timestamp on the left
 			const timestamp = footer.createDiv({ cls: 'llmsider-message-timestamp' });
 			timestamp.textContent = this.formatTimestamp(message.timestamp);
+			this.renderMessageStatusBadges(footer, message);
 			
 			// Add actions container on the right
 			actionsContainer = footer.createDiv({ cls: 'llmsider-message-actions' });
 		} else {
+			const timestampEl = footer.querySelector('.llmsider-message-timestamp') as HTMLElement | null;
+			if (timestampEl) {
+				timestampEl.textContent = this.formatTimestamp(message.timestamp);
+			}
+			this.renderMessageStatusBadges(footer, message);
+
 			actionsContainer = footer.querySelector('.llmsider-message-actions') as HTMLElement;
 			if (!actionsContainer) {
 				actionsContainer = footer.createDiv({ cls: 'llmsider-message-actions' });
@@ -356,6 +399,13 @@ export class MessageRenderer {
 		}
 		
 		return actionsContainer;
+	}
+
+	private renderMessageStatusBadges(footer: HTMLElement, message: ChatMessage): void {
+		const existingStatus = footer.querySelector('.llmsider-message-status');
+		if (existingStatus) {
+			existingStatus.remove();
+		}
 	}
 
 	private formatTimestamp(timestamp: number): string {
@@ -557,6 +607,14 @@ export class MessageRenderer {
 			if (incompleteMarkerIndex !== -1) {
 				processedContent = processedContent.substring(0, incompleteMarkerIndex);
 			}
+			// Keep specific slash phrase on a single line in rendered markdown.
+			processedContent = processedContent.replace(/策略\s*\/\s*标的/g, '策略\u00A0/\u00A0标的');
+			// Merge split date/time lines that break table cells:
+			// 2026/3/11\n22:06:28 -> 2026/3/11 22:06:28
+			processedContent = processedContent.replace(
+				/(\d{4}\/\d{1,2}\/\d{1,2})\s*\n\s*(\d{1,2}:\d{2}:\d{2})/g,
+				'$1 $2'
+			);
 			processedContent = processedContent.trim();
 			
 			// Handle YAML front matter - render as code block to avoid Obsidian's table rendering
@@ -1304,6 +1362,19 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 		</svg>`;
 		regenerateBtn.onclick = () => this.regenerateResponse(message);
 
+		// Continue button - only for unfinished multi-turn/task messages
+		if (this.shouldShowContinueTaskButton(message)) {
+			const continueBtn = actionsEl.createEl('button', {
+				cls: 'llmsider-action-btn',
+				title: i18n?.t('messageActions.continueTask') || 'Continue Task',
+				attr: { 'aria-label': i18n?.t('messageActions.continueTask') || 'Continue Task' }
+			});
+			continueBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<polygon points="5 3 19 12 5 21 5 3"></polygon>
+			</svg>`;
+			continueBtn.onclick = () => this.continueTask(message);
+		}
+
 	}
 
 	/**
@@ -1725,6 +1796,28 @@ contentEl.insertBefore(tabsContainer, contentEl.firstChild);
 			detail: { messageId: message.id, message }
 		});
 		window.dispatchEvent(event);
+	}
+
+	private continueTask(message: ChatMessage): void {
+		if (message.role !== 'assistant') {
+			return;
+		}
+		const event = new CustomEvent('llmsider-continue-task', {
+			detail: { messageId: message.id, message }
+		});
+		window.dispatchEvent(event);
+	}
+
+	private shouldShowContinueTaskButton(message: ChatMessage): boolean {
+		if (message.role !== 'assistant' || message.metadata?.isWorking) {
+			return false;
+		}
+		const executionSummary = message.metadata?.executionSummary;
+		const explicitlyIncomplete = executionSummary?.completed === false;
+		const content = this.extractTextContent(message.content);
+		const contentSaysIncomplete = /任务执行结果（未完成）|未完成|incomplete|not completed/i.test(content);
+		const hasMultiTurn = !!message.metadata?.multiTurnTranscript?.length;
+		return (explicitlyIncomplete || contentSaysIncomplete) && hasMultiTurn;
 	}
 
 	/**

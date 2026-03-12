@@ -753,7 +753,7 @@ export class ContextManager {
 
 				// Re-read the file content
 				let content: string;
-				let metadata: unknown = noteContext.metadata || {};
+				let metadata: any = noteContext.metadata || {};
 
 				// Handle different file types
 				if (noteContext.metadata?.isImage) {
@@ -1392,19 +1392,34 @@ export class ContextManager {
 		return null;
 	}
 
+	// Fail-cache for external images to avoid repeated slow timeouts
+	private static failedExternalImages = new Set<string>();
+
 	/**
 	 * Download external image and convert to base64
 	 */
 	private async downloadExternalImage(imageUrl: string): Promise<ExtractedImage | null> {
+		if (ContextManager.failedExternalImages.has(imageUrl)) {
+			Logger.debug('Skipping previously failed external image:', imageUrl);
+			return null;
+		}
+
 		try {
 			Logger.debug('Downloading external image:', imageUrl);
 
-			// Use requestUrl to download the image
+			// Use requestUrl to download the image with more robust headers
 			const response = await requestUrl({
 				url: imageUrl,
-				method: 'GET'
+				method: 'GET',
+				headers: {
+					'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+					'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+					'Cache-Control': 'no-cache'
+				}
 			});
+
 			if (response.status !== 200) {
+				ContextManager.failedExternalImages.add(imageUrl);
 				throw new Error(`HTTP ${response.status}`);
 			}
 
@@ -1697,7 +1712,7 @@ export class ContextManager {
 		// Method 1: Try from active markdown view editor
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (activeView) {
-			const editor = (activeView as unknown).editor;
+			const editor = (activeView as any).editor;
 			if (editor && editor.getSelection) {
 				selectedText = editor.getSelection();
 				Logger.debug('From MarkdownView editor:', selectedText.length);
@@ -1790,7 +1805,7 @@ export class ContextManager {
 			length: selectedText.length,
 			preview: selectedText.substring(0, 100) + (selectedText.length > 100 ? '...' : ''),
 			activeView: !!activeView,
-			hasEditor: !!(activeView && (activeView as unknown).editor)
+			hasEditor: !!(activeView && (activeView as any).editor)
 		});
 
 		return selectedText;
@@ -2077,7 +2092,8 @@ export class ContextManager {
 
 		// Get the active leaf and recently active leaves for prioritization
 		const activeLeaf = this.app.workspace.getLeaf();
-		const recentLeaves = (this.app.workspace as unknown).recentlyActiveLeaves || [];		// Create a prioritized list: active leaf first, then recent leaves, then all others
+		const recentLeaves = (this.app.workspace as any).recentlyActiveLeaves || [];
+		// Create a prioritized list: active leaf first, then recent leaves, then all others
 		const prioritizedLeaves: unknown[] = [];
 
 		// Add active leaf first
@@ -2101,7 +2117,7 @@ export class ContextManager {
 
 		// Search through prioritized leaves for a webpage
 		for (const leaf of prioritizedLeaves) {
-			const view = leaf.view;
+			const view = (leaf as any).view;
 
 			// Method 1: Check if view has a frame property (iframe)
 			if (view?.frame && view.frame.src) {
@@ -2263,7 +2279,7 @@ export class ContextManager {
 
 				// Fallback: Try to access iframe content one more time
 				if (foundLeaf) {
-					const view = foundLeaf.view;
+					const view = (foundLeaf as any).view;
 					let iframe: HTMLIFrameElement | null = null;
 
 					// Find the iframe
