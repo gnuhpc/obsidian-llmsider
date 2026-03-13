@@ -18,7 +18,8 @@ export class ReadingViewQuickChatHandler {
 	private selectedText: string = '';
 	private currentPrompt: string = '';
 	private isStreaming: boolean = false;
-	private clickOutsideListener: ((e: MouseEvent) => void) | null = null;
+	private clickOutsideListener: ((e: Event) => void) | null = null;
+	private windowBlurListener: (() => void) | null = null;
 
 	constructor(plugin: LLMSiderPlugin) {
 		this.plugin = plugin;
@@ -60,6 +61,14 @@ export class ReadingViewQuickChatHandler {
 				spellcheck: 'false'
 			}
 		});
+
+		// Result area: keep it above prompt list.
+		this.resultEl = content.createDiv({ cls: 'llmsider-quick-chat-result' });
+		this.resultEl.style.display = 'none';
+		this.resultEl.style.marginTop = '12px';
+		this.resultEl.style.maxHeight = '240px';
+		this.resultEl.style.overflowY = 'auto';
+		this.resultEl.style.overflowX = 'hidden';
 
 		// Quick prompts section (same behavior as editor quick chat)
 		const quickPromptsSection = content.createDiv({ cls: 'llmsider-quick-prompts-section' });
@@ -449,15 +458,9 @@ export class ReadingViewQuickChatHandler {
 		this.inputEl.placeholder = this.plugin.i18n.t('quickChatUI.loadingPlaceholder');
 		this.inputEl.value = '';
 
-		// Create result area if not exists
-		if (!this.resultEl) {
-			this.resultEl = this.containerEl.querySelector('.llmsider-quick-chat-compact')?.createDiv({ cls: 'llmsider-quick-chat-result' }) || null;
-		}
 		if (this.resultEl) {
+			this.resultEl.style.display = 'block';
 			this.resultEl.empty();
-			this.resultEl.style.marginTop = '12px';
-			this.resultEl.style.maxHeight = '300px';
-			this.resultEl.style.overflowY = 'auto';
 		}
 
 		try {
@@ -513,14 +516,19 @@ Please provide ONLY the modified text as output, without any explanations or add
 		
 		// Use the same styling as the editor version
 		const container = this.resultEl.createDiv({ cls: 'llmsider-fine-grained-diff-block' });
+		const enableDiffPreview = this.plugin.settings.inlineQuickChat.enableDiffPreview;
 		
 		if (isStreaming) {
 			container.addClass('llmsider-inline-diff-streaming');
 			container.textContent = text;
 		} else {
-			// Show diff if enabled, otherwise just text
-			// For Reading View, maybe just showing the text is enough, or we can show diff against selected text
-			// Let's show diff to be consistent
+			if (!enableDiffPreview) {
+				container.addClass('llmsider-preview-text-block');
+				container.textContent = text;
+				return;
+			}
+
+			// Show diff preview against selected text when enabled.
 			const hasCJK = /[\u4e00-\u9fa5]/.test(this.selectedText) || /[\u4e00-\u9fa5]/.test(text);
 			const diff = hasCJK ? Diff.diffChars(this.selectedText, text) : Diff.diffWords(this.selectedText, text);
 			
@@ -589,8 +597,13 @@ Please provide ONLY the modified text as output, without any explanations or add
 			this.containerEl = null;
 		}
 		if (this.clickOutsideListener) {
-			document.removeEventListener('mousedown', this.clickOutsideListener);
+			document.removeEventListener('pointerdown', this.clickOutsideListener, true);
+			document.removeEventListener('focusin', this.clickOutsideListener, true);
 			this.clickOutsideListener = null;
+		}
+		if (this.windowBlurListener) {
+			window.removeEventListener('blur', this.windowBlurListener);
+			this.windowBlurListener = null;
 		}
 		this.inputEl = null;
 		this.resultEl = null;
@@ -598,13 +611,24 @@ Please provide ONLY the modified text as output, without any explanations or add
 
 	private setupClickOutsideListener() {
 		if (this.clickOutsideListener) {
-			document.removeEventListener('mousedown', this.clickOutsideListener);
+			document.removeEventListener('pointerdown', this.clickOutsideListener, true);
+			document.removeEventListener('focusin', this.clickOutsideListener, true);
 		}
-		this.clickOutsideListener = (e: MouseEvent) => {
-			if (this.containerEl && !this.containerEl.contains(e.target as Node)) {
+		if (this.windowBlurListener) {
+			window.removeEventListener('blur', this.windowBlurListener);
+		}
+
+		this.clickOutsideListener = (e: Event) => {
+			const target = e.target as Node | null;
+			if (this.containerEl && target && !this.containerEl.contains(target)) {
 				this.close();
 			}
 		};
-		document.addEventListener('mousedown', this.clickOutsideListener);
+		this.windowBlurListener = () => this.close();
+
+		// Capture phase improves reliability for complex embeds (e.g. webview/iframe containers).
+		document.addEventListener('pointerdown', this.clickOutsideListener, true);
+		document.addEventListener('focusin', this.clickOutsideListener, true);
+		window.addEventListener('blur', this.windowBlurListener);
 	}
 }

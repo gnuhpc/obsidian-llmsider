@@ -2,6 +2,12 @@ import { App, Notice, MarkdownView, TFile, requestUrl } from 'obsidian';
 import { Logger } from './../utils/logger';
 import LLMSiderPlugin from '../main';
 
+const SELECTION_DEBUG_ENABLED = false;
+const selectionDebug = (...args: Parameters<typeof Logger.debug>) => {
+	if (!SELECTION_DEBUG_ENABLED) return;
+	Logger.debug(...args);
+};
+
 /**
  * Extract video ID from various YouTube URL formats
  */
@@ -140,7 +146,9 @@ export class SelectionPopup {
 		// Small delay to ensure selection is complete
 		setTimeout(() => {
 			this.updateSelectionClickGuard(event);
-			this.checkSelection(event.clientX, event.clientY);
+			void this.checkSelection(event.clientX, event.clientY);
+			// Mouseup is the most reliable trigger for web viewer selection updates.
+			void this.processSelectionChange();
 		}, 10);
 	}
 
@@ -189,7 +197,7 @@ export class SelectionPopup {
 		event.stopPropagation();
 		event.stopImmediatePropagation();
 		this.suppressSelectionClickUntil = 0;
-		Logger.debug('[SelectionPopup] Suppressed click after drag selection in reading view');
+		selectionDebug('[SelectionPopup] Suppressed click after drag selection in reading view');
 	}
 
 	/**
@@ -197,7 +205,7 @@ export class SelectionPopup {
 	 */
 	private handleSelectionChange(): void {
 		const selection = window.getSelection();
-		// Logger.debug('[SelectionPopup] handleSelectionChange trigger', {
+		// selectionDebug('[SelectionPopup] handleSelectionChange trigger', {
 		// 	rangeCount: selection?.rangeCount ?? 0,
 		// 	isCollapsed: selection?.isCollapsed ?? true,
 		// 	selectedLength: selection?.toString().trim().length ?? 0,
@@ -213,10 +221,10 @@ export class SelectionPopup {
 	}
 
 	private async processSelectionChange(): Promise<void> {
-		const selection = window.getSelection();
-		const selectedText = selection?.toString().trim() || '';
-		const hasSelection = !!selection && !selection.isCollapsed && !!selectedText;
-		Logger.debug('[SelectionPopup] processSelectionChange', {
+		const selectionState = await this.resolveActiveSelection();
+		const selectedText = selectionState.text;
+		const hasSelection = !!selectedText;
+		selectionDebug('[SelectionPopup] processSelectionChange', {
 			hasSelection,
 			selectedLength: selectedText.length,
 			autoReference: this.isAutoReferenceEnabled(),
@@ -226,7 +234,7 @@ export class SelectionPopup {
 
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const activeLeaf = this.app.workspace.activeLeaf;
-		Logger.debug('[SelectionPopup] active view snapshot', {
+		selectionDebug('[SelectionPopup] active view snapshot', {
 			hasActiveMarkdownView: !!activeView,
 			activeLeafType: activeLeaf?.view?.getViewType?.() ?? null,
 			keepSelectionClass: document.body.classList.contains('llmsider-chat-input-focused')
@@ -250,12 +258,12 @@ export class SelectionPopup {
 		}
 
 		if (!activeView && !isInWebViewer) {
-			Logger.debug('[SelectionPopup] No active markdown view or webviewer; skip popup');
+			selectionDebug('[SelectionPopup] No active markdown view or webviewer; skip popup');
 			return;
 		}
 
 		if (!hasSelection) {
-			Logger.debug('[SelectionPopup] no selection branch', {
+			selectionDebug('[SelectionPopup] no selection branch', {
 				hadLastSelectionText: !!this.lastSelectionText,
 				lastSelectionLength: this.lastSelectionText.length,
 				lastAutoReferenceLength: this.lastAutoReferenceText.length
@@ -279,7 +287,7 @@ export class SelectionPopup {
 		}
 
 		if (selectedText.length < 3) {
-			Logger.debug('[SelectionPopup] Selection too short for auto-reference');
+			selectionDebug('[SelectionPopup] Selection too short for auto-reference');
 			return;
 		}
 
@@ -295,70 +303,10 @@ export class SelectionPopup {
 	 * Check if there's selected text and show popup
 	 */
 	private async checkSelection(mouseX: number, mouseY: number): Promise<void> {
-		let selection = window.getSelection();
-		let selectedText = '';
-		let isFromWebViewer = false;
-
-		// First try main window selection
-		if (selection && !selection.isCollapsed && selection.toString().trim()) {
-			selectedText = selection.toString().trim();
-		} else {
-			// If no selection in main window, check webview/iframe
-			const activeLeaf = this.app.workspace.activeLeaf;
-
-			if (activeLeaf?.view?.contentEl) {
-				const contentEl = activeLeaf.view.contentEl;
-
-				// Check webview element first
-				const webview = contentEl.querySelector('webview') as any;
-				if (webview) {
-					try {
-						// Try to execute JavaScript in webview to get selection
-						if (webview.executeJavaScript) {
-							const selectionPromise = webview.executeJavaScript(
-								'window.getSelection().toString()'
-							);
-
-							// Wait for the selection with a timeout
-							const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 100));
-							const webviewText = await Promise.race([selectionPromise, timeoutPromise]) as string;
-
-							if (webviewText && webviewText.trim()) {
-								selectedText = webviewText.trim();
-								isFromWebViewer = true;
-							} else {
-							}
-						} else {
-						}
-					} catch (error) {
-						// Silently handle webview selection error
-					}
-				}
-
-				// If still no selection, try iframes
-				if (!selectedText) {
-					const iframes = contentEl.querySelectorAll('iframe');
-
-					for (const iframe of Array.from(iframes)) {
-						try {
-							const iframeWindow = iframe.contentWindow;
-							const iframeSelection = iframeWindow?.getSelection();
-
-							if (iframeSelection && !iframeSelection.isCollapsed) {
-								const iframeText = iframeSelection.toString().trim();
-								if (iframeText) {
-									selectedText = iframeText;
-									isFromWebViewer = true;
-									break;
-								}
-							}
-						} catch (error) {
-							// CORS error - cannot access cross-origin iframe
-						}
-					}
-				}
-			}
-		}
+		const selectionState = await this.resolveActiveSelection();
+		const selection = selectionState.selection;
+		const selectedText = selectionState.text;
+		const isFromWebViewer = selectionState.isFromWebViewer;
 
 		if (!selectedText) {
 			// No selection found anywhere
@@ -426,13 +374,36 @@ export class SelectionPopup {
 		try {
 			if (selection && selection.rangeCount > 0) {
 				const range = selection.getRangeAt(0);
+				const rects = Array.from(range.getClientRects());
+
+				// Anchor to the visually last line's right edge so direction of selection
+				// (top->bottom or bottom->top) does not change popup placement.
+				if (rects.length > 0) {
+					const epsilon = 1;
+					let anchorRect = rects[0];
+
+					for (const candidate of rects) {
+						const isLowerLine = candidate.bottom > anchorRect.bottom + epsilon;
+						const isSameLine = Math.abs(candidate.bottom - anchorRect.bottom) <= epsilon;
+						const isFurtherRight = candidate.right > anchorRect.right;
+
+						if (isLowerLine || (isSameLine && isFurtherRight)) {
+							anchorRect = candidate;
+						}
+					}
+
+					if (anchorRect.width > 0 || anchorRect.height > 0) {
+						return anchorRect;
+					}
+				}
+
 				const rect = range.getBoundingClientRect();
 				if (rect.width > 0 || rect.height > 0) {
 					return rect;
 				}
 			}
 		} catch (error) {
-			Logger.debug('[SelectionPopup] Failed to read selection bounds:', error);
+			selectionDebug('[SelectionPopup] Failed to read selection bounds:', error);
 		}
 
 		return new DOMRect(fallbackX, fallbackY, 0, 0);
@@ -456,7 +427,7 @@ export class SelectionPopup {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const activeFile = activeView?.file ?? this.app.workspace.getActiveFile();
 		if (!activeFile) {
-			Logger.debug('[SelectionPopup] No active file available when restoring current note context');
+			selectionDebug('[SelectionPopup] No active file available when restoring current note context');
 			return;
 		}
 
@@ -472,8 +443,8 @@ export class SelectionPopup {
 	 * Show the popup button
 	 */
 	private showPopup(rect: DOMRect, selectedText: string, isFromWebViewer: boolean = false): void {
-		const autoReferenceEnabled = this.isAutoReferenceEnabled();
-		const canShowAddToContext = this.plugin.settings.selectionPopup.showAddToContext && !autoReferenceEnabled;
+		// "Show Add to Context" should strictly follow settings, even when auto-reference is enabled.
+		const canShowAddToContext = this.plugin.settings.selectionPopup.showAddToContext;
 		const canShowQuickChat = this.plugin.settings.inlineQuickChat.enabled;
 
 		// Check if any buttons are enabled before creating popup
@@ -525,7 +496,7 @@ export class SelectionPopup {
 			buttonContainer.appendChild(addContextBtn);
 		}
 
-		if (!isFromWebViewer && canShowQuickChat) {
+		if (canShowQuickChat) {
 			const quickChatBtn = document.createElement('button');
 			quickChatBtn.className = 'llmsider-selection-popup-btn llmsider-selection-popup-btn-quick-chat';
 			quickChatBtn.setAttribute('aria-label', this.plugin.i18n.t('quickChatUI.buttonLabel'));
@@ -541,7 +512,7 @@ export class SelectionPopup {
 			quickChatBtn.addEventListener('click', async (e: MouseEvent) => {
 				e.preventDefault();
 				e.stopPropagation();
-				await this.handleQuickChat(selectedText);
+				await this.handleQuickChat(selectedText, rect);
 			});
 
 			buttonContainer.appendChild(quickChatBtn);
@@ -575,6 +546,58 @@ export class SelectionPopup {
 		this.scheduleHide();
 	}
 
+	private async resolveActiveSelection(): Promise<{
+		selection: Selection | null;
+		text: string;
+		isFromWebViewer: boolean;
+	}> {
+		const selection = window.getSelection();
+		if (selection && !selection.isCollapsed) {
+			const text = selection.toString().trim();
+			if (text) {
+				return { selection, text, isFromWebViewer: false };
+			}
+		}
+
+		const activeLeaf = this.app.workspace.activeLeaf;
+		if (!activeLeaf?.view?.contentEl) {
+			return { selection: null, text: '', isFromWebViewer: false };
+		}
+
+		const contentEl = activeLeaf.view.contentEl;
+		const webview = contentEl.querySelector('webview') as any;
+		if (webview?.executeJavaScript) {
+			try {
+				const selectionPromise = webview.executeJavaScript('window.getSelection().toString()');
+				const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 100));
+				const webviewText = await Promise.race([selectionPromise, timeoutPromise]) as string;
+				const text = (webviewText || '').trim();
+				if (text) {
+					return { selection: null, text, isFromWebViewer: true };
+				}
+			} catch (error) {
+				// Silently ignore webview selection access failures.
+			}
+		}
+
+		const iframes = contentEl.querySelectorAll('iframe');
+		for (const iframe of Array.from(iframes)) {
+			try {
+				const iframeSelection = iframe.contentWindow?.getSelection();
+				if (iframeSelection && !iframeSelection.isCollapsed) {
+					const text = iframeSelection.toString().trim();
+					if (text) {
+						return { selection: null, text, isFromWebViewer: true };
+					}
+				}
+			} catch (error) {
+				// Cross-origin iframe selection is inaccessible.
+			}
+		}
+
+		return { selection: null, text: '', isFromWebViewer: false };
+	}
+
 	private positionPopup(rect: DOMRect, isFromWebViewer: boolean): void {
 		if (!this.popupEl) {
 			return;
@@ -588,7 +611,7 @@ export class SelectionPopup {
 		const popupHeight = this.popupEl.offsetHeight || 45;
 
 		let left = rect.right + scrollX + spacing;
-		let top = rect.bottom + scrollY + spacing;
+		let top = rect.top + scrollY + Math.max(0, (rect.height - popupHeight) / 2);
 
 		if (isFromWebViewer) {
 			left = rect.left + scrollX + spacing;
@@ -697,24 +720,24 @@ export class SelectionPopup {
 					try {
 						// Get current URL from webview
 						const currentUrl = webview.getURL ? webview.getURL() : '';
-						Logger.debug('[SelectionPopup] Webview URL:', currentUrl);
+						selectionDebug('[SelectionPopup] Webview URL:', currentUrl);
 
 						const videoId = extractVideoId(currentUrl);
 
 						if (videoId) {
-							Logger.debug('[SelectionPopup] Detected YouTube video ID:', videoId);
+							selectionDebug('[SelectionPopup] Detected YouTube video ID:', videoId);
 							new Notice(this.plugin.i18n.t('ui.detectedYouTubeVideo'));
 
 							// Get YouTube video metadata and transcript
 							const videoData = await this.getYouTubeTranscript(videoId);
 							if (videoData) {
-								Logger.debug('[SelectionPopup] Successfully fetched YouTube video data');
+								selectionDebug('[SelectionPopup] Successfully fetched YouTube video data');
 								finalText = `## 页面选中内容\n\n${selectedText}\n\n---\n\n# YouTube视频内容\n\n视频链接: ${currentUrl}\n\n${videoData}`;
 							} else {
 								Logger.warn('[SelectionPopup] Failed to fetch YouTube video data');
 							}
 						} else {
-							Logger.debug('[SelectionPopup] No YouTube video ID detected in URL');
+							selectionDebug('[SelectionPopup] No YouTube video ID detected in URL');
 						}
 					} catch (error) {
 						Logger.error('[SelectionPopup] Error fetching YouTube video data:', error);
@@ -751,7 +774,7 @@ export class SelectionPopup {
 	}	/**
 	 * Handle quick chat action
 	 */
-	private async handleQuickChat(selectedText: string): Promise<void> {
+	private async handleQuickChat(selectedText: string, anchorRect?: DOMRect): Promise<void> {
 		try {
 			// Hide popup first
 			this.hidePopup(true);
@@ -787,22 +810,13 @@ export class SelectionPopup {
 			}			// Get the active markdown view
 			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 			if (!activeView) {
-				// If no active editor, fall back to opening chat view
-				const chatView = this.plugin.getChatView();
-				if (chatView) {
-					const contextManager = (chatView as unknown).contextManager;
-					if (contextManager) {
-						const activeFile = this.app.workspace.getActiveFile();
-						const sourceFile = activeFile instanceof TFile ? activeFile : null;
-						await contextManager.addTextToContext(selectedText, undefined, sourceFile);
-						if ((chatView as unknown).updateContextDisplay) {
-							(chatView as unknown).updateContextDisplay();
-						}
-					}
-					this.plugin.activateChatView();
-				} else {
-					new Notice(this.plugin.getI18nManager()?.t('notifications.ui.pleaseOpenChatFirst') || 'Please open LLMSider chat first');
+				const readingViewHandler = this.plugin.readingViewQuickChatHandler;
+				if (!readingViewHandler) {
+					new Notice(this.plugin.i18n.t('ui.readingViewHandlerNotInit'));
+					return;
 				}
+				const fallbackRect = anchorRect || new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0);
+				readingViewHandler.show(fallbackRect, selectedText);
 				return;
 			}
 
@@ -848,11 +862,11 @@ export class SelectionPopup {
 	 */
 	private async getYouTubeTranscript(videoId: string): Promise<string | null> {
 		try {
-			Logger.debug(`[SelectionPopup] Starting YouTube video fetch for ID: ${videoId}`);
+			selectionDebug(`[SelectionPopup] Starting YouTube video fetch for ID: ${videoId}`);
 
 			// Fetch video page to extract API key
 			const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}`;
-			Logger.debug(`[SelectionPopup] Fetching video page: ${videoPageUrl}`);
+			selectionDebug(`[SelectionPopup] Fetching video page: ${videoPageUrl}`);
 
 			const pageResponse = await requestUrl({
 				url: videoPageUrl,
@@ -869,7 +883,7 @@ export class SelectionPopup {
 				throw new Error(`Failed to fetch video page: HTTP ${pageResponse.status}`);
 			}
 
-			Logger.debug(`[SelectionPopup] Video page fetched successfully, size: ${pageResponse.text.length} bytes`);
+			selectionDebug(`[SelectionPopup] Video page fetched successfully, size: ${pageResponse.text.length} bytes`);
 
 			const html = pageResponse.text;
 			const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":\s*"([a-zA-Z0-9_-]+)"/);
@@ -880,11 +894,11 @@ export class SelectionPopup {
 			}
 
 			const apiKey = apiKeyMatch[1];
-			Logger.debug(`[SelectionPopup] Extracted API key: ${apiKey.substring(0, 10)}...`);
+			selectionDebug(`[SelectionPopup] Extracted API key: ${apiKey.substring(0, 10)}...`);
 
 			// Call InnerTube API
 			const innertubeUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`;
-			Logger.debug(`[SelectionPopup] Calling InnerTube API: ${innertubeUrl}`);
+			selectionDebug(`[SelectionPopup] Calling InnerTube API: ${innertubeUrl}`);
 
 			const innertubeResponse = await requestUrl({
 				url: innertubeUrl,
@@ -910,13 +924,13 @@ export class SelectionPopup {
 				throw new Error(`InnerTube API error: HTTP ${innertubeResponse.status}`);
 			}
 
-			Logger.debug('[SelectionPopup] InnerTube API response received');
+			selectionDebug('[SelectionPopup] InnerTube API response received');
 
 			const innertubeData = innertubeResponse.json;
 
 			// Extract video metadata
 			const videoDetails = innertubeData.videoDetails;
-			Logger.debug('[SelectionPopup] Video metadata:', {
+			selectionDebug('[SelectionPopup] Video metadata:', {
 				title: videoDetails?.title,
 				author: videoDetails?.author,
 				lengthSeconds: videoDetails?.lengthSeconds,
@@ -927,7 +941,7 @@ export class SelectionPopup {
 
 			// Extract microformat metadata (additional info)
 			const microformat = innertubeData.microformat?.playerMicroformatRenderer;
-			Logger.debug('[SelectionPopup] Microformat metadata:', {
+			selectionDebug('[SelectionPopup] Microformat metadata:', {
 				uploadDate: microformat?.uploadDate,
 				publishDate: microformat?.publishDate,
 				category: microformat?.category,
@@ -944,7 +958,7 @@ export class SelectionPopup {
 			}
 
 			const captionTracks = captionsData.captionTracks;
-			Logger.debug(`[SelectionPopup] Found ${captionTracks.length} caption tracks:`,
+			selectionDebug(`[SelectionPopup] Found ${captionTracks.length} caption tracks:`,
 				captionTracks.map((t: any) => ({
 					lang: t.languageCode,
 					name: t.name?.simpleText || t.name?.runs?.[0]?.text,
@@ -969,10 +983,10 @@ export class SelectionPopup {
 				selectedTrack.languageCode;
 			const isAutoGenerated = selectedTrack.kind === 'asr';
 
-			Logger.debug(`[SelectionPopup] Selected caption: ${trackName} [${selectedTrack.languageCode}] ${isAutoGenerated ? '(auto-generated)' : '(manual)'}`);
+			selectionDebug(`[SelectionPopup] Selected caption: ${trackName} [${selectedTrack.languageCode}] ${isAutoGenerated ? '(auto-generated)' : '(manual)'}`);
 
 			let captionUrl = selectedTrack.baseUrl.replace(/&fmt=srv3/g, '');
-			Logger.debug(`[SelectionPopup] Fetching caption from: ${captionUrl.substring(0, 100)}...`);
+			selectionDebug(`[SelectionPopup] Fetching caption from: ${captionUrl.substring(0, 100)}...`);
 
 			// Download caption data
 			const captionResponse = await requestUrl({
@@ -989,7 +1003,7 @@ export class SelectionPopup {
 				throw new Error(`Failed to fetch caption content: HTTP ${captionResponse.status}`);
 			}
 
-			Logger.debug(`[SelectionPopup] Caption XML fetched, size: ${captionResponse.text.length} bytes`);
+			selectionDebug(`[SelectionPopup] Caption XML fetched, size: ${captionResponse.text.length} bytes`);
 
 			const captionXml = captionResponse.text;
 			const segments = parseSubtitleXml(captionXml);
@@ -1002,8 +1016,8 @@ export class SelectionPopup {
 			// Format as plain text
 			const transcript = segments.map(s => s.text).join(' ');
 
-			Logger.debug(`[SelectionPopup] Transcript processed: ${segments.length} segments, ${transcript.length} characters`);
-			Logger.debug(`[SelectionPopup] First 200 chars: ${transcript.substring(0, 200)}...`);
+			selectionDebug(`[SelectionPopup] Transcript processed: ${segments.length} segments, ${transcript.length} characters`);
+			selectionDebug(`[SelectionPopup] First 200 chars: ${transcript.substring(0, 200)}...`);
 
 			// Return formatted metadata + transcript
 			return this.formatVideoMetadata(videoDetails, microformat, {

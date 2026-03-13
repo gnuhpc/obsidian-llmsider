@@ -647,6 +647,8 @@ export interface LLMSiderSettings {
 
   // Custom prompts
   customPrompts: PromptTemplate[];
+  globalPromptPreConstraint: string; // Global pre-task constraint prompt applied before user task
+  globalPromptSuffix: string; // Appended to the end of system prompt for every model interaction
 
   // Local skills state
   skillsSettings: SkillStateSnapshot;
@@ -900,6 +902,8 @@ export const DEFAULT_SETTINGS: LLMSiderSettings = {
   maxChatHistory: 50,
   nextSessionId: 1, // Start auto-incrementing from 1
   customPrompts: [],
+  globalPromptPreConstraint: '',
+  globalPromptSuffix: '',
   skillsSettings: {
     directory: 'skills',
     defaultActiveSkillId: '',

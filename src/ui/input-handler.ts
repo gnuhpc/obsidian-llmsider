@@ -953,6 +953,7 @@ Rules:
 5. Use clear and concise language
 6. Return ONLY the optimized prompt without any explanation or additional text
 7. Maintain the same language as the original prompt (Chinese/English)`;
+			const finalSystemMessage = this.plugin.appendGlobalPromptToSystemMessage(systemMessage);
 
 			// Prepare messages for the LLM
 			const messages = [
@@ -967,7 +968,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			];
 
 			// Call provider using sendMessage (non-streaming for simplicity)
-			const response = await provider.sendMessage(messages, undefined, systemMessage);
+			const response = await provider.sendMessage(messages, undefined, finalSystemMessage);
 
 			// Extract optimized prompt from response
 			const optimizedPrompt = response.content.trim();

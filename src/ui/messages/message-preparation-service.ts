@@ -180,6 +180,28 @@ export class MessagePreparationService implements IMessagePreparationService {
 			timestamp: Date.now()
 		};
 
+		// Debug trace: verify global prompt suffix is injected into the outgoing system message.
+		const globalPromptPreConstraint = this.plugin.getGlobalPromptPreConstraint();
+		const globalPromptSuffix = this.plugin.getGlobalPromptSuffix();
+		Logger.debug('[MessagePrep] Global prompt injection check', {
+			hasGlobalPromptPreConstraint: globalPromptPreConstraint.length > 0,
+			globalPromptPreConstraintLength: globalPromptPreConstraint.length,
+			systemPromptIncludesGlobalPreConstraint: globalPromptPreConstraint.length > 0
+				? systemPrompt.includes(globalPromptPreConstraint)
+				: false,
+			finalSystemMessageIncludesGlobalPreConstraint: globalPromptPreConstraint.length > 0
+				? systemMessage.content.includes(globalPromptPreConstraint)
+				: false,
+			hasGlobalPromptSuffix: globalPromptSuffix.length > 0,
+			globalPromptSuffixLength: globalPromptSuffix.length,
+			systemPromptIncludesGlobalSuffix: globalPromptSuffix.length > 0
+				? systemPrompt.includes(globalPromptSuffix)
+				: false,
+			finalSystemMessageIncludesGlobalSuffix: globalPromptSuffix.length > 0
+				? systemMessage.content.includes(globalPromptSuffix)
+				: false
+		});
+
 		// Add chat history: use Memory messages if available, no manual history fallback
 		let chatHistory: ChatMessage[] = [];
 		const currentUserContent = typeof userMessage.content === 'string'
@@ -705,7 +727,7 @@ IMPORTANT RESPONSE STYLE:
 			? `Remember: the skill has already been selected. Execute against the loaded skill instructions and use tools only as concrete endpoints when needed. Tool names must match AVAILABLE TOOLS exactly.`
 			: `Remember: you are still in the routing stage unless you directly call a built-in or MCP tool. "${RUN_LOCAL_COMMAND_TOOL}" is forbidden unless a specific active or routed skill explicitly matched this request and exposes that exact tool.`;
 
-	return `${basePrompt}
+		const systemPromptBase = `${basePrompt}
 ${memorySection}
 ${skillPrompt}
 	${cliExecutionAdapterPrompt}
@@ -723,6 +745,8 @@ CRITICAL: Context-First Rule
 - Use the provided context directly to answer the user's request. Only use tools if the necessary information is truly missing from the context.
 
 ${toolUsagePolicy}`;
+
+		return this.plugin.appendGlobalPromptToSystemMessage(systemPromptBase);
 	}
 
 	/**

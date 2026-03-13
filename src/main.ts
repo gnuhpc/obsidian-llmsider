@@ -841,6 +841,8 @@ export default class LLMSiderPlugin extends Plugin {
 				enabledSkills: await this.configDb.getEnabledSkillsState(),
 			};
 			this.settings.skillsMarketApiToken = await this.configDb.getConfig('skillsMarketApiToken') || '';
+			this.settings.globalPromptPreConstraint = await this.configDb.getConfig('globalPromptPreConstraint') || '';
+			this.settings.globalPromptSuffix = await this.configDb.getConfig('globalPromptSuffix') || '';
 
 			// Load tool auto-execute settings
 			this.settings.toolAutoExecute = await this.configDb.getToolAutoExecute();
@@ -881,6 +883,8 @@ export default class LLMSiderPlugin extends Plugin {
 		}
 		if (!this.settings.skillsSettings) this.settings.skillsSettings = DEFAULT_SETTINGS.skillsSettings;
 		if (typeof this.settings.skillsMarketApiToken !== 'string') this.settings.skillsMarketApiToken = DEFAULT_SETTINGS.skillsMarketApiToken;
+		if (typeof this.settings.globalPromptPreConstraint !== 'string') this.settings.globalPromptPreConstraint = DEFAULT_SETTINGS.globalPromptPreConstraint;
+		if (typeof this.settings.globalPromptSuffix !== 'string') this.settings.globalPromptSuffix = DEFAULT_SETTINGS.globalPromptSuffix;
 		// builtInToolsPermissions removed - now managed in database only
 		if (!this.settings.i18n) this.settings.i18n = DEFAULT_SETTINGS.i18n;
 		if (typeof this.settings.i18n.initialized === 'undefined') {
@@ -1124,6 +1128,8 @@ export default class LLMSiderPlugin extends Plugin {
 				await this.configDb.setSkillsGloballyEnabled(this.settings.skillsSettings.globallyEnabled !== false);
 				await this.configDb.setEnabledSkillsState(this.settings.skillsSettings.enabledSkills);
 				await this.configDb.setConfig('skillsMarketApiToken', this.settings.skillsMarketApiToken || '');
+				await this.configDb.setConfig('globalPromptPreConstraint', this.settings.globalPromptPreConstraint || '');
+				await this.configDb.setConfig('globalPromptSuffix', this.settings.globalPromptSuffix || '');
 
 				// Save tool auto-execute settings
 				await this.configDb.setToolAutoExecute(this.settings.toolAutoExecute);
@@ -2790,6 +2796,84 @@ export default class LLMSiderPlugin extends Plugin {
 	// Public method to access I18n Manager (for use by other components)
 	getI18nManager(): I18nManager | null {
 		return this.i18n || null;
+	}
+
+	getGlobalPromptSuffix(): string {
+		return (this.settings.globalPromptSuffix || '').trim();
+	}
+
+	getGlobalPromptPreConstraint(): string {
+		return (this.settings.globalPromptPreConstraint || '').trim();
+	}
+
+	appendGlobalPromptToSystemMessage(systemMessage?: string): string {
+		const globalPreConstraint = this.getGlobalPromptPreConstraint();
+		const globalSuffix = this.getGlobalPromptSuffix();
+		if (!globalPreConstraint && !globalSuffix) {
+			return systemMessage || '';
+		}
+
+		const translate = (
+			key: string,
+			fallback: string,
+			params?: Record<string, string | number>
+		): string => {
+			const translated = this.i18n?.t(key, params);
+			return translated && translated !== key ? translated : fallback;
+		};
+
+		const appendedSectionHeading = translate(
+			'ui.globalPromptAdditionalTaskResultHeading',
+			'Global Additional Task Result'
+		);
+		const preConstraintHeading = translate(
+			'ui.globalPromptPreConstraintHeading',
+			'Global Pre-Task Constraint'
+		);
+
+		const baseSystemMessage = (systemMessage || '').trim();
+		const preConstraintDirective = globalPreConstraint
+			? translate(
+				'ui.globalPromptPreConstraintDirective',
+				`## ${preConstraintHeading}
+You have a global pre-task constraint configured by the user.
+
+Execution rules:
+1. The user's original request remains the primary task objective.
+2. While completing the user's original task, you MUST strictly satisfy the pre-task constraint below.
+3. The pre-task constraint applies to your final output style and wording.
+4. Do not add extra descriptions, meta commentary, or follow-up questions if the pre-task constraint forbids them.
+5. Do not ignore or replace the user's original task.
+
+Global pre-task constraint:
+${globalPreConstraint}`,
+				{ preConstraintHeading, globalPreConstraint }
+			)
+			: '';
+		const globalTaskDirective = translate(
+			'ui.globalPromptPostTaskDirective',
+			`## Global Additional Task (Execute After Main User Task)
+You have an additional global task configured by the user.
+
+Execution order is mandatory:
+1. First complete the user's original request fully.
+2. Then execute the global additional task below.
+3. Append the global-task result to the END of your final response.
+4. Insert a Markdown separator line \`---\` between the original task result and the global-task appended result.
+5. After the separator, you MUST use this exact heading: "${appendedSectionHeading}", then provide the appended result.
+6. Do not replace, skip, or truncate the original task output because of this global task.
+
+Global additional task:
+${globalSuffix}`,
+			{ appendedSectionHeading, globalSuffix }
+		);
+
+		const segments = [preConstraintDirective, baseSystemMessage];
+		if (globalSuffix) {
+			segments.push(globalTaskDirective);
+		}
+
+		return segments.filter(segment => segment && segment.trim().length > 0).join('\n\n');
 	}
 
 	/**

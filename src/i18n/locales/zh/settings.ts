@@ -242,6 +242,8 @@ export const zhSettings = {
 		updateAvailable: '发现新版本：v{version}',
 		noUpdateAvailable: '当前已是最新版本 (v{version})',
 		updateCheckFailed: '检查更新失败',
+		globalPromptSuffix: '全局提示词（追加）',
+		globalPromptSuffixDesc: '可选。设置后会在每次与大模型交互时追加到系统提示词末尾。',
 		autoExecuteDesc: '调用时自动执行此工具，无需确认',
 		maxBuiltInToolsSelection: '最大内置工具数',
 		maxBuiltInToolsSelectionDesc: '可启用的内置工具最大数量（默认：64）。警告：启用超过64个工具可能会导致AI响应变慢、Token消耗增加，并可能诱发AI幻觉。',
@@ -252,8 +254,8 @@ export const zhSettings = {
 		planExecutionModeSequential: '顺序执行 - 逐步进行',
 		planExecutionModeDAG: 'DAG执行 - 静态并行',
 		planExecutionModeChanged: '计划执行模式已更改为:{mode}',
-		superMaxAutoTurns: 'Super 最大自动轮数',
-		superMaxAutoTurnsDesc: 'Super 模式下可自主执行的最大轮数（默认：50，范围：1-200）。',
+		superMaxAutoTurns: '超能力最大自动轮数',
+		superMaxAutoTurnsDesc: '超能力模式下可自主执行的最大轮数（默认：50，范围：1-200）。',
 
 		// 实验性功能
 		experimentalFeatures: '实验性功能',
@@ -519,68 +521,74 @@ export const zhSettings = {
 		allMCPServersEnabled: '所有MCP服务器已启用',
 		allMCPServersDisabled: '所有MCP服务器已禁用',
 
-		// Prompt Management
-		promptManagement: {
-			title: 'Prompt 管理',
-			description: '管理你的内置和自定义 Prompt 模板',
-			searchPlaceholder: '搜索 Prompt...',
-			addPrompt: '添加 Prompt',
-			addChatPrompt: '添加聊天 Prompt',
-			addSpeedReadingPrompt: '添加速读 Prompt',
-			builtInPrompts: '内置 Prompt',
-			customPrompts: '自定义 Prompt',
-			speedReadingPrompts: '速读自定义提示词',
-			builtInBadge: '内置',
-			customBadge: '自定义',
-			totalPrompts: 'Prompt 总数',
-			chatPromptType: '聊天',
-			speedReadingPromptType: '速读',
-			placeholderReady: '已包含 {} 占位符',
-			placeholderMissing: '未包含 {} 占位符',
-			characters: '字符',
-			lines: '行',
-			livePreview: '实时预览',
-			previewEmpty: '开始输入 Prompt 内容后，这里会显示实时预览。',
-			noPromptsLoaded: '没有加载的 Prompt',
-			noPromptsFound: '未找到匹配的 Prompt',
+			// Prompt Management
+			promptManagement: {
+			title: '提示词管理',
+			description: '管理你的内置和自定义提示词模板',
+			globalPrompts: '全局提示词',
+			globalPromptsDesc: '对所有会话追加到系统提示词末尾。',
+			globalPreConstraintPrompt: '任务前置限定提示词',
+			globalPreConstraintPromptDesc: '可选。设置后会在完成用户任务时作为必须满足的前置限定条件。',
+			globalAppendTaskPrompt: '附加任务提示词',
+			globalAppendTaskPromptDesc: '可选。设置后会在用户任务完成后执行，并附加在最终结果末尾。',
+			searchPlaceholder: '搜索提示词...',
+				addPrompt: '添加提示词',
+				addChatPrompt: '添加聊天提示词',
+				addSpeedReadingPrompt: '添加速读提示词',
+				builtInPrompts: '内置提示词',
+				customPrompts: '自定义提示词',
+				speedReadingPrompts: '速读自定义提示词',
+				builtInBadge: '内置',
+				customBadge: '自定义',
+				totalPrompts: '提示词总数',
+				chatPromptType: '聊天',
+				speedReadingPromptType: '速读',
+				placeholderReady: '已包含 {} 占位符',
+				placeholderMissing: '未包含 {} 占位符',
+				characters: '字符',
+				lines: '行',
+				livePreview: '实时预览',
+				previewEmpty: '开始输入提示词内容后，这里会显示实时预览。',
+				noPromptsLoaded: '没有加载的提示词',
+				noPromptsFound: '未找到匹配的提示词',
 
-			// Actions
-			duplicatePrompt: '复制 Prompt',
-			editPrompt: '编辑 Prompt',
-			deletePrompt: '删除 Prompt',
+				// Actions
+				duplicatePrompt: '复制提示词',
+				editPrompt: '编辑提示词',
+				deletePrompt: '删除提示词',
 
-			// Modal
-			createPromptTitle: '创建新 Prompt',
-			editPromptTitle: '编辑 Prompt',
-			promptName: 'Prompt 名称',
-			promptNameDesc: 'Prompt 的简短描述性名称',
-			promptNamePlaceholder: '例如：总结会议记录',
-			promptDescription: '描述',
-			promptDescriptionDesc: '可选的 Prompt 功能描述',
-			promptDescriptionPlaceholder: '例如：创建包含行动项的会议记录结构化摘要',
-			promptContent: 'Prompt 内容',
-			promptContentDesc: 'Prompt 模板。使用 {} 作为用户输入的占位符。',
-			promptContentPlaceholder: '例如：总结以下会议记录："{}"',
-			promptContentInfo: '提示：在需要插入选中文本或用户输入的位置使用 {}',
+				// Modal
+				createPromptTitle: '创建新提示词',
+				editPromptTitle: '编辑提示词',
+				promptName: '提示词名称',
+				promptNameDesc: '提示词的简短描述性名称',
+				promptNamePlaceholder: '例如：总结会议记录',
+				promptDescription: '描述',
+				promptDescriptionDesc: '可选的提示词功能描述',
+				promptDescriptionPlaceholder: '例如：创建包含行动项的会议记录结构化摘要',
+				promptContent: '提示词内容',
+				promptContentDesc: '提示词模板。使用 {} 作为用户输入的占位符。',
+				promptContentPlaceholder: '例如：总结以下会议记录："{}"',
+				promptContentInfo: '提示：在需要插入选中文本或用户输入的位置使用 {}',
 
-			// Buttons
-			cancel: '取消',
-			confirm: '确认',
-			saveChanges: '保存更改',
-			createPrompt: '创建',
+				// Buttons
+				cancel: '取消',
+				confirm: '确认',
+				saveChanges: '保存更改',
+				createPrompt: '创建',
 
-			// Messages
-			promptDuplicated: 'Prompt 已复制：{name}',
-			promptDeleted: 'Prompt 已删除：{name}',
-			confirmDelete: '确定要删除 "{name}" 吗？此操作无法撤销。',
+				// Messages
+				promptDuplicated: '提示词已复制：{name}',
+				promptDeleted: '提示词已删除：{name}',
+				confirmDelete: '确定要删除 "{name}" 吗？此操作无法撤销。',
 
-			// Errors
-			errorEmptyTitle: 'Prompt 名称不能为空',
-			errorEmptyContent: 'Prompt 内容不能为空',
-			errorNoManager: 'Prompt 管理器不可用',
-			errorSaving: '保存 Prompt 失败，请重试。'
-		}
-	},
+				// Errors
+				errorEmptyTitle: '提示词名称不能为空',
+				errorEmptyContent: '提示词内容不能为空',
+				errorNoManager: '提示词管理器不可用',
+				errorSaving: '保存提示词失败，请重试。'
+			}
+		},
 
 	// 通知消息
 	notifications: {

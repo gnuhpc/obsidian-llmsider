@@ -208,6 +208,8 @@ export interface SettingsPageTranslation {
   updateAvailable: string;
   noUpdateAvailable: string;
   updateCheckFailed: string;
+  globalPromptSuffix: string;
+  globalPromptSuffixDesc: string;
 
   // Web Search Settings
   webSearchSettings: string;

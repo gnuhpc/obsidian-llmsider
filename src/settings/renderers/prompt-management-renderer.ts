@@ -1,10 +1,10 @@
-import { App, Modal, Notice } from 'obsidian';
+import { App, Modal, Notice, Setting } from 'obsidian';
 import type LLMSiderPlugin from '../../main';
 import type { I18nManager } from '../../i18n/i18n-manager';
 import { PromptTemplate } from '../../types';
 import { PromptManagementModal } from '../modals/prompt-management-modal';
 
-type PromptTabName = 'builtin' | 'custom' | 'speed-reading';
+type PromptTabName = 'global' | 'builtin' | 'custom' | 'speed-reading';
 
 interface PromptCollections {
 	builtInPrompts: PromptTemplate[];
@@ -13,7 +13,7 @@ interface PromptCollections {
 	total: number;
 }
 
-const PROMPT_TAB_ORDER: PromptTabName[] = ['builtin', 'custom', 'speed-reading'];
+const PROMPT_TAB_ORDER: PromptTabName[] = ['builtin', 'custom', 'speed-reading', 'global'];
 
 /**
  * PromptManagementRenderer
@@ -31,6 +31,8 @@ export class PromptManagementRenderer {
 	private tabButtons: Partial<Record<PromptTabName, HTMLButtonElement>> = {};
 	private tabCountEls: Partial<Record<PromptTabName, HTMLElement>> = {};
 	private overviewCountEls: Partial<Record<PromptTabName | 'total', HTMLElement>> = {};
+	private searchShellEl: HTMLElement | null = null;
+	private addButtonEl: HTMLButtonElement | null = null;
 
 	constructor(plugin: LLMSiderPlugin, i18n: I18nManager, onDisplayCallback: () => void) {
 		this.plugin = plugin;
@@ -54,6 +56,38 @@ export class PromptManagementRenderer {
 		this.updateActiveTabUI();
 		this.updateCreateButtonLabel();
 		await this.refreshPromptList();
+	}
+
+	private renderGlobalPromptSettings(container: HTMLElement): void {
+		const settingContainer = container.createDiv({ cls: 'llmsider-prompt-global-suffix-setting' });
+
+		new Setting(settingContainer)
+			.setName(this.i18n.t('settingsPage.promptManagement.globalPreConstraintPrompt'))
+			.setDesc(this.i18n.t('settingsPage.promptManagement.globalPreConstraintPromptDesc'))
+			.addTextArea((text) => {
+				text
+					.setPlaceholder('')
+					.setValue(this.plugin.settings.globalPromptPreConstraint || '')
+					.onChange(async (value) => {
+						this.plugin.settings.globalPromptPreConstraint = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 4;
+			});
+
+		new Setting(settingContainer)
+			.setName(this.i18n.t('settingsPage.promptManagement.globalAppendTaskPrompt'))
+			.setDesc(this.i18n.t('settingsPage.promptManagement.globalAppendTaskPromptDesc'))
+			.addTextArea((text) => {
+				text
+					.setPlaceholder('')
+					.setValue(this.plugin.settings.globalPromptSuffix || '')
+					.onChange(async (value) => {
+						this.plugin.settings.globalPromptSuffix = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 4;
+			});
 	}
 
 	private renderOverview(container: HTMLElement): void {
@@ -111,10 +145,13 @@ export class PromptManagementRenderer {
 				cls: 'llmsider-prompt-tab-label'
 			});
 
-			const count = button.createEl('span', {
-				text: '0',
-				cls: 'llmsider-prompt-tab-count'
-			});
+			let count: HTMLElement | undefined;
+			if (tab !== 'global') {
+				count = button.createEl('span', {
+					text: '0',
+					cls: 'llmsider-prompt-tab-count'
+				});
+			}
 
 			button.addEventListener('click', () => {
 				this.setActiveTab(tab);
@@ -159,6 +196,9 @@ export class PromptManagementRenderer {
 			this.openPromptEditor(null, this.getDraftPromptType());
 		});
 
+		this.searchShellEl = searchShell;
+		this.addButtonEl = addButton;
+
 		// this.resultMetaEl = container.createDiv({ cls: 'llmsider-prompt-result-meta' });
 	}
 
@@ -176,6 +216,14 @@ export class PromptManagementRenderer {
 		PROMPT_TAB_ORDER.forEach((tab) => {
 			this.tabButtons[tab]?.toggleClass('llmsider-prompt-tab-active', tab === this.activeTab);
 		});
+
+		const isGlobalTab = this.activeTab === 'global';
+		if (this.searchShellEl) {
+			this.searchShellEl.style.display = isGlobalTab ? 'none' : '';
+		}
+		if (this.addButtonEl) {
+			this.addButtonEl.style.display = isGlobalTab ? 'none' : '';
+		}
 	}
 
 	private updateCreateButtonLabel(): void {
@@ -184,6 +232,12 @@ export class PromptManagementRenderer {
 
 	private async refreshPromptList(): Promise<void> {
 		if (!this.promptContainer) {
+			return;
+		}
+
+		if (this.activeTab === 'global') {
+			this.promptContainer.empty();
+			this.renderGlobalPromptSettings(this.promptContainer);
 			return;
 		}
 
@@ -442,6 +496,10 @@ export class PromptManagementRenderer {
 	}
 
 	private getPromptsForActiveTab(collections: PromptCollections): PromptTemplate[] {
+			if (this.activeTab === 'global') {
+				return [];
+			}
+
 		if (this.activeTab === 'custom') {
 			return collections.customPrompts;
 		}
@@ -479,6 +537,8 @@ export class PromptManagementRenderer {
 
 	private getTabLabel(tab: PromptTabName): string {
 		switch (tab) {
+			case 'global':
+				return this.i18n.t('settingsPage.promptManagement.globalPrompts');
 			case 'custom':
 				return this.i18n.t('settingsPage.promptManagement.customPrompts');
 			case 'speed-reading':

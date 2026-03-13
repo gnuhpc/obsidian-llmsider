@@ -8032,8 +8032,8 @@ pre.llmsider-error-description {
 .llmsider-selection-popup-buttons {
     display: flex;
     flex-direction: row;
-    gap: 8px;
-    padding: 4px;
+    gap: 6px;
+    padding: 3px;
     background: var(--background-primary);
     border: 1px solid var(--background-modifier-border);
     border-radius: 8px;
@@ -8044,8 +8044,8 @@ pre.llmsider-error-description {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     background: var(--interactive-accent) !important;
     color: var(--text-on-accent) !important;
@@ -8056,8 +8056,8 @@ pre.llmsider-error-description {
 }
 
 .llmsider-selection-popup-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     stroke: currentColor;
 }
 

@@ -119,6 +119,33 @@ export const enUI = {
   speedReadingMindMapSuffix: 'Mind Map',
   promptUsing: 'Using: ',
   promptEnterToSend: '(Press Enter to send)',
+  globalPromptPreConstraintHeading: 'Global Pre-Task Constraint',
+  globalPromptAdditionalTaskResultHeading: 'Global Additional Task Result',
+  globalPromptPreConstraintDirective: `## {preConstraintHeading}
+You have a global pre-task constraint configured by the user.
+
+Execution rules:
+1. The user's original request remains the primary task objective.
+2. While completing the user's original task, you MUST strictly satisfy the pre-task constraint below.
+3. The pre-task constraint applies to your final output style and wording.
+4. Do not add extra descriptions, meta commentary, or follow-up questions if the pre-task constraint forbids them.
+5. Do not ignore or replace the user's original task.
+
+Global pre-task constraint:
+{globalPreConstraint}`,
+  globalPromptPostTaskDirective: `## Global Additional Task (Execute After Main User Task)
+You have an additional global task configured by the user.
+
+Execution order is mandatory:
+1. First complete the user's original request fully.
+2. Then execute the global additional task below.
+3. Append the global-task result to the END of your final response.
+4. Insert a Markdown separator line \`---\` between the original task result and the global-task appended result.
+5. After the separator, you MUST use this exact heading: "{appendedSectionHeading}", then provide the appended result.
+6. Do not replace, skip, or truncate the original task output because of this global task.
+
+Global additional task:
+{globalSuffix}`,
   chatHistoryTitle: 'Chat History',
   chatHistorySearchPlaceholder: 'Search conversations...',
   chatHistorySearchAriaLabel: 'Search conversations',

@@ -119,6 +119,33 @@ export const zhUI = {
   speedReadingMindMapSuffix: '思维导图',
   promptUsing: '正在使用：',
   promptEnterToSend: '（回车直接发送）',
+  globalPromptPreConstraintHeading: '全局前置限定',
+  globalPromptAdditionalTaskResultHeading: '全局附加任务结果',
+  globalPromptPreConstraintDirective: `## {preConstraintHeading}
+用户已配置一个全局前置限定提示词。
+
+执行规则：
+1. 用户原始任务始终是主要目标。
+2. 在完成用户原始任务的同时，你必须严格满足下方前置限定。
+3. 前置限定必须体现在最终输出的内容风格与措辞中。
+4. 如果前置限定禁止额外描述、元说明或后续追问，则不要输出这些内容。
+5. 不得忽略或替代用户原始任务。
+
+全局前置限定提示词：
+{globalPreConstraint}`,
+  globalPromptPostTaskDirective: `## 全局附加任务（在主任务完成后执行）
+用户已配置一个全局附加任务提示词。
+
+执行顺序必须满足：
+1. 先完整完成用户原始任务。
+2. 再执行下方全局附加任务。
+3. 将附加任务结果追加到最终回复末尾。
+4. 在原始任务结果与附加任务结果之间插入 Markdown 分割线 \`---\`。
+5. 分割线后必须使用这个标题：“{appendedSectionHeading}”，然后输出附加结果。
+6. 不得因为全局附加任务而替代、跳过或截断原始任务输出。
+
+全局附加任务提示词：
+{globalSuffix}`,
   chatHistoryTitle: '聊天历史',
   chatHistorySearchPlaceholder: '搜索会话...',
   chatHistorySearchAriaLabel: '搜索会话',

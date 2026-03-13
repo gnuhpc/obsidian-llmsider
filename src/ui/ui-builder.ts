@@ -747,7 +747,10 @@ export class UIBuilder {
 		// Optimize Prompt button inside the textarea shell
 		const optimizePromptBtn = container.createEl('button', {
 			cls: 'llmsider-input-btn llmsider-optimize-prompt-btn',
-			title: this.i18n.t('ui.optimizePromptTooltip') || 'Optimize Prompt'
+			title: this.i18n.t('ui.optimizePromptTooltip') || 'Optimize Prompt',
+			attr: {
+				type: 'button'
+			}
 		});
 
 		// Sparkle/magic wand icon for optimization
@@ -758,8 +761,15 @@ export class UIBuilder {
 
 		optimizePromptBtn.innerHTML = `${optimizeIcon}`;
 
+		// Prevent focus jump on first click inside Obsidian webview.
+		optimizePromptBtn.onmousedown = (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+		};
+
 		// Handle button click
 		optimizePromptBtn.onclick = async (e) => {
+			e.preventDefault();
 			e.stopPropagation();
 
 			Logger.debug('[OptimizePrompt] Button clicked');

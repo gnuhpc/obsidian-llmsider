@@ -166,6 +166,7 @@ export class NormalModeHandler implements INormalModeHandler {
 			let answerContent = '';
 			let workingMessageEl: HTMLElement | null = null;
 			let standaloneMultiTurnEl: HTMLElement | null = null;
+			let isMultiTurnVisualizationActive = false;
 			type MultiTurnEntry = {
 				kind: 'llm' | 'tool' | 'system';
 				turn: number;
@@ -296,7 +297,6 @@ export class NormalModeHandler implements INormalModeHandler {
 			if (allowRunLocalWithoutSkill) {
 				Logger.debug('[NormalModeHandler] Allowing run_local_command in normal mode without routed skill (referenced-context write intent)');
 			}
-			pushInitialUserTask((userMessage.metadata?.isFollowUpMessage && followUpGoal) ? followUpGoal : rawUserInput);
 			let routedSkill: ResolvedSkill | null = null;
 			try {
 				const skillManager = this.plugin.getSkillManager();
@@ -367,6 +367,9 @@ export class NormalModeHandler implements INormalModeHandler {
 			// Execute normal mode agent
 			Logger.debug('[NormalModeHandler] Executing agent with messages');
 			const enableSuperpower = (currentSession.guidedModeEnabled ?? this.plugin.settings.guidedModeEnabled) === true;
+			if (enableSuperpower) {
+				pushInitialUserTask((userMessage.metadata?.isFollowUpMessage && followUpGoal) ? followUpGoal : rawUserInput);
+			}
 			await this.normalModeAgent.execute({
 				messages,
 				normalTools,
@@ -394,6 +397,7 @@ export class NormalModeHandler implements INormalModeHandler {
 					if (enableSuperpower && typeof chunk === 'object' && chunk?.eventType) {
 						switch (chunk.eventType) {
 								case 'multi_turn_turn_start': {
+									isMultiTurnVisualizationActive = true;
 									currentTurn = Number(chunk.turn) || (currentTurn + 1);
 									currentTurnLlmEntry = {
 										kind: 'llm',
@@ -479,9 +483,9 @@ export class NormalModeHandler implements INormalModeHandler {
 						// Skip if no content and no images
 						if (!delta && !hasImages) return;
 						
-						// Add message bubble on first chunk only for direct single-turn rendering.
+						// Add message bubble on first chunk for regular streaming.
 						// Multi-turn executions use standalone visualization and defer bubble creation to completion.
-						if (multiTurnTranscript.length === 0) {
+						if (!isMultiTurnVisualizationActive) {
 							ensureWorkingMessageElement();
 						}
 					
@@ -542,7 +546,7 @@ export class NormalModeHandler implements INormalModeHandler {
 					
 					// Render to UI
 					if (workingMessageEl) {
-						if (multiTurnTranscript.length > 0) {
+						if (isMultiTurnVisualizationActive) {
 							renderMultiTurnProgressPanel();
 							throttledScroll();
 							return;
