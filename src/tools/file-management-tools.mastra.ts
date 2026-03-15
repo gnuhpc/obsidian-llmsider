@@ -427,14 +427,14 @@ export const strReplaceTool = createMastraTool({
 export const createFileTool = createMastraTool({
   category: 'note-management',
   id: 'create_file',
-  description: 'Create a new file with specified content',
+  description: 'Create a new file with specified content. If a file with the same path already exists, set override=true to replace it; otherwise (default) the tool creates a new filename with -1, -2, etc. suffix.',
   inputSchema: z.object({
     path: z.string()
       .describe('Path for the new file (relative to vault root)'),
     file_text: z.string()
       .describe('Content for the new file'),
     override: z.boolean()
-      .describe('Whether to overwrite existing file. If true, overwrites the existing file. If false or not specified (default), automatically generates a new filename with -1, -2, etc. suffix if file exists.')
+      .describe('Same-name handling option. If true, replace/overwrite the existing file at the same path. If false or omitted (default), do not overwrite and instead auto-generate a new filename with -1, -2, etc. suffix when a conflict exists.')
       .optional()
   }).describe('Tool input parameters'),
   outputSchema: z.object({

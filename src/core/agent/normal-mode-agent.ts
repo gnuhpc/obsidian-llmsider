@@ -612,12 +612,24 @@ ${toolLines.join('\n')}`;
 					}
 					const toolResults: string[] = [];
 
-					for (const toolCall of collectedToolCalls) {
+					for (let toolIndex = 0; toolIndex < collectedToolCalls.length; toolIndex++) {
+						const toolCall = collectedToolCalls[toolIndex];
 						try {
 							const functionName = toolCall?.function?.name || toolCall?.toolName;
 							const rawArgs = toolCall?.function?.arguments ?? toolCall?.arguments ?? '{}';
 							if (!functionName || !toolManager) {
 								continue;
+							}
+							if (options.onStream) {
+								options.onStream({
+									eventType: 'multi_turn_tool_start',
+									turn: autoTurn,
+									toolRound,
+									toolCallIndex: toolIndex + 1,
+									totalToolCalls: collectedToolCalls.length,
+									toolName: functionName,
+									toolSource: getToolSourceTag(functionName),
+								});
 							}
 							if (functionName === RUN_LOCAL_COMMAND_TOOL && !options.activeSkill) {
 								const blockedMsg = isChineseSession
@@ -629,6 +641,7 @@ ${toolLines.join('\n')}`;
 										eventType: 'multi_turn_tool_result',
 										turn: autoTurn,
 										toolRound,
+										toolCallIndex: toolIndex + 1,
 										toolName: functionName,
 										toolSource: getToolSourceTag(functionName),
 										success: false,
@@ -647,6 +660,7 @@ ${toolLines.join('\n')}`;
 										eventType: 'multi_turn_tool_result',
 										turn: autoTurn,
 										toolRound,
+										toolCallIndex: toolIndex + 1,
 										toolName: functionName,
 										toolSource: getToolSourceTag(functionName),
 										success: false,
@@ -690,6 +704,7 @@ ${toolLines.join('\n')}`;
 										eventType: 'multi_turn_tool_result',
 										turn: autoTurn,
 										toolRound,
+										toolCallIndex: toolIndex + 1,
 										toolName: functionName,
 										toolSource: getToolSourceTag(functionName),
 										success: result.success,
@@ -706,6 +721,7 @@ ${toolLines.join('\n')}`;
 										eventType: 'multi_turn_tool_result',
 										turn: autoTurn,
 										toolRound,
+										toolCallIndex: toolIndex + 1,
 										toolName: toolCall?.function?.name || this.t('ui.multiTurnUnknownToolName', {}, 'unknown_tool'),
 										toolSource: getToolSourceTag(toolCall?.function?.name || ''),
 										success: false,

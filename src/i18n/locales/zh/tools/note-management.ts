@@ -9,7 +9,7 @@ export const zhNoteManagementTools = {
 	},
 	createFile: {
 		name: '创建笔记',
-		description: '创建包含指定内容的新笔记'
+		description: '创建包含指定内容的新笔记。若同路径文件已存在，可设置 override=true 直接覆盖；否则默认自动生成带后缀的新文件名（-1、-2 等）。'
 	},
 	viewFile: {
 		name: '查看笔记',

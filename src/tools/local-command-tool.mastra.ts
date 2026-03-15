@@ -22,20 +22,38 @@ interface LocalCommandRuntimeContext {
 }
 
 function getShellCandidates(shellOverride?: string): string[] {
+  const isWindows = process.platform === 'win32';
+  const windowsCandidates = [
+    shellOverride,
+    process.env.COMSPEC,
+    process.env.PSModulePath ? 'powershell.exe' : undefined,
+    'pwsh.exe',
+    'powershell.exe',
+    'cmd.exe',
+  ];
+  const unixCandidates = [
+    shellOverride,
+    process.env.SHELL,
+    '/bin/zsh',
+    '/bin/bash',
+    '/bin/sh',
+  ];
+
   return Array.from(
     new Set(
-      [
-        shellOverride,
-        process.env.SHELL,
-        '/bin/zsh',
-        '/bin/bash',
-        '/bin/sh',
-      ].filter((value): value is string => Boolean(value && value.trim()))
+      (isWindows ? windowsCandidates : unixCandidates).filter(
+        (value): value is string => Boolean(value && value.trim()),
+      ),
     )
   );
 }
 
 function getRuntimePath(shellOverride?: string): string {
+  if (process.platform === 'win32') {
+    // Windows does not support POSIX-style login shell PATH probing.
+    return process.env.PATH || '';
+  }
+
   for (const shell of getShellCandidates(shellOverride)) {
     const cached = loginShellPathCache.get(shell);
     if (cached) {
@@ -60,6 +78,25 @@ function getRuntimePath(shellOverride?: string): string {
 
   const fallbackPath = process.env.PATH || '';
   return fallbackPath;
+}
+
+function getShellArgs(shell: string, command: string): string[] {
+  const shellName = path.basename(shell).toLowerCase();
+
+  if (shellName === 'cmd.exe' || shellName === 'cmd') {
+    return ['/d', '/s', '/c', command];
+  }
+
+  if (
+    shellName === 'powershell.exe'
+    || shellName === 'powershell'
+    || shellName === 'pwsh.exe'
+    || shellName === 'pwsh'
+  ) {
+    return ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command];
+  }
+
+  return shell.endsWith('/sh') ? ['-c', command] : ['-lc', command];
 }
 
 function resolveSkillRootPath(runtimeContext?: unknown): string | undefined {
@@ -292,7 +329,7 @@ export const runLocalCommandTool: MastraTool = {
 
       for (const shell of shellCandidates) {
         try {
-          const shellArgs = shell.endsWith('/sh') ? ['-c', resolvedCommand] : ['-lc', resolvedCommand];
+          const shellArgs = getShellArgs(shell, resolvedCommand);
           const result = await execFileAsync(shell, shellArgs, {
             cwd: resolvedCwd,
             timeout: timeoutMs,

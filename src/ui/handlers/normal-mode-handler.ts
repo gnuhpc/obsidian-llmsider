@@ -167,6 +167,7 @@ export class NormalModeHandler implements INormalModeHandler {
 			let workingMessageEl: HTMLElement | null = null;
 			let standaloneMultiTurnEl: HTMLElement | null = null;
 			let isMultiTurnVisualizationActive = false;
+			let hasAssignedResponseTimestamp = false;
 			type MultiTurnEntry = {
 				kind: 'llm' | 'tool' | 'system';
 				turn: number;
@@ -175,8 +176,11 @@ export class NormalModeHandler implements INormalModeHandler {
 				success?: boolean;
 			};
 			const multiTurnTranscript: MultiTurnEntry[] = [];
+			const runningToolEntryMap = new Map<string, MultiTurnEntry>();
 			let currentTurn = 0;
 			let currentTurnLlmEntry: MultiTurnEntry | null = null;
+			const buildRunningToolKey = (turn: number, toolRound: number, toolCallIndex: number, toolName: string): string =>
+				`${turn || 0}:${toolRound || 0}:${toolCallIndex || 0}:${toolName || 'unknown'}`;
 			const pushInitialUserTask = (task: string) => {
 				if (!task.trim()) return;
 				if (multiTurnTranscript.some(entry => entry.title === '用户任务')) return;
@@ -393,6 +397,10 @@ export class NormalModeHandler implements INormalModeHandler {
 				},
 				onStream: (chunk: any) => {
 					if (streamController.signal.aborted) return;
+					if (!hasAssignedResponseTimestamp && assistantMessage) {
+						assistantMessage.timestamp = Date.now();
+						hasAssignedResponseTimestamp = true;
+					}
 
 					if (enableSuperpower && typeof chunk === 'object' && chunk?.eventType) {
 						switch (chunk.eventType) {
@@ -403,8 +411,9 @@ export class NormalModeHandler implements INormalModeHandler {
 										kind: 'llm',
 										turn: currentTurn,
 										title: '模型计划',
-										content: '',
+										content: '（等待模型输出）',
 									};
+									runningToolEntryMap.clear();
 									renderMultiTurnProgressPanel();
 									return;
 								}
@@ -430,14 +439,51 @@ export class NormalModeHandler implements INormalModeHandler {
 								return;
 							}
 								case 'multi_turn_tool_result': {
+									const toolName = String(chunk.toolName || 'unknown');
+									const key = buildRunningToolKey(
+										Number(chunk.turn) || currentTurn || 1,
+										Number(chunk.toolRound) || 0,
+										Number(chunk.toolCallIndex) || 0,
+										toolName
+									);
 									const sourceLabel = formatToolSource(chunk.toolSource);
-									multiTurnTranscript.push({
-										kind: 'tool',
-										turn: currentTurn || 1,
-										title: `工具结果 · ${chunk.toolName || 'unknown'} [${sourceLabel}]`,
-										content: String(chunk.details || ''),
-										success: chunk.success !== false,
-									});
+									const existingEntry = runningToolEntryMap.get(key);
+									if (existingEntry) {
+										existingEntry.title = `工具结果 · ${toolName} [${sourceLabel}]`;
+										existingEntry.content = String(chunk.details || '');
+										existingEntry.success = chunk.success !== false;
+										runningToolEntryMap.delete(key);
+									} else {
+										multiTurnTranscript.push({
+											kind: 'tool',
+											turn: currentTurn || 1,
+											title: `工具结果 · ${toolName} [${sourceLabel}]`,
+											content: String(chunk.details || ''),
+											success: chunk.success !== false,
+										});
+									}
+								renderMultiTurnProgressPanel();
+								return;
+							}
+							case 'multi_turn_tool_start': {
+								const toolName = String(chunk.toolName || 'unknown');
+								const sourceLabel = formatToolSource(chunk.toolSource);
+								const turn = Number(chunk.turn) || currentTurn || 1;
+								const toolRound = Number(chunk.toolRound) || 0;
+								const toolCallIndex = Number(chunk.toolCallIndex) || 0;
+								const totalToolCalls = Number(chunk.totalToolCalls) || 0;
+								const key = buildRunningToolKey(turn, toolRound, toolCallIndex, toolName);
+								const progressSuffix = totalToolCalls > 0 && toolCallIndex > 0
+									? `（${toolCallIndex}/${totalToolCalls}）`
+									: '';
+								const runningEntry: MultiTurnEntry = {
+									kind: 'tool',
+									turn,
+									title: `工具执行中 · ${toolName} [${sourceLabel}] ${progressSuffix}`.trim(),
+									content: '正在执行，等待结果...',
+								};
+								runningToolEntryMap.set(key, runningEntry);
+								multiTurnTranscript.push(runningEntry);
 								renderMultiTurnProgressPanel();
 								return;
 							}
@@ -518,6 +564,9 @@ export class NormalModeHandler implements INormalModeHandler {
 						} else {
 							answerContent += delta;
 							if (currentTurnLlmEntry) {
+								if (currentTurnLlmEntry.content === '（等待模型输出）') {
+									currentTurnLlmEntry.content = '';
+								}
 								if (!multiTurnTranscript.includes(currentTurnLlmEntry)) {
 									multiTurnTranscript.push(currentTurnLlmEntry);
 								}
@@ -571,6 +620,11 @@ export class NormalModeHandler implements INormalModeHandler {
 				},
 				onComplete: async (fullResponse: string, responseData?: any) => {
 					Logger.debug('[NormalModeHandler] Agent completed, response length:', fullResponse.length);
+					// Fallback for non-streaming providers or empty stream callbacks.
+					if (!hasAssignedResponseTimestamp && assistantMessage) {
+						assistantMessage.timestamp = Date.now();
+						hasAssignedResponseTimestamp = true;
+					}
 
 					const executionSummary = responseData?.executionSummary;
 					const awaitingToolConfirmation =

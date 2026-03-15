@@ -738,7 +738,7 @@ export class InputHandler {
 		const cursorPos = this.inputElement.selectionStart || this.inputElement.value.length;
 
 		// Create file placeholder
-		const displayName = file.extension === 'md' ? file.basename : `${file.basename}.${file.extension}`;
+		const displayName = this.getUniqueFilePlaceholderDisplayName(file);
 		const filePlaceholder = `@[${displayName}] `;
 
 		// Insert placeholder at cursor position
@@ -798,7 +798,7 @@ export class InputHandler {
 		const cursorPos = this.inputElement.selectionStart || this.inputElement.value.length;
 
 		// Create folder placeholder
-		const displayName = folder.name || 'Root';
+		const displayName = this.getFolderPlaceholderDisplayName(folder);
 		const folderPlaceholder = `@[📁${displayName}] `;
 
 		// Insert placeholder at cursor position
@@ -942,17 +942,32 @@ export class InputHandler {
 				throw new Error('Provider not found');
 			}
 
-			// Build optimization prompt with clear instructions
-			const systemMessage = `You are a prompt optimization expert. Your task is to enhance user prompts to make them clearer, more specific, and more effective for AI models to understand and respond to.
+			// Build optimization prompt with practical prompt-engineering strategies
+			const systemMessage = `You are a prompt optimization expert.
 
-Rules:
-1. Keep the user's core intent intact
-2. Make the prompt more specific and actionable
-3. Add necessary context if missing
-4. Structure the prompt logically
-5. Use clear and concise language
-6. Return ONLY the optimized prompt without any explanation or additional text
-7. Maintain the same language as the original prompt (Chinese/English)`;
+Your goal is to rewrite user prompts so they produce higher quality model outputs while preserving intent.
+
+Optimization checklist:
+1. Preserve the user's core goal and constraints; never change task intent.
+2. Make the prompt clear, specific, and directly actionable.
+3. Add missing but safe structure:
+   - task objective
+   - relevant context
+   - output format
+   - quality criteria
+   - boundaries (what to include/exclude)
+4. Prefer positive instructions ("do X") over only negative instructions ("don't do Y").
+5. If task is complex, decompose into numbered sub-steps.
+6. If reasoning reliability matters (math/logic/planning), add: "Think step by step."
+7. If deterministic parsing is useful, require structured output (e.g., JSON with fields).
+8. If style/role matters, add an explicit role and tone.
+9. If examples would help (classification/extraction/format transformation), add a compact one-shot/few-shot example pattern.
+10. Keep it concise and practical; avoid unnecessary verbosity.
+11. Keep the same language as the user's original prompt.
+
+Output rules:
+- Return ONLY the optimized prompt text.
+- Do not include explanation, analysis, markdown fences, or commentary.`;
 			const finalSystemMessage = this.plugin.appendGlobalPromptToSystemMessage(systemMessage);
 
 			// Prepare messages for the LLM
@@ -960,9 +975,10 @@ Rules:
 				{
 					id: Date.now().toString(),
 					role: 'user' as const,
-					content: `Original prompt: ${currentPrompt}
+					content: `Original prompt:
+${currentPrompt}
 
-Please optimize this prompt to be clearer and more effective. Return ONLY the optimized prompt.`,
+Rewrite this into a stronger prompt using the optimization checklist. Return ONLY the optimized prompt.`,
 					timestamp: Date.now()
 				}
 			];
@@ -1677,7 +1693,7 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 	 * Handle folder selected from suggestions
 	 */
 	private async handleFolderSelected(folder: TFolder): Promise<void> {
-		const displayName = `📁${folder.name || 'Root'}`;
+		const displayName = `📁${this.getFolderPlaceholderDisplayName(folder)}`;
 		this.addPlaceholderMapping(displayName, folder.path);
 		this.removeDirectoryContextsNotExplicitlyReferenced(folder.path);
 		this.updateContextDisplay();
@@ -2595,6 +2611,19 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 		try {
 			// Get all files from the vault
 			const files = this.app.vault.getFiles();
+			const disambiguatedMatch = displayName.match(/^(.*)\s·\s(.+)$/);
+			if (disambiguatedMatch) {
+				const [, rawBaseName, rawParentPath] = disambiguatedMatch;
+				const baseName = rawBaseName.trim();
+				const parentPath = rawParentPath.trim();
+				const matchedByPath = files.find(file => {
+					const fileDisplayName = file.extension === 'md' ? file.basename : `${file.basename}.${file.extension}`;
+					return fileDisplayName === baseName && (file.parent?.path || '/') === parentPath;
+				});
+				if (matchedByPath) {
+					return matchedByPath;
+				}
+			}
 
 			// Try exact match first (with extension)
 			let matchedFile = files.find(file => {
@@ -2617,6 +2646,26 @@ Please optimize this prompt to be clearer and more effective. Return ONLY the op
 			Logger.error('Error finding file by name:', error);
 			return null;
 		}
+	}
+
+	private getBaseFileDisplayName(file: TFile): string {
+		return file.extension === 'md' ? file.basename : `${file.basename}.${file.extension}`;
+	}
+
+	private getUniqueFilePlaceholderDisplayName(file: TFile): string {
+		const baseName = this.getBaseFileDisplayName(file);
+		const duplicateCount = this.app.vault.getFiles().filter(candidate => {
+			return this.getBaseFileDisplayName(candidate) === baseName;
+		}).length;
+		if (duplicateCount <= 1) {
+			return baseName;
+		}
+		const parentPath = file.parent?.path || '/';
+		return `${baseName} · ${parentPath}`;
+	}
+
+	private getFolderPlaceholderDisplayName(folder: TFolder): string {
+		return folder.path || 'Root';
 	}
 
 	/**

@@ -84,6 +84,7 @@ export class GuidedModeStreamCallbacks {
 			
 			// On first chunk, create message UI and mark AI response as active
 			if (state.chunkCount === 1) {
+				assistantMessage.timestamp = Date.now();
 				Logger.debug('[onStream] First chunk - state:', { 
 					isFollowUpResponse: state.isFollowUpResponse,
 					hasFollowUpMessageEl: !!state.followUpMessageEl,

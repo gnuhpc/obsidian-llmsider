@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf, Notice, MarkdownView, TFile, requestUrl, normalizePath } from 'obsidian';
+import { Plugin, WorkspaceLeaf, Notice, MarkdownView, TFile, requestUrl, normalizePath, Platform } from 'obsidian';
 import { Logger } from './utils/logger';
 // Force rebuild timestamp update
 import { EditorView } from '@codemirror/view';
@@ -80,6 +80,12 @@ export default class LLMSiderPlugin extends Plugin {
 
 	async onload() {
 		Logger.debug('Loading LLMSider plugin...');
+
+		if (Platform.isMobile || Platform.isMobileApp) {
+			Logger.warn('LLMSider is not supported on Obsidian mobile. Plugin load is blocked.');
+			new Notice('LLMSider 暂不支持移动端，已阻止加载。', 8000);
+			return;
+		}
 
 		// Initialize plugin state
 		this.state = {

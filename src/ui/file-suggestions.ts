@@ -426,6 +426,7 @@ export class FileSuggestions {
 		}
 		
 		// Add each suggestion to list container
+		const duplicateFileDisplayNames = this.getDuplicateFileDisplayNameSet(this.filteredItems);
 		itemsToShow.forEach((item) => {
 			const suggestion = listContainer.createDiv('llmsider-file-suggestion');
 			
@@ -436,17 +437,19 @@ export class FileSuggestions {
 		
 		if (item instanceof TFolder) {
 			iconHTML = this.getFolderIconSVG();
-			displayName = item.path || 'Root';
+			displayName = this.getSuggestionDisplayName(item, duplicateFileDisplayNames);
 		} else {
 			iconHTML = this.getFileIconSVG(item);
-			displayName = item.extension === 'md' ? item.basename : `${item.basename}.${item.extension}`;
+			displayName = this.getSuggestionDisplayName(item, duplicateFileDisplayNames);
 		}
 		
-		suggestion.innerHTML = `${iconHTML} ${displayName}`;			suggestion.addEventListener('click', () => {
+		suggestion.innerHTML = iconHTML;
+		suggestion.createSpan({ text: ` ${displayName}` });
+		suggestion.addEventListener('click', () => {
 				if (item instanceof TFolder) {
-					this.selectFolderSuggestion(item, atIndex);
+					this.selectFolderSuggestion(item, atIndex, displayName);
 				} else {
-					this.selectFileSuggestion(item, atIndex);
+					this.selectFileSuggestion(item, atIndex, displayName);
 				}
 			});
 		});
@@ -656,6 +659,8 @@ export class FileSuggestions {
 			const item = this.filteredItems[this.selectedSuggestionIndex];
 			
 			if (item) {
+				const duplicateFileDisplayNames = this.getDuplicateFileDisplayNameSet(this.filteredItems);
+				const displayName = this.getSuggestionDisplayName(item, duplicateFileDisplayNames);
 				// If manually triggered, use current cursor position
 				// Otherwise, find the @ position
 				let atIndex = -1;
@@ -667,9 +672,9 @@ export class FileSuggestions {
 				}
 				
 				if (item instanceof TFolder) {
-					this.selectFolderSuggestion(item, atIndex);
+					this.selectFolderSuggestion(item, atIndex, displayName);
 				} else {
-					this.selectFileSuggestion(item, atIndex);
+					this.selectFileSuggestion(item, atIndex, displayName);
 				}
 			}
 		}
@@ -678,14 +683,14 @@ export class FileSuggestions {
 	/**
 	 * Select a folder suggestion
 	 */
-	private selectFolderSuggestion(folder: TFolder, atIndex: number): void {
+	private selectFolderSuggestion(folder: TFolder, atIndex: number, displayName?: string): void {
 		// Create folder placeholder with only display name
-		const displayName = folder.name || 'Root';
-		const folderPlaceholder = `@[📁${displayName}] `;
+		const uniqueDisplayName = displayName || this.getSuggestionDisplayName(folder, this.getDuplicateFileDisplayNameSet(this.filteredItems));
+		const folderPlaceholder = `@[📁${uniqueDisplayName}] `;
 
 		// Store placeholder to path mapping for efficient lookup
 		if (this.addPlaceholderMapping) {
-			this.addPlaceholderMapping(`📁${displayName}`, folder.path);
+			this.addPlaceholderMapping(`📁${uniqueDisplayName}`, folder.path);
 		}
 
 		// Get current text and cursor position
@@ -727,14 +732,14 @@ export class FileSuggestions {
 	/**
 	 * Select a file suggestion
 	 */
-	private selectFileSuggestion(file: TFile, atIndex: number): void {
+	private selectFileSuggestion(file: TFile, atIndex: number, displayName?: string): void {
 		// Create file placeholder with only display name
-		const displayName = file.extension === 'md' ? file.basename : `${file.basename}.${file.extension}`;
-		const filePlaceholder = `@[${displayName}] `;
+		const uniqueDisplayName = displayName || this.getSuggestionDisplayName(file, this.getDuplicateFileDisplayNameSet(this.filteredItems));
+		const filePlaceholder = `@[${uniqueDisplayName}] `;
 
 		// Store placeholder to path mapping for efficient lookup
 		if (this.addPlaceholderMapping) {
-			this.addPlaceholderMapping(displayName, file.path);
+			this.addPlaceholderMapping(uniqueDisplayName, file.path);
 		}
 
 		// Get current text and cursor position
@@ -771,6 +776,40 @@ export class FileSuggestions {
 
 		// Focus back to input
 		this.inputElement.focus();
+	}
+
+	private getFileBaseDisplayName(file: TFile): string {
+		return file.extension === 'md' ? file.basename : `${file.basename}.${file.extension}`;
+	}
+
+	private getDuplicateFileDisplayNameSet(items: SuggestionItem[]): Set<string> {
+		const nameCounts = new Map<string, number>();
+		for (const item of items) {
+			if (!(item instanceof TFile)) {
+				continue;
+			}
+			const baseName = this.getFileBaseDisplayName(item);
+			nameCounts.set(baseName, (nameCounts.get(baseName) || 0) + 1);
+		}
+		const duplicates = new Set<string>();
+		for (const [baseName, count] of nameCounts.entries()) {
+			if (count > 1) {
+				duplicates.add(baseName);
+			}
+		}
+		return duplicates;
+	}
+
+	private getSuggestionDisplayName(item: SuggestionItem, duplicateFileDisplayNames: Set<string>): string {
+		if (item instanceof TFolder) {
+			return item.path || 'Root';
+		}
+		const baseName = this.getFileBaseDisplayName(item);
+		if (!duplicateFileDisplayNames.has(baseName)) {
+			return baseName;
+		}
+		const parentPath = item.parent?.path || '/';
+		return `${baseName} · ${parentPath}`;
 	}
 
 	/**

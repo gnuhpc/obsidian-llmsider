@@ -817,6 +817,7 @@ export class ChatView extends ItemView {
 			let chunkCount = 0;
 			let thinkingContent = "";
 			let answerContent = "";
+			let hasAssignedResponseTimestamp = false;
 
 			// Set thread ID on provider for session management (e.g. Free Qwen)
 			if (this.currentSession?.id && provider.setThreadId) {
@@ -827,6 +828,10 @@ export class ChatView extends ItemView {
 				conversationMessages,
 				(chunk) => {
 					if (streamController.signal.aborted) return;
+					if (!hasAssignedResponseTimestamp) {
+						assistantMessage.timestamp = Date.now();
+						hasAssignedResponseTimestamp = true;
+					}
 
 					if (chunk.delta) {
 						chunkCount++;
@@ -1009,6 +1014,10 @@ export class ChatView extends ItemView {
 			if (assistantMessage.metadata) {
 				assistantMessage.metadata.tokens = totalTokens;
 				// No need to delete isWorking since we don't use it anymore
+			}
+			// Fallback for non-streaming providers or empty stream callbacks.
+			if (!hasAssignedResponseTimestamp) {
+				assistantMessage.timestamp = Date.now();
 			}
 
 			// Update working message element to final state
@@ -2366,6 +2375,10 @@ export class ChatView extends ItemView {
 						"[GuidedAssist-Mastra] Has follow-up message element:",
 						!!streamState.followUpMessageEl
 					);
+					// Keep first-chunk timestamp; fallback to completion time if no chunks arrived.
+					if (streamState.chunkCount === 0) {
+						assistantMessage.timestamp = completeTime;
+					}
 
 					// Remove step indicators after completion
 					if (

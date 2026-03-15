@@ -9,7 +9,7 @@ export const enNoteManagementTools = {
 	},
 	createFile: {
 		name: 'Create Note',
-		description: 'Create a new note with specified content'
+		description: 'Create a new note with specified content. If a same-path file already exists, set override=true to replace it; otherwise the tool auto-creates a suffixed filename (-1, -2, ...).'
 	},
 	viewFile: {
 		name: 'View Note',
