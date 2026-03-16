@@ -233,6 +233,8 @@ export interface ChatMessage {
     provider?: string;
     model?: string;
     tokens?: number;
+    llmStartTimestamp?: number; // LLM request start timestamp (ms)
+    llmDurationMs?: number; // LLM response duration (ms)
     context?: string;
     mode?: 'ask' | 'action';
     action?: string;
@@ -326,6 +328,11 @@ export interface ChatMessage {
     suggestedToolCalls?: unknown[]; // Tools suggested by AI in the guided-assist flow
     requiresToolConfirmation?: boolean; // Whether user needs to confirm tool execution
     interactiveGuidedCard?: boolean; // Render guided card in interactive mode (not reload/read-only)
+    toolExecutionSkill?: {
+      id: string;
+      name: string;
+      rootPath: string;
+    }; // Routed skill snapshot for post-response tool confirmation execution
     toolExecutionApproved?: boolean; // Whether user approved the tool execution
     isPreToolExplanation?: boolean; // Whether this is explanation text before tool execution
     toolsToExecute?: string[]; // Names of tools that will be executed after this explanation

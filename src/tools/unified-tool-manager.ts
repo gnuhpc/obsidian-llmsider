@@ -300,8 +300,25 @@ export class UnifiedToolManager {
     try {
       // Check if it's a built-in tool (now includes file editing tools)
       if (isBuiltInTool(name)) {
+        const runtimeSkill = (runtimeContext && typeof runtimeContext === 'object')
+          ? (runtimeContext as { skill?: unknown }).skill
+          : null;
+        const hasRuntimeSkill = !!runtimeSkill && typeof runtimeSkill === 'object';
+        const skillAllowsRunLocalCommand = name === 'run_local_command' && hasRuntimeSkill;
+
+        // Hard guard: run_local_command is forbidden outside skill context.
+        if (name === 'run_local_command' && !hasRuntimeSkill) {
+          return {
+            success: false,
+            error: 'Tool "run_local_command" is not allowed outside skill context.',
+            toolName: name,
+            source: 'built-in',
+            executionTime: Date.now() - startTime
+          };
+        }
+
         // Check if the built-in tool is enabled
-        if (!this.isBuiltInToolEnabled(name) && !allowDisabledBuiltInTools.has(name)) {
+        if (!this.isBuiltInToolEnabled(name) && !allowDisabledBuiltInTools.has(name) && !skillAllowsRunLocalCommand) {
           Logger.debug(`Built-in tool ${name} execution blocked by permissions`);
           return {
             success: false,
@@ -312,7 +329,7 @@ export class UnifiedToolManager {
           };
         }
 
-        if (!this.isBuiltInToolEnabled(name) && allowDisabledBuiltInTools.has(name)) {
+        if (!this.isBuiltInToolEnabled(name) && (allowDisabledBuiltInTools.has(name) || skillAllowsRunLocalCommand)) {
           Logger.debug(`Built-in tool ${name} execution allowed by skill runtime context`);
         }
 

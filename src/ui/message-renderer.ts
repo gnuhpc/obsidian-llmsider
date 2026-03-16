@@ -108,7 +108,7 @@ export class MessageRenderer {
 		const role = message.role === 'user' ? 'You' : message.role === 'assistant' ? 'AI' : 'System';
 		header.createEl('span', { cls: 'llmsider-message-role', text: role });
 		
-		const timestamp = new Date(message.timestamp).toLocaleTimeString();
+		const timestamp = this.formatTimestamp(message);
 		header.createEl('span', { cls: 'llmsider-message-time', text: timestamp });
 	}
 
@@ -378,7 +378,7 @@ export class MessageRenderer {
 			
 			// Add timestamp on the left
 			const timestamp = footer.createDiv({ cls: 'llmsider-message-timestamp' });
-			timestamp.textContent = this.formatTimestamp(message.timestamp);
+			timestamp.textContent = this.formatTimestamp(message);
 			this.renderMessageStatusBadges(footer, message);
 			
 			// Add actions container on the right
@@ -386,7 +386,7 @@ export class MessageRenderer {
 		} else {
 			const timestampEl = footer.querySelector('.llmsider-message-timestamp') as HTMLElement | null;
 			if (timestampEl) {
-				timestampEl.textContent = this.formatTimestamp(message.timestamp);
+				timestampEl.textContent = this.formatTimestamp(message);
 			}
 			this.renderMessageStatusBadges(footer, message);
 
@@ -408,8 +408,8 @@ export class MessageRenderer {
 		}
 	}
 
-	private formatTimestamp(timestamp: number): string {
-		const date = new Date(timestamp);
+	private formatTimestamp(message: ChatMessage): string {
+		const date = new Date(message.timestamp);
 		// Format as YYYY/MM/DD HH:mm:ss
 		const year = date.getFullYear();
 		const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -417,7 +417,33 @@ export class MessageRenderer {
 		const hours = String(date.getHours()).padStart(2, '0');
 		const minutes = String(date.getMinutes()).padStart(2, '0');
 		const seconds = String(date.getSeconds()).padStart(2, '0');
-		return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+		const base = `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+
+		if (message.role !== 'assistant') {
+			return base;
+		}
+
+		const metadata = message.metadata as { llmDurationMs?: number } | undefined;
+		const durationMs = typeof metadata?.llmDurationMs === 'number'
+			? metadata.llmDurationMs
+			: undefined;
+
+		if (durationMs === undefined || Number.isNaN(durationMs)) {
+			return base;
+		}
+
+		const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+		const durationMinutes = Math.floor(totalSeconds / 60);
+		const durationSeconds = String(totalSeconds % 60).padStart(2, '0');
+		const i18n = this.plugin.getI18nManager();
+		const durationCore =
+			i18n?.t('ui.messageDurationText', {
+				minutes: String(durationMinutes),
+				seconds: durationSeconds,
+			}) || `${durationMinutes}m${durationSeconds}s`;
+		const durationText =
+			i18n?.t('ui.messageDurationLabel', { duration: durationCore }) || `Duration ${durationCore}`;
+		return `${base} ${durationText}`;
 	}
 
 	/**

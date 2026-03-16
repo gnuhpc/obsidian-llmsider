@@ -960,7 +960,7 @@ export class UIBuilder {
 
 		// Filter out hidden categories (like 'meta' for control flow tools) and system tools
 		const HIDDEN_CATEGORIES = ['meta'];
-		const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each', 'run_local_command'];
+		const HIDDEN_SYSTEM_TOOLS = ['get_timedate', 'get_current_time', 'for_each', 'run_local_command', 'run_local_cmd'];
 
 		const allBuiltInTools = allBuiltInToolsUnfiltered.filter((tool: unknown) => {
 			const t = tool as BuiltInTool;

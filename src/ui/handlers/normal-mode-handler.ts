@@ -51,24 +51,6 @@ export class NormalModeHandler implements INormalModeHandler {
 		this.messageContainer = messageContainer;
 	}
 
-	private shouldAllowRunLocalCommandWithoutSkill(userMessage: ChatMessage): boolean {
-		const text = typeof userMessage.content === 'string' ? userMessage.content : '';
-		if (!text.trim()) {
-			return false;
-		}
-
-		const hasReferencedContext =
-			/Referenced file:|Referenced folder:|引用文件|引用目录|参考文件|参考目录/i.test(text) ||
-			(this.contextManager.getCurrentNoteContext()?.length ?? 0) > 0;
-		if (!hasReferencedContext) {
-			return false;
-		}
-
-		const hasWriteIntent = /合并|汇总|整合|整理|写入|保存|创建|生成|输出到|merge|combine|create|save|write/i.test(text);
-		const noteTargetIntent = /笔记|文章|文档|markdown|md|note|file/i.test(text);
-		return hasWriteIntent && noteTargetIntent;
-	}
-	
 	/**
 	 * Execute Normal mode conversation
 	 */
@@ -262,7 +244,8 @@ export class NormalModeHandler implements INormalModeHandler {
 				timestamp: Date.now(),
 				metadata: {
 					provider: provider.getProviderName(),
-					model: provider.getModelName()
+					model: provider.getModelName(),
+					llmStartTimestamp: userMessage.timestamp
 				}
 			};
 			
@@ -294,12 +277,8 @@ export class NormalModeHandler implements INormalModeHandler {
 				? userMessage.metadata.guidedInitialGoal.trim()
 				: '';
 			const routingInput = (userMessage.metadata?.isFollowUpMessage && followUpGoal) ? followUpGoal : rawUserInput;
-			const allowRunLocalWithoutSkill = this.shouldAllowRunLocalCommandWithoutSkill(userMessage);
 			if (userMessage.metadata?.isFollowUpMessage && followUpGoal) {
 				Logger.debug('[NormalModeHandler] Follow-up message detected, routing with original goal anchor');
-			}
-			if (allowRunLocalWithoutSkill) {
-				Logger.debug('[NormalModeHandler] Allowing run_local_command in normal mode without routed skill (referenced-context write intent)');
 			}
 			let routedSkill: ResolvedSkill | null = null;
 			try {
@@ -332,9 +311,7 @@ export class NormalModeHandler implements INormalModeHandler {
 					const allTools = await toolManager.getAllTools();
 
 					if (!skillManager || !skillManager.isSkillUsageEnabled(currentSession)) {
-						normalTools = allowRunLocalWithoutSkill
-							? allTools
-							: allTools.filter(tool => tool.name !== 'run_local_command');
+						normalTools = allTools.filter(tool => tool.name !== 'run_local_command');
 						normalTools = normalTools.length > 0 ? normalTools : undefined;
 						if (normalTools) {
 							Logger.debug(`[NormalModeHandler] Normal mode exposes ${normalTools.length} tool(s):`, normalTools.map(t => t.name));
@@ -342,9 +319,7 @@ export class NormalModeHandler implements INormalModeHandler {
 					} else {
 						const invocableSkills = skillManager.getInvocableSkills(currentSession);
 						if (invocableSkills.length === 0) {
-							normalTools = allowRunLocalWithoutSkill
-								? allTools
-								: allTools.filter(tool => tool.name !== 'run_local_command');
+							normalTools = allTools.filter(tool => tool.name !== 'run_local_command');
 							normalTools = normalTools.length > 0 ? normalTools : undefined;
 							if (normalTools) {
 								Logger.debug(`[NormalModeHandler] No invocable skills active, falling back to ${normalTools.length} tool(s):`, normalTools.map(t => t.name));
@@ -625,6 +600,10 @@ export class NormalModeHandler implements INormalModeHandler {
 						assistantMessage.timestamp = Date.now();
 						hasAssignedResponseTimestamp = true;
 					}
+					const streamDuration = Date.now() - streamStartTime;
+					if (assistantMessage.metadata) {
+						assistantMessage.metadata.llmDurationMs = streamDuration;
+					}
 
 					const executionSummary = responseData?.executionSummary;
 					const awaitingToolConfirmation =
@@ -657,6 +636,13 @@ export class NormalModeHandler implements INormalModeHandler {
 							assistantMessage.metadata.suggestedToolCalls = responseData.pendingToolCalls;
 							assistantMessage.metadata.interactiveGuidedCard = true;
 							assistantMessage.metadata.isStreaming = false;
+							if (activeExecutionSkill) {
+								assistantMessage.metadata.toolExecutionSkill = {
+									id: activeExecutionSkill.id,
+									name: activeExecutionSkill.name,
+									rootPath: activeExecutionSkill.rootPath,
+								};
+							}
 						}
 					}
 					
@@ -757,6 +743,18 @@ export class NormalModeHandler implements INormalModeHandler {
 
 						workingMessageEl.dataset.messageId = assistantMessage.id;
 						this.messageRenderer.addMessageActions(workingMessageEl, assistantMessage);
+						if (awaitingToolConfirmation) {
+							const existingPreparingIndicators = workingMessageEl.querySelectorAll('.llmsider-guided-confirmation-pending');
+							existingPreparingIndicators.forEach(el => el.remove());
+
+							const preparingIndicator = workingMessageEl.createDiv({
+								cls: 'llmsider-plan-execute-tool-indicator llmsider-guided-confirmation-pending'
+							});
+							preparingIndicator.createDiv({
+								cls: 'tool-indicator-text',
+								text: this.plugin.i18n.t('ui.preparingTools') || 'Preparing tool confirmation...'
+							});
+						}
 					}
 					
 					// Update session
@@ -775,7 +773,6 @@ export class NormalModeHandler implements INormalModeHandler {
 					await autoGenerateSessionTitle(userMessage, assistantMessage);
 					
 					// Log conversation
-					const streamDuration = Date.now() - streamStartTime;
 					await conversationLogger.logConversation(
 						currentSession.id,
 						this.plugin.settings.activeProvider,

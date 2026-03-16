@@ -157,6 +157,10 @@ export class ToolConfirmationUIRenderer implements IToolConfirmationUIRenderer {
 		
 		const hasActualContent = message.content && (message.content as string).length > 0;
 		const hasToolCalls = message.metadata?.requiresToolConfirmation && message.metadata?.suggestedToolCalls;
+		if (hasToolCalls) {
+			const preparingIndicators = messageEl.querySelectorAll('.llmsider-guided-confirmation-pending');
+			preparingIndicators.forEach(el => el.remove());
+		}
 		
 		// If no content yet AND no tool calls, keep the three dots loading indicator and return early
 		if (!hasActualContent && !hasToolCalls) {
@@ -1004,7 +1008,24 @@ export class ToolConfirmationUIRenderer implements IToolConfirmationUIRenderer {
 			if (!toolManager) {
 				throw new Error('Tool manager not available');
 			}
-			const result = await toolManager.executeTool(toolName, toolArgs);
+
+			const sessionForSkill = this.callbacks.getCurrentSession();
+			const routedSkillSnapshot = guidedMessage.metadata?.toolExecutionSkill;
+			const activeSkill = routedSkillSnapshot
+				? routedSkillSnapshot
+				: (this.plugin.getSkillManager()?.getEffectiveSkill(sessionForSkill) || null);
+			if (toolName === 'run_local_command' && !activeSkill) {
+				throw new Error('Tool "run_local_command" is not allowed outside skill context.');
+			}
+
+			const runtimeContext = activeSkill
+				? {
+					skill: activeSkill,
+					skillRootPath: activeSkill.rootPath,
+					allowDisabledBuiltInTools: ['run_local_command'],
+				}
+				: undefined;
+			const result = await toolManager.executeTool(toolName, toolArgs, runtimeContext);
 			
 			if (result.success === false) {
 				const errorMsg = result.error || 'Tool execution failed';

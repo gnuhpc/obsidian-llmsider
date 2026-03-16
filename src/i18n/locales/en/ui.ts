@@ -204,6 +204,8 @@ Global additional task:
   executingCommand: 'Executing command: {command}',
   commandSucceeded: 'Command succeeded: {command}',
   commandFailed: 'Command failed: {command}',
+  messageDurationLabel: 'Duration {duration}',
+  messageDurationText: '{minutes}m{seconds}s',
   defaultSkillSet: 'Default skill set to {skillId}',
   defaultSkillCleared: 'Default skill cleared',
   activeSkillSet: 'Active skill set to {skillId}',

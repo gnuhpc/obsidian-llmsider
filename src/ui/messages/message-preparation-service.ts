@@ -398,7 +398,7 @@ export class MessagePreparationService implements IMessagePreparationService {
 						const effectiveSkill = skillManager?.getEffectiveSkill(currentSession) || routedSkill;
 						if (skillManager && effectiveSkill) {
 							availableTools = skillManager.filterToolsForSkill(availableTools, effectiveSkill);
-							} else if (skillManager && skillManager.isSkillUsageEnabled(currentSession) && skillManager.getInvocableSkills(currentSession).length > 0) {
+						} else if (skillManager && skillManager.isSkillUsageEnabled(currentSession) && skillManager.getInvocableSkills(currentSession).length > 0) {
 								availableTools = skillManager.filterToolsForSession(
 									availableTools,
 									currentSession,

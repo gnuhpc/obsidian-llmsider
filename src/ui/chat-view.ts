@@ -705,6 +705,7 @@ export class ChatView extends ItemView {
 					provider: this.plugin.settings.activeProvider,
 					model: this.plugin.getActiveModelName(),
 					tokens: 0,
+					llmStartTimestamp: userMessage.timestamp,
 				},
 			};
 
@@ -1013,6 +1014,7 @@ export class ChatView extends ItemView {
 			// Update final message metadata
 			if (assistantMessage.metadata) {
 				assistantMessage.metadata.tokens = totalTokens;
+				assistantMessage.metadata.llmDurationMs = streamDuration;
 				// No need to delete isWorking since we don't use it anymore
 			}
 			// Fallback for non-streaming providers or empty stream callbacks.
@@ -2168,6 +2170,7 @@ export class ChatView extends ItemView {
 					guidedStepNumber: 1,
 					guidedInitialGoal,
 					isStreaming: true,
+					llmStartTimestamp: Date.now(),
 				},
 			};
 
@@ -2378,6 +2381,9 @@ export class ChatView extends ItemView {
 					// Keep first-chunk timestamp; fallback to completion time if no chunks arrived.
 					if (streamState.chunkCount === 0) {
 						assistantMessage.timestamp = completeTime;
+					}
+					if (assistantMessage.metadata) {
+						assistantMessage.metadata.llmDurationMs = completeTime - agentExecuteStartTime;
 					}
 
 					// Remove step indicators after completion

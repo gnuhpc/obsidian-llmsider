@@ -204,6 +204,8 @@ export const zhUI = {
   executingCommand: '正在执行命令：{command}',
   commandSucceeded: '命令执行成功：{command}',
   commandFailed: '命令执行失败：{command}',
+  messageDurationLabel: '耗时 {duration}',
+  messageDurationText: '{minutes}分{seconds}秒',
   defaultSkillSet: '默认 Skill 已设置为 {skillId}',
   defaultSkillCleared: '默认 Skill 已清除',
   activeSkillSet: '当前 Skill 已设置为 {skillId}',
