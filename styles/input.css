@@ -1100,7 +1100,7 @@ select.llmsider-model-select-dropdown option {
 .llmsider-button-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     flex-wrap: wrap;
     margin-top: 2px;
     padding-top: 2px;
@@ -1175,8 +1175,10 @@ select.llmsider-model-select-dropdown option {
 .llmsider-button-row-right {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     margin-left: auto;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .llmsider-input-right-buttons::before {

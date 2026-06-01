@@ -262,6 +262,7 @@ export class NormalModeHandler implements INormalModeHandler {
 			
 			// Helper function to strip memory markers
 			const stripMemoryMarkers = (content: string): string => {
+				const originalContent = content;
 				// Remove complete markers
 				let cleaned = content.replace(/\[MEMORY_UPDATE\][\s\S]*?\[\/MEMORY_UPDATE\]/g, '');
 				// Truncate at incomplete marker
@@ -269,7 +270,13 @@ export class NormalModeHandler implements INormalModeHandler {
 				if (incompleteMarkerIndex !== -1) {
 					cleaned = cleaned.substring(0, incompleteMarkerIndex);
 				}
-				return cleaned.trim();
+				cleaned = cleaned.trim();
+				if (!cleaned && originalContent.includes('[MEMORY_UPDATE]')) {
+					return this.plugin.i18n.getCurrentLanguage() === 'zh'
+						? '✓ 已记住您提供的信息'
+						: '✓ Information saved to memory';
+				}
+				return cleaned;
 			};
 
 			const rawUserInput = typeof userMessage.content === 'string' ? userMessage.content : '';
@@ -686,23 +693,31 @@ export class NormalModeHandler implements INormalModeHandler {
 						} else {
 							// Build final display content with thinking section
 							let finalContent = '';
+							const cleanedAnswer = stripMemoryMarkers(answerContent || '');
+							const cleanedFullResponse = stripMemoryMarkers(fullResponse || '');
 							if (thinkingContent) {
 								finalContent += '> [!tip]- 思考过程\n';
 								finalContent += '> ' + thinkingContent.split('\n').join('\n> ') + '\n\n';
 							}
-							if (answerContent) {
-								finalContent += answerContent;
+							if (cleanedAnswer) {
+								finalContent += cleanedAnswer;
 							}
-							assistantMessage.content = finalContent || fullResponse;
+							assistantMessage.content = finalContent || cleanedFullResponse;
 						}
 					}
 					
 					// Process Action mode responses for diff rendering.
 					// Skip for multi-turn messages to avoid overriding the final transcript panel rendering.
-					if (!assistantMessage.metadata?.multiTurnTranscript?.length && !awaitingToolConfirmation) {
+					const cleanedResponseForDiff = stripMemoryMarkers(fullResponse || answerContent || '');
+					if (
+						!assistantMessage.metadata?.multiTurnTranscript?.length &&
+						!awaitingToolConfirmation &&
+						typeof cleanedResponseForDiff === 'string' &&
+						cleanedResponseForDiff.trim().length > 0
+					) {
 						await this.messageManager.processActionModeResponse(
 							assistantMessage,
-							fullResponse,
+							cleanedResponseForDiff,
 							'action',
 							this.contextManager
 						);

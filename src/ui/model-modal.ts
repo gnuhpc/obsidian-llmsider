@@ -6,6 +6,7 @@ import { I18nManager } from '../i18n/i18n-manager';
 import { ProviderFactory } from '../utils/provider-factory';
 import { getWebLLMModelById } from '../core/webllm/webllm-models';
 import { WebLLMManager } from '../core/webllm/webllm-manager';
+import { normalizeProviderModelName } from '../utils/model-name-normalizer';
 
 /**
  * Modal for adding or editing a Model
@@ -941,6 +942,7 @@ export class ModelModal extends Modal {
 				}
 				return;
 			}
+			modelName = normalizeProviderModelName(this.connection.type, modelName);
 
 			const isEmbedding = this.isEmbeddingToggle.getValue();
 			let embeddingDimension: number | undefined = undefined;

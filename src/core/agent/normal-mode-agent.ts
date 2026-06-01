@@ -558,6 +558,13 @@ ${toolLines.join('\n')}`;
 					});
 				}
 				await runStreamingTurn(currentMessages);
+				if (collectedToolCalls.length === 0 && fullResponse) {
+					const inferredToolCalls = this.inferToolCallsFromText(fullResponse, effectiveNormalTools || []);
+					if (inferredToolCalls.length > 0) {
+						collectedToolCalls = inferredToolCalls;
+						Logger.warn('[NormalModeAgent] Inferred tool calls from text response fallback:', inferredToolCalls.map(call => call?.function?.name || call?.toolName));
+					}
+				}
 
 				if (collectedToolCalls.length > 0) {
 					if (!enableSuperpower) {
@@ -1017,6 +1024,242 @@ ${recoveryInstruction}`,
 			return false;
 		}
 		return /当前时间|现在几点|现在时间|时间戳|timestamp|time now|current time|current date|what time|today's date|what date/.test(text);
+	}
+
+	private inferToolCallsFromText(responseText: string, availableTools: UnifiedTool[]): any[] {
+		const result: any[] = [];
+		if (!responseText || availableTools.length === 0) {
+			return result;
+		}
+
+		const availableToolNames = new Set(
+			availableTools
+				.map(tool => (typeof tool.name === 'string' ? tool.name.trim() : ''))
+				.filter(Boolean),
+		);
+		const shouldValidateToolName = availableToolNames.size > 0;
+		const visitedNodes = new WeakSet<object>();
+
+		const addToolCall = (toolName: string, rawArgs: unknown, source: string) => {
+			if (shouldValidateToolName && !availableToolNames.has(toolName)) {
+				return;
+			}
+			let normalizedArgs: Record<string, unknown> = {};
+			if (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
+				normalizedArgs = rawArgs as Record<string, unknown>;
+			} else if (typeof rawArgs === 'string' && rawArgs.trim()) {
+				const trimmed = rawArgs.trim();
+				if (toolName === RUN_LOCAL_COMMAND_TOOL) {
+					normalizedArgs = { command: trimmed };
+				} else {
+					try {
+						const parsed = JSON.parse(trimmed);
+						normalizedArgs = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : { input: trimmed };
+					} catch {
+						normalizedArgs = { input: trimmed };
+					}
+				}
+			}
+			if (result.some(call => `${call?.function?.name || ''}:${call?.function?.arguments || ''}` === `${toolName}:${JSON.stringify(normalizedArgs)}`)) {
+				return;
+			}
+			result.push({
+				id: `inferred-tool-call-${Date.now()}-${result.length}`,
+				type: 'function',
+				function: {
+					name: toolName,
+					arguments: JSON.stringify(normalizedArgs),
+				},
+				toolName,
+				toolSource: `inferred:${source}`,
+			});
+		};
+
+		const collectToolEntriesRecursively = (node: unknown, collector: Array<{ toolName: string; args: unknown }>) => {
+			if (!node || typeof node !== 'object') {
+				return;
+			}
+			if (visitedNodes.has(node as object)) {
+				return;
+			}
+			visitedNodes.add(node as object);
+
+			if (Array.isArray(node)) {
+				for (const item of node) {
+					collectToolEntriesRecursively(item, collector);
+				}
+				return;
+			}
+
+			const record = node as Record<string, unknown>;
+			const maybeToolName = String(
+				record.tool ?? record.toolName ?? record.name ?? record.function_name ?? '',
+			).trim();
+			if (maybeToolName) {
+				const args = record.parameters ?? record.arguments ?? record.input ?? {};
+				collector.push({ toolName: maybeToolName, args });
+			}
+
+			for (const value of Object.values(record)) {
+				collectToolEntriesRecursively(value, collector);
+			}
+		};
+
+		const fenceRegex = /```(?:json|JSON)?\s*([\s\S]*?)```/g;
+		let fenceMatch: RegExpExecArray | null;
+		while ((fenceMatch = fenceRegex.exec(responseText)) !== null) {
+			const jsonText = fenceMatch[1].trim();
+			if (!jsonText) continue;
+			try {
+				const parsed = JSON.parse(jsonText) as any;
+				const entries: Array<{ toolName: string; args: unknown }> = [];
+				collectToolEntriesRecursively(parsed, entries);
+				for (const entry of entries) {
+					const toolName = String(entry.toolName || '').trim();
+					if (!toolName) {
+						continue;
+					}
+					const args = entry.args ?? {};
+					addToolCall(toolName, args, 'json-fence');
+				}
+			} catch {
+				// ignore malformed JSON blocks
+			}
+		}
+
+		// Fallback: parse bare JSON object containing "tool" when model does not use fenced JSON blocks.
+		const bareToolMarker = '"tool"';
+		let markerStart = responseText.indexOf(bareToolMarker);
+		while (markerStart !== -1) {
+			const openBraceIdx = responseText.lastIndexOf('{', markerStart);
+			if (openBraceIdx === -1) {
+				markerStart = responseText.indexOf(bareToolMarker, markerStart + bareToolMarker.length);
+				continue;
+			}
+			let balance = 0;
+			let inString = false;
+			let escape = false;
+			let parsed = false;
+			for (let i = openBraceIdx; i < responseText.length; i++) {
+				const char = responseText[i];
+				if (escape) {
+					escape = false;
+					continue;
+				}
+				if (char === '\\') {
+					escape = true;
+					continue;
+				}
+				if (char === '"') {
+					inString = !inString;
+					continue;
+				}
+				if (inString) {
+					continue;
+				}
+				if (char === '{') {
+					balance++;
+					continue;
+				}
+				if (char === '}') {
+					balance--;
+					if (balance === 0) {
+						const jsonText = responseText.substring(openBraceIdx, i + 1).trim();
+						try {
+							const parsedObj = JSON.parse(jsonText) as any;
+							const entries: Array<{ toolName: string; args: unknown }> = [];
+							collectToolEntriesRecursively(parsedObj, entries);
+							for (const entry of entries) {
+								const toolName = String(entry.toolName || '').trim();
+								if (!toolName) {
+									continue;
+								}
+								const args = entry.args ?? {};
+								addToolCall(toolName, args, 'json-inline');
+							}
+						} catch {
+							// ignore malformed inline JSON
+						}
+						parsed = true;
+						markerStart = responseText.indexOf(bareToolMarker, i + 1);
+						break;
+					}
+				}
+			}
+			if (!parsed) {
+				markerStart = responseText.indexOf(bareToolMarker, markerStart + bareToolMarker.length);
+			}
+		}
+
+		const wrapperRegex = /<use_mcp_tool>([\s\S]*?)<\/use_mcp_tool>/g;
+		let wrapperMatch: RegExpExecArray | null;
+		while ((wrapperMatch = wrapperRegex.exec(responseText)) !== null) {
+			const block = wrapperMatch[1] || '';
+			const toolNameMatch = block.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
+			if (!toolNameMatch?.[1]) continue;
+			const toolName = toolNameMatch[1].trim();
+			let args: unknown = {};
+			const argumentsMatch = block.match(/<arguments>([\s\S]*?)<\/arguments>/i);
+			if (argumentsMatch?.[1]) {
+				const argumentText = argumentsMatch[1].trim();
+				try {
+					args = argumentText ? JSON.parse(argumentText) : {};
+				} catch {
+					args = argumentText;
+				}
+			}
+			addToolCall(toolName, args, 'xml-wrapper');
+		}
+
+		const runLocalCommandRegex = /(?:^|\n)\s*run_local_command\s*(?:\r?\n)+\s*```(?:bash|shell|zsh|sh)?\s*\n([\s\S]*?)\n```/gi;
+		let runLocalCommandMatch: RegExpExecArray | null;
+		while ((runLocalCommandMatch = runLocalCommandRegex.exec(responseText)) !== null) {
+			const command = runLocalCommandMatch[1]?.trim();
+			if (!command) continue;
+			addToolCall(RUN_LOCAL_COMMAND_TOOL, { command }, 'run-local-command-fence');
+		}
+
+		// Loose fallback: tolerate truncated/malformed JSON by scanning tool markers and nearby args.
+		const looseToolRegex = /"tool"\s*:\s*"([^"\\]+)"/g;
+		let looseMatch: RegExpExecArray | null;
+		while ((looseMatch = looseToolRegex.exec(responseText)) !== null) {
+			const toolName = looseMatch[1]?.trim();
+			if (!toolName) {
+				continue;
+			}
+			// json-loose 是最低优先级兜底：若前面已识别到同名工具，避免重复补充。
+			if (result.some(call => (call?.function?.name || call?.toolName) === toolName)) {
+				continue;
+			}
+			const windowStart = Math.max(0, looseMatch.index - 200);
+			const windowEnd = Math.min(responseText.length, looseMatch.index + 8000);
+			const candidateText = responseText.slice(windowStart, windowEnd);
+			const stringValue = (key: string): string | null => {
+				const reg = new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`);
+				const m = candidateText.match(reg);
+				return m?.[1] ? m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : null;
+			};
+			const args: Record<string, unknown> = {};
+			const path = stringValue('path');
+			if (path) {
+				args.path = path;
+			}
+			const fileText = stringValue('file_text');
+			if (fileText) {
+				args.file_text = fileText;
+			}
+			const content = stringValue('content');
+			if (content) {
+				args.content = content;
+			}
+			const command = stringValue('command');
+			if (command) {
+				args.command = command;
+			}
+			addToolCall(toolName, args, 'json-loose');
+		}
+
+		return result;
 	}
 
 	private shouldKeepDiscoveryTools(messages: ChatMessage[]): boolean {

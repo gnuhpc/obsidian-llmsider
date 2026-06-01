@@ -13,7 +13,7 @@ sync:
         - ".venv-new"
   llmsider:
     alpha: "."
-    beta: "clawuser@100.118.60.93:/home/clawuser/projects/obsidian-llmsider"
+    beta: "clawuser@100.106.118.130:/home/clawuser/projects/obsidian-llmsider"
   option-master:
     alpha: "/Users/gnuhpc/projects/option-master"
-    beta: "clawuser@mylinux:/home/clawuser/projects/option-master"
+    beta: "clawuser@100.106.118.130:/home/clawuser/projects/option-master"

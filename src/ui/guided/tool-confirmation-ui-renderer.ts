@@ -84,6 +84,82 @@ export class ToolConfirmationUIRenderer implements IToolConfirmationUIRenderer {
 		return typeof firstUserMessage?.content === 'string' ? firstUserMessage.content.trim() : '';
 	}
 
+	private extractUrlsFromToolArgs(toolArgs: unknown): string[] {
+		if (!toolArgs || typeof toolArgs !== 'object') return [];
+		const args = toolArgs as Record<string, unknown>;
+		const candidates = [args.urls, args.url, args.input];
+		const urls: string[] = [];
+		for (const candidate of candidates) {
+			if (typeof candidate === 'string' && candidate.trim()) {
+				urls.push(candidate.trim());
+				continue;
+			}
+			if (!Array.isArray(candidate)) continue;
+			for (const item of candidate) {
+				if (typeof item === 'string' && item.trim()) {
+					urls.push(item.trim());
+				}
+			}
+		}
+		return Array.from(new Set(urls));
+	}
+
+	private buildInteractiveNormalFollowUpContent(
+		toolName: string,
+		toolArgs: unknown,
+		result: any,
+		originalGoal: string
+	): string {
+		const rawResult = result?.result ?? result;
+		const fallbackRaw = typeof rawResult === 'string'
+			? rawResult
+			: JSON.stringify(rawResult, null, 2);
+		const compactFallback = fallbackRaw.length > 1800
+			? `${fallbackRaw.slice(0, 1800)}\n...[truncated]`
+			: fallbackRaw;
+
+		if (toolName !== 'fetch_web_content') {
+			return originalGoal
+				? `原始任务目标：${originalGoal}\n\n工具执行结果：\n- ${toolName}: ${compactFallback}\n\n请严格围绕上述原始任务继续执行，优先完成任务而不是改写目标；若任务已完成，请直接给出最终完成结果。`
+				: `工具执行结果：\n- ${toolName}: ${compactFallback}\n\n请基于上述结果继续完成原始任务；若任务已完成，请直接给出最终完成结果。`;
+		}
+
+		const urls = this.extractUrlsFromToolArgs(toolArgs);
+		const payload = rawResult && typeof rawResult === 'object' ? rawResult : {};
+		const resultItems = Array.isArray((payload as any).results)
+			? (payload as any).results
+			: [payload];
+		const successfulItems = resultItems.filter((item: any) => item && item.success !== false);
+		const snippets = successfulItems
+			.slice(0, 2)
+			.map((item: any, idx: number) => {
+				const title = typeof item?.title === 'string' ? item.title : '';
+				const body = typeof item?.markdown === 'string' && item.markdown.trim().length > 0
+					? item.markdown
+					: (typeof item?.content === 'string' ? item.content : '');
+				const compactBody = body.length > 2500 ? `${body.slice(0, 2500)}\n...[truncated]` : body;
+				const url = urls[idx] || '';
+				return `来源 ${idx + 1}${title ? `：${title}` : ''}${url ? `\nURL: ${url}` : ''}\n正文内容摘录：\n${compactBody || '(无正文内容)'}`;
+			})
+			.join('\n\n');
+
+		const totalUrls = (payload as any)?.totalUrls ?? (urls.length > 0 ? urls.length : 1);
+		const fetchSummary = `抓取结果：success=${(payload as any)?.successCount ?? (successfulItems.length > 0 ? successfulItems.length : 0)}, total=${totalUrls}, totalWords=${(payload as any)?.totalWords ?? 'unknown'}`;
+		const urlSummary = urls.length > 0 ? urls.join('\n') : '(工具参数中无 URL)';
+		const resultBlock = snippets || `原始工具结果：\n${compactFallback}`;
+
+		return [
+			originalGoal ? `原始任务目标：${originalGoal}` : '原始任务目标：请继续完成用户任务',
+			`已执行工具：${toolName}`,
+			`已抓取 URL：\n${urlSummary}`,
+			fetchSummary,
+			'以下是已抓取内容（可直接用于后续翻译与写入）：',
+			resultBlock,
+			'关键约束：以上 URL 已经抓取完成。除非用户明确要求刷新，否则禁止再次调用 fetch_web_content 抓取相同 URL。',
+			'请直接基于以上内容继续：先完成翻译，再调用写入工具（如 create_file / append / insert）生成 markdown 文档；若已完成，请直接给出最终完成结果。'
+		].join('\n\n');
+	}
+
 	/**
 	 * Update Guided Mode message UI
 	 * Ensures proper rendering of guided card structure with tools and options
@@ -891,11 +967,19 @@ export class ToolConfirmationUIRenderer implements IToolConfirmationUIRenderer {
 				toolArgs = tc.input;
 			}
 			
-			// Special handling for 'create' tool - auto-fill file_text
-			if (toolName === 'create') {
-				const createArgs = toolArgs as { path?: string; file_text?: string; override?: boolean };
+			// Special handling for create tools - normalize content -> file_text and auto-fill when missing
+			if (toolName === 'create' || toolName === 'create_file') {
+				const createArgs = toolArgs as { path?: string; file_text?: unknown; content?: unknown; override?: boolean };
+				if (!('file_text' in createArgs) && typeof createArgs.content === 'string') {
+					createArgs.file_text = createArgs.content;
+					Logger.debug('Normalized create args: content -> file_text');
+				}
+				if (createArgs.file_text !== undefined && typeof createArgs.file_text !== 'string') {
+					createArgs.file_text = String(createArgs.file_text);
+				}
+				const fileText = typeof createArgs.file_text === 'string' ? createArgs.file_text : '';
 				
-				if (!createArgs.file_text || createArgs.file_text.trim() === '') {
+				if (!fileText.trim()) {
 					Logger.debug('Create tool missing file_text, attempting to extract from message content');
 					
 					const messageContent = typeof guidedMessage.content === 'string' ? guidedMessage.content : '';
@@ -1112,16 +1196,16 @@ export class ToolConfirmationUIRenderer implements IToolConfirmationUIRenderer {
 			if (guidedMessage.metadata?.interactiveGuidedCard === true) {
 				const currentSession = this.callbacks.getCurrentSession();
 				const originalGoal = this.inferOriginalGoal(currentSession, guidedMessage);
-				const rawResult = typeof result?.result === 'string'
-					? result.result
-					: JSON.stringify(result?.result ?? result, null, 2);
-				const compactResult = rawResult.length > 1800 ? `${rawResult.slice(0, 1800)}\n...[truncated]` : rawResult;
+				if (currentSession) {
+					currentSession.messages.push(toolResultMessage);
+					await this.callbacks.updateSession({
+						messages: currentSession.messages
+					});
+				}
 				const followUpUserMessage: ChatMessage = {
 					id: `${Date.now()}-tool-followup`,
 					role: 'user',
-					content: originalGoal
-						? `原始任务目标：${originalGoal}\n\n工具执行结果：\n- ${toolName}: ${compactResult}\n\n请严格围绕上述原始任务继续执行，优先完成任务而不是改写目标；若任务已完成，请直接给出最终完成结果。`
-						: `工具执行结果：\n- ${toolName}: ${compactResult}\n\n请基于上述结果继续完成原始任务；若任务已完成，请直接给出最终完成结果。`,
+					content: this.buildInteractiveNormalFollowUpContent(toolName, toolArgs, result, originalGoal),
 					timestamp: Date.now(),
 					metadata: {
 						internalMessage: true,

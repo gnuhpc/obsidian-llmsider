@@ -17,6 +17,7 @@ import { GitHubCopilotProviderImpl } from '../providers/github-copilot-provider'
 import { HuggingChatProviderImpl } from '../providers/hugging-chat-provider';
 import { OpenCodeProviderImpl } from '../providers/opencode-provider';
 import { WebLLMProviderImpl } from '../providers/webllm-provider';
+import { normalizeProviderModelName } from './model-name-normalizer';
 
 import { UnifiedToolManager } from '../tools/unified-tool-manager';
 
@@ -47,7 +48,7 @@ export class ProviderFactory {
 			displayName: this.getProviderDisplayName(connection, model),
 			apiKey: connection.apiKey,
 			baseUrl: connection.baseUrl,
-			model: model.modelName,
+			model: normalizeProviderModelName(connection.type, model.modelName),
 			maxTokens: model.maxTokens,
 			temperature: model.temperature,
 			topP: model.topP,

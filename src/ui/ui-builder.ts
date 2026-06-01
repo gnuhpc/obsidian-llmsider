@@ -2175,7 +2175,7 @@ export class UIBuilder {
 				</svg>
 			</span>
 		`;
-		btn.title = this.i18n.t('ui.selectProvider') || 'Select Provider';
+		btn.title = providerText;
 		requestAnimationFrame(() => {
 			this.applyResponsiveClasses?.();
 		});

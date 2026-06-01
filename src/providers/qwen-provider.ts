@@ -4,6 +4,7 @@ import { requestUrl } from 'obsidian';
 import { BaseLLMProvider } from './base-provider';
 import { ChatMessage, LLMResponse, StreamingResponse, QwenProvider, GeneratedImage } from '../types';
 import { UnifiedTool } from '../tools/unified-tool-manager';
+import { normalizeQwenModelName } from '../utils/model-name-normalizer';
 
 export class QwenProviderImpl extends BaseLLMProvider {
 	private region: string;
@@ -11,7 +12,10 @@ export class QwenProviderImpl extends BaseLLMProvider {
 	private supportsVisionOverride?: boolean;
 
 	constructor(config: QwenProvider) {
-		super(config);
+		super({
+			...config,
+			model: normalizeQwenModelName(config.model),
+		});
 		this.region = config.region || 'cn-beijing';
 		this.outputModalities = (config as any).outputModalities;
 		this.supportsVisionOverride = config.supportsVision;
@@ -399,7 +403,7 @@ export class QwenProviderImpl extends BaseLLMProvider {
 			
 			// Extract model names from API response
 			const apiModelNames = apiModels
-				.map((model: { name?: string }) => model.name)
+				.map((model: Record<string, unknown>) => this.extractModelIdFromApiModel(model))
 				.filter((name: string | undefined): name is string => !!name);
 
 			// Combine common models with API models and remove duplicates
@@ -419,6 +423,26 @@ export class QwenProviderImpl extends BaseLLMProvider {
 			Logger.debug('API call failed, returning empty list for manual input');
 			return [];
 		}
+	}
+
+	private extractModelIdFromApiModel(model: Record<string, unknown>): string | undefined {
+		const candidateFields = [
+			model.model,
+			model.model_id,
+			model.modelId,
+			model.model_name,
+			model.modelName,
+			model.id,
+			model.name,
+		];
+
+		for (const value of candidateFields) {
+			if (typeof value === 'string' && value.trim()) {
+				return normalizeQwenModelName(value);
+			}
+		}
+
+		return undefined;
 	}
 
 	/**

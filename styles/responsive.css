@@ -6078,23 +6078,26 @@
 .llmsider-provider-selector {
     display: flex;
     align-items: center;
+    min-width: 0;
+    max-width: 100%;
 }
 
 /* Provider button - matches add context button style */
 .llmsider-provider-btn {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
+    gap: 5px;
+    padding: 4px 8px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 8px;
     background: var(--background-secondary);
     color: var(--text-normal);
     cursor: pointer;
     transition: all 0.2s ease;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
-    max-width: 240px;
+    max-width: 100%;
+    min-width: 0;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
@@ -6121,18 +6124,22 @@
 }
 
 .llmsider-provider-btn .provider-text {
-    display: inline;
+    display: inline-block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .llmsider-chat-container.llmsider-row-wrapped .llmsider-provider-btn .provider-text {
-    display: none !important;
+    display: inline-block !important;
 }
 
 .llmsider-chat-container.llmsider-row-wrapped .llmsider-provider-btn {
-    max-width: fit-content;
-    min-width: 38px;
-    padding: 6px;
+    max-width: 100%;
+    min-width: 0;
+    padding: 4px 8px;
 }
 
 .llmsider-chat-container.llmsider-compact .llmsider-provider-btn .provider-arrow {
@@ -6153,14 +6160,14 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     opacity: 0.7;
 }
 
 .llmsider-provider-btn .provider-arrow svg {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
 }
 
 /* Provider dropdown */
@@ -6794,9 +6801,7 @@
 
 @media (max-width: 1024px) {
     .llmsider-provider-btn .provider-text {
-        max-width: 100px;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        max-width: 100%;
     }
 }
 

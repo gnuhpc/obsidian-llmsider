@@ -230,6 +230,42 @@ function replaceSkillPlaceholders(command: string, runtimeContext?: unknown): st
     .replaceAll('${skillRootPath}', skillRootPath);
 }
 
+function normalizeObsidianCreateCommand(command: string): string {
+  const trimmed = command.trim();
+  if (!/^obsidian\s+create\b/i.test(trimmed)) {
+    return command;
+  }
+
+  const contentIndex = command.indexOf('content=');
+  if (contentIndex === -1) {
+    return command;
+  }
+
+  const before = command.slice(0, contentIndex + 'content='.length);
+  let after = command.slice(contentIndex + 'content='.length);
+  if (!after.trim()) {
+    return command;
+  }
+
+  // Heuristic: content is usually the last argument for `obsidian create`.
+  // Convert it to heredoc-backed command substitution so embedded quotes/newlines are safe.
+  const raw = after.trim();
+  let contentValue = raw;
+
+  if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+    contentValue = raw.slice(1, -1);
+  } else if (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2) {
+    contentValue = raw.slice(1, -1);
+  }
+
+  let delimiter = '__LLMSIDER_CONTENT__';
+  while (contentValue.includes(delimiter)) {
+    delimiter = `${delimiter}_X`;
+  }
+
+  return `${before}"$(cat <<'${delimiter}'\n${contentValue}\n${delimiter}\n)"`;
+}
+
 function resolveWorkingDirectory(command: string, cwd: string | undefined, runtimeContext?: unknown): string | undefined {
   if (cwd) {
     return cwd;
@@ -290,7 +326,9 @@ export const runLocalCommandTool: MastraTool = {
     const shellCandidates = getShellCandidates(context.shell);
     const runtimePath = getRuntimePath(context.shell);
     const timeoutMs = context.timeoutMs || DEFAULT_COMMAND_TIMEOUT_MS;
-    const resolvedCommand = replaceSkillPlaceholders(context.command, runtimeContext);
+    const resolvedCommand = normalizeObsidianCreateCommand(
+      replaceSkillPlaceholders(context.command, runtimeContext),
+    );
     const boundary = validateCommandPathBoundary(resolvedCommand, vaultBasePath);
     if (!boundary.valid) {
       return {
